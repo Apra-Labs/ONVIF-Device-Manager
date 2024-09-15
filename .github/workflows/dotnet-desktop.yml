@@ -40,9 +40,9 @@ name: .NET Core Desktop
 
 on:
   push:
-    branches: [ "ak/rejuvinate" ]
+    branches: [ "ak/automate-build" ]
   pull_request:
-    branches: [ "ak/rejuvinate" ]
+    branches: [ "ak/automate-build" ]
 
 jobs:
 
