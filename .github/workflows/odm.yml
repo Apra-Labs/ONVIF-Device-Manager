@@ -2,9 +2,9 @@ name: ODM
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "ak/automate-build" ]
   pull_request:
-    branches: [ main ]
+    branches: [ "ak/automate-build" ]
 
 jobs:
 
