@@ -1,0 +1,53 @@
+name: ODM
+
+on:
+  push:
+    branches: [ "*" ]
+  pull_request:
+    branches: [ "*" ]
+
+jobs:
+
+  build:
+
+    runs-on: windows-2022
+
+    env:
+      Solution_Name: odm.sln                         # Replace with your solution name, i.e. MyWpfApp.sln.
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: build application
+      run: |
+       'C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE\devenv' ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
+    
+    - name: collect artifacts
+      run: |
+       package.bat
+
+    - name: upload artifacts 
+      uses: actions/upload-artifact@v4
+      with:
+        name: odm-build-zip
+        path: build/
+
+
+    - name: DisableOutOfProcBuild
+      working-directory: 'C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild'
+      run: |
+       'DisableOutOfProcBuild' 
+
+    - name: build installer
+      run: |
+        'C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE\devenv' ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
+
+    - name: upload installer 
+      uses: actions/upload-artifact@v4
+      with:
+          name: odm-installer
+          path: odm.setup/Release/odm.setup.msi
+  
