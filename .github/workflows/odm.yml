@@ -16,9 +16,6 @@ jobs:
       Solution_Name: odm.sln                         # Replace with your solution name, i.e. MyWpfApp.sln.
 
     steps:
-    - name: Install net40
-      run: .\libs\dotnet40\dotNetFx40_Full_setup.exe /q /norestart
-    
     - name: Setup VS Dev Environment
       uses: seanmiddleditch/gha-setup-vsdevenv@v4      
     
@@ -31,6 +28,9 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+
+    - name: Install net40
+      run: .\libs\dotnet40\dotNetFx40_Full_setup.exe /q /norestart
 
     - name: build application
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
