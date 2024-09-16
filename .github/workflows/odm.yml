@@ -25,7 +25,7 @@ jobs:
       run: |
        .\libs\dotnet40\dotNetFx40_Full_setup.exe /q /norestart
        choco install netfx-4.0.1-devpack netfx-4.0.3-devpack -y
-       type C:\Users\runneradmin\AppData\Local\Temp\chocolatey\netfx-4.0.3-devpack.log
+       type C:\ProgramData\chocolatey\logs\chocolatey.log
       continue-on-error: true
 
     - name: Setup VS Dev Environment
