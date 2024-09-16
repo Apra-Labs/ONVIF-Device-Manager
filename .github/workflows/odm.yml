@@ -17,19 +17,23 @@ jobs:
       VS_Install_Dir: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE' # Replace with your Visual Studio installation directory.
 
     steps:
+    - name: Setup VS Dev Environment
+      uses: seanmiddleditch/gha-setup-vsdevenv@v4      
+    
+    - name: DisableOutOfProcBuild
+      working-directory: ${{env.VS_Install_Dir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild
+      run: DisableOutOfProcBuild.exe
+
     - name: Checkout
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
     - name: build application
-      run: |
-       "${{env.VS_Install_Dir}}\devenv" ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
-      shell: cmd
+      run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
     
     - name: collect artifacts
-      run: |
-       package.bat
+      run: package.bat
       shell: cmd
     
     - name: upload artifacts 
@@ -38,14 +42,9 @@ jobs:
         name: odm-build-zip
         path: build/
 
-    - name: DisableOutOfProcBuild
-      working-directory: '${{env.VS_Install_Dir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild'
-      run: |
-       DisableOutOfProcBuild.exe
 
     - name: build installer
-      run: |
-        "${{env.VS_Install_Dir}}\devenv" ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
+      run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
       shell: cmd
 
     - name: upload installer 
