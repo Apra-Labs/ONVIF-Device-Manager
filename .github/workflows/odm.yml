@@ -14,6 +14,7 @@ jobs:
 
     env:
       Solution_Name: odm.sln                         # Replace with your solution name, i.e. MyWpfApp.sln.
+      VS_Install_Dir: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE' # Replace with your Visual Studio installation directory.
 
     steps:
     - name: Checkout
@@ -23,27 +24,29 @@ jobs:
 
     - name: build application
       run: |
-       'C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE\devenv' ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
+       '${{env.VS_Install_Dir}}\devenv' ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
+      shell: cmd
     
     - name: collect artifacts
       run: |
        package.bat
-
+      shell: cmd
+    
     - name: upload artifacts 
       uses: actions/upload-artifact@v4
       with:
         name: odm-build-zip
         path: build/
 
-
     - name: DisableOutOfProcBuild
-      working-directory: 'C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild'
+      working-directory: '${{env.VS_Install_Dir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild'
       run: |
        'DisableOutOfProcBuild' 
 
     - name: build installer
       run: |
-        'C:\Program Files (x86)\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE\devenv' ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
+        '${{env.VS_Install_Dir}}\devenv' ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
+      shell: cmd
 
     - name: upload installer 
       uses: actions/upload-artifact@v4
