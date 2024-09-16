@@ -17,7 +17,7 @@ jobs:
 
     steps:
     - name: Install net40
-      run: choco install netfx-4.0.3-devpack -y
+      run: .\libs\dotnet40\dotNetFx40_Full_setup.exe /q /norestart
     
     - name: Setup VS Dev Environment
       uses: seanmiddleditch/gha-setup-vsdevenv@v4      
