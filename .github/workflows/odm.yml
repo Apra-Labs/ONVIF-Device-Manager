@@ -10,12 +10,15 @@ jobs:
 
   build:
 
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     env:
       Solution_Name: odm.sln                         # Replace with your solution name, i.e. MyWpfApp.sln.
 
     steps:
+    - name: Install net40
+      run: choco install netfx-4.0.3-devpack -y
+    
     - name: Setup VS Dev Environment
       uses: seanmiddleditch/gha-setup-vsdevenv@v4      
     
