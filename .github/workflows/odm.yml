@@ -14,15 +14,15 @@ jobs:
 
     env:
       Solution_Name: odm.sln                         # Replace with your solution name, i.e. MyWpfApp.sln.
-      VS_Install_Dir: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Commmon7\IDE' # Replace with your Visual Studio installation directory.
 
     steps:
     - name: Setup VS Dev Environment
       uses: seanmiddleditch/gha-setup-vsdevenv@v4      
     
     - name: DisableOutOfProcBuild
-      working-directory: ${{env.VS_Install_Dir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild
+      working-directory: ${{env.DevEnvDir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild
       run: DisableOutOfProcBuild.exe
+      continue-on-error: true
 
     - name: Checkout
       uses: actions/checkout@v4
