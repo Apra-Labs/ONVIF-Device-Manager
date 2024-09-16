@@ -21,7 +21,7 @@ jobs:
     
     - name: DisableOutOfProcBuild
       working-directory: ${{env.DevEnvDir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild
-      run: DisableOutOfProcBuild.exe
+      run: .\DisableOutOfProcBuild.exe
       continue-on-error: true
 
     - name: Checkout
