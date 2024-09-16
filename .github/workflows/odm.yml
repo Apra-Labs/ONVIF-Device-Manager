@@ -24,7 +24,7 @@ jobs:
 
     - name: build application
       run: |
-       '${{env.VS_Install_Dir}}\devenv' ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
+       "${{env.VS_Install_Dir}}\devenv" ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
       shell: cmd
     
     - name: collect artifacts
@@ -41,11 +41,11 @@ jobs:
     - name: DisableOutOfProcBuild
       working-directory: '${{env.VS_Install_Dir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild'
       run: |
-       'DisableOutOfProcBuild' 
+       DisableOutOfProcBuild.exe
 
     - name: build installer
       run: |
-        '${{env.VS_Install_Dir}}\devenv' ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
+        "${{env.VS_Install_Dir}}\devenv" ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
       shell: cmd
 
     - name: upload installer 
