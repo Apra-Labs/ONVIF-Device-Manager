@@ -80,6 +80,11 @@
     <Reference Include="System.Xml" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="WindowsBase" />
+    <ProjectReference Include="..\..\utils\utils.async\utils.async.csproj">
+      <Name>utils.async</Name>
+      <Project>{ca45551a-6a4e-4e3d-af2e-e081f209bb14}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <ProjectReference Include="..\..\utils\utils.common\utils.common.csproj">
       <Name>utils.common</Name>
       <Project>{2faa440a-87d3-41ab-9931-25ac306a25ba}</Project>

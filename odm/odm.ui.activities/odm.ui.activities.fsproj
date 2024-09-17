@@ -33,7 +33,7 @@
     <DefineConstants>TRACE</DefineConstants>
     <WarningLevel>3</WarningLevel>
     <DocumentationFile>bin\Release\odm.ui.activities.XML</DocumentationFile>
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
     <NoWarn>58</NoWarn>
   </PropertyGroup>
   <PropertyGroup>
@@ -157,6 +157,11 @@
     <ProjectReference Include="..\..\onvif\onvif.utils\onvif.utils.fsproj">
       <Name>onvif.utils</Name>
       <Project>{55ded141-56c3-4da9-be07-03708d7a2275}</Project>
+      <Private>True</Private>
+    </ProjectReference>
+    <ProjectReference Include="..\..\utils\utils.async\utils.async.csproj">
+      <Name>utils.async</Name>
+      <Project>{ca45551a-6a4e-4e3d-af2e-e081f209bb14}</Project>
       <Private>True</Private>
     </ProjectReference>
     <ProjectReference Include="..\..\utils\utils.bindings\utils.bindings.csproj">
