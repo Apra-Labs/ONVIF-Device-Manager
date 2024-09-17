@@ -78,6 +78,7 @@
     <Content Include="locales\-dir.info">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="locales\tc.xml" />
     <None Include="packages.config" />
     <None Include="strings.generator.xslt">
       <DependentUpon>strings.xml</DependentUpon>
@@ -88,6 +89,7 @@
       <SubType>Designer</SubType>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="locales\esp.xml" />
     <Content Include="locales\rus.xml">
       <SubType>Designer</SubType>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

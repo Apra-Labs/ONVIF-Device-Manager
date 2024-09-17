@@ -1,0 +1,813 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<localized-strings lang-iso3="spa">
+    <!--v 2.0-->
+    <module name="LocalEngineControlsInputsCreation" namespace="odm.ui">
+        <string name="input" value="Entradas:" />
+    </module>
+    <module name="LocalEngineControlsUpdating" namespace="odm.ui">
+        <string name="controlname" value="Nombre del control:" />
+        <string name="vac" value="Configuración de videoanalítica" />
+        <string name="configure" value="Configuración de entradas" />
+    </module>
+    <module name="LocalEngineControlsVACSelection" namespace="odm.ui">
+        <string name="vac" value="VAC" />
+        <string name="details" value="Detalles" />
+    </module>
+    <module name="LocalEngineControl" namespace="odm.ui">
+        <string name="name" value="Nombre" />
+        <string name="mode" value="Modo" />
+        <string name="status" value="Estado" />
+        <string name="vac" value="VAC" />
+        <string name="details" value="Detalles" />
+    </module>
+    <module name="LocalVideoPlayer" namespace="odm.ui">
+        <string name="noSignal" value="SIN SEÑAL" />
+    </module>
+    <module name="LocalSystemLog" namespace="odm.ui">
+        <string name="logTypeSystem" value="Sistema" />
+        <string name="logTypeAccess" value="Acceso" />
+        <string name="logType" value="Seleccione el tipo de registro: " />
+        <string name="Get" value="Obtener" />
+        <string name="Save" value="Guardar" />
+        <string name="titleSaveLog" value="Guardar registro" />
+        <string name="titleSaveAttach" value="Guardar adjunto" />
+        <string name="syslogNotFound" value="Registro no encontrado" />
+    </module>
+    <module name="LocalImaging" namespace="odm.ui">
+        <string name="title" value="Configuración del sensor" />
+        <string name="imagingSettings" value="Configuración del sensor" />
+        <string name="autoFocusMode" value="Modo de enfoque automático" />
+        <string name="brightness" value="Brillo" />
+        <string name="saturation" value="Saturación del color" />
+        <string name="contrast" value="Contraste" />
+        <string name="sharpness" value="Nitidez" />
+        <string name="gain" value="Ganancia" />
+        <string name="gainMax" value="Ganancia máx" />
+        <string name="gainMin" value="Ganancia mín" />
+        <string name="iris" value="Iris" />
+        <string name="irisMax" value="Iris máx" />
+        <string name="irisMin" value="Iris mín" />
+        <string name="whitemode" value="Balance de blancos" />
+        <string name="whiteBalanceCb" value="Balance de blancos Cb" />
+        <string name="whiteBalanceCr" value="Balance de blancos Cr" />
+        <string name="backlightMode" value="Modo de compensación de contraluz" />
+        <string name="backlightLevel" value="Nivel de compensación de contraluz" />
+        <string name="focusSettings" value="Configuración de enfoque" />
+        <string name="focusPosition" value="Posición" />
+        <string name="status" value="Estado" />
+        <string name="statusSuccess" value="OK" />
+        <string name="statusWaiting" value="Esperando..." />
+        <string name="auto" value="Automático" />
+        <string name="min" value="mín" />
+        <string name="max" value="máx" />
+    </module>
+    <module name="LocalMetadata" namespace="odm.ui">
+        <string name="title" value="Metadatos" />
+        <string name="empty" value="No hay metadatos disponibles" />
+        <string name="details" value="Descripción detallada" />
+        <string name="config" value="Filtros" />
+        <string name="includeAnalitycs" value="Incluir analítica" />
+        <string name="includePtzPosition" value="Incluir posición PTZ" />
+        <string name="includeEvents" value="Incluir eventos" />
+        <string name="includePtzStatus" value="Incluir estado PTZ" />
+        <string name="filter" value="Filtros:" />
+        <string name="expressionSettings" value="Configuración de expresión:" />
+        <string name="expression" value="Expresión" />
+        <string name="expressionType" value="Tipo de expresión" />
+        <string name="expressionDialect" value="Dialecto de expresión" />
+        <string name="additionalSet" value="Detalles:" />
+        <string name="prefixList" value="Lista de prefijos" />
+        <string name="topicSets" value="Conjunto de temas" />
+        <string name="addFilter" value="Añadir filtro" />
+        <string name="collect" value="Guardar datos" />
+    </module>
+    <module name="LocalPTZ" namespace="odm.ui">
+        <string name="presets" value="Preajustes:" />
+        <string name="settings" value="Configuración:" />
+        <string name="quicksets" value="Configuraciones rápidas:" />
+        <string name="zoom" value="Zoom relativo:" />
+        <string name="absoluteZoom" value="Zoom absoluto:" />
+        <string name="relativemove" value="Movimiento relativo:" />
+        <string name="absolute" value="Movimiento absoluto:" />
+        <string name="select" value="Seleccionar" />
+        <string name="delete" value="Eliminar" />
+        <string name="apply" value="Aplicar" />
+        <string name="go_to" value="Ir" />
+        <string name="sethome" value="Establecer Home" />
+        <string name="setpreset" value="Establecer preajuste" />
+        <string name="panspeed" value="Velocidad de paneo:" />
+        <string name="tiltspeed" value="Velocidad de inclinación:" />
+        <string name="zoomspeed" value="Velocidad de zoom:" />
+        <string name="selectnode" value="Seleccionar nodo:" />
+        <string name="setlimits" value="Establecer límites:" />
+        <string name="tiltmin" value="Inclinación mín:" />
+        <string name="tiltmax" value="Inclinación máx:" />
+        <string name="panmin" value="Paneo mín:" />
+        <string name="panmax" value="Paneo máx:" />
+        <string name="zoommin" value="Zoom mín:" />
+        <string name="zoommax" value="Zoom máx:" />
+    </module>
+    <module name="LocalVideoSettings" namespace="odm.ui">
+        <string name="title" value="Transmisión de video" />
+        <string name="resolution" value="Codificador y resolución (píxeles)" />
+        <string name="frameRate" value="Tasa de fotogramas, fotogramas/seg" />
+        <string name="encodingInterval" value="Intervalo de codificación, número de fotogramas" />
+        <string name="encoder" value="Codificador" />
+        <string name="bitrate" value="Límite de bitrate, kbit/s" />
+        <string name="prioriy" value="Prioridad" />
+        <string name="quality" value="Calidad" />
+        <string name="govLength" value="Longitud de GOV" />
+        <string name="metadata" value="Flujo de metadatos" />
+        <string name="channelName" value="Nombre del canal" />
+        <string name="errorEncoder" value="Valor incorrecto en Model.encoder" />
+        <string name="errorSupportResolution" value="El codificador seleccionado no admite la resolución seleccionada" />
+    </module>
+    <module name="LocalTimeZone" namespace="odm.ui">
+        <string name="captionUtc" value="Hora en UTC" />
+        <string name="captionLocal" value="Hora local" />
+        <string name="title" value="Configuraciones de hora" />
+        <string name="currentTime" value="Hora actual" />
+        <string name="timeZone" value="Zona horaria:" />
+        <string name="autoAdjustString" value="Aplicar automáticamente el cambio de horario de verano-invierno" />
+        <string name="synchronizeWithComp" value="Sincronizar con la hora del ordenador" />
+        <string name="date" value="Fecha:" />
+        <string name="time" value="Hora:" />
+        <string name="synchronizeWithNtp" value="Sincronizar con el servidor NTP" />
+        <string name="NTPserver" value="Servidor NTP:" />
+        <string name="manually" value="Configurar manualmente" />
+        <string name="timeMode" value="Modo de tiempo:" />
+        <string name="ntpServerSetupTitle" value="Configuración del servidor NTP" />
+        <string name="ntpServerSetupSet" value="Establecer" />
+        <string name="warning" value="Advertencia: la zona horaria del dispositivo difiere de la zona horaria del ordenador" />
+        <string name="ntpSetupInfo" value="Por favor, vaya a la sección de configuración de red para cambiar los servidores NTP" />
+        <string name="fromDHCP" value="Usar DHCP" />
+        <string name="newDateTime" value="Nueva hora:" />
+        <string name="applySuccess" value="Cambios aplicados con éxito. Tenga en cuenta que esto puede afectar la seguridad, y el dispositivo no estará disponible durante esta sesión." />
+    </module>
+    <module name="LocalSnapshot" namespace="odm.ui">
+        <string name="loading" value="Cargando..." />
+        <string name="imagecorrupt" value="Imagen dañada" />
+        <string name="imageloadingerror" value="Error al cargar la imagen" />
+        <string name="disabled" value="Captura de pantalla deshabilitada por el usuario" />
+        <string name="snapshot" value="Captura de pantalla" />
+    </module>
+    <module name="LocalBackgroundTasks" namespace="odm.ui">
+        <string name="cancellAllCaption" value="Cancelar todas las tareas en curso" />
+        <string name="removeFinishedCaption" value="Eliminar todas las tareas finalizadas" />
+    </module>
+    <module name="LocalAppSettings" namespace="odm.ui">
+        <string name="webbrowser" value="Abrir web en un navegador externo" />
+        <string name="videotransport" value="Transporte de video" />
+        <string name="eventOnlyPullPoint" value="Solo PullPoint" />
+        <string name="eventOnlyBase" value="Solo Suscripción Base" />
+        <string name="eventTryPullPoint" value="PullPoint si está disponible" />
+        <string name="eventTypeCaption" value="Tipo de suscripción a eventos" />
+        <string name="basePortCaption" value="Número de puerto para Suscripción Base" />
+        <string name="collectEventsCaption" value="Guardar eventos en el disco" />
+        <string name="collectMetaCaption" value="Guardar metadatos en el disco" />
+        <string name="enableCustomAnalyticsCaption" value="Habilitar plugins" />
+        <string name="enableEventCaption" value="Habilitar suscripción a eventos" />
+        <string name="enableGraphicAnnotationCaption" value="Habilitar anotación gráfica" />
+        <string name="enableSnapshotCaption" value="Habilitar capturas de pantalla" />
+        <string name="langCaption" value="Idioma" />
+        <string name="uiCaption" value="Configuración de la interfaz" />
+        <string name="eventCaption" value="Configuración de eventos" />
+        <string name="communicationCaption" value="Configuración de comunicación con el dispositivo" />
+        <string name="videoRenderingFpsCaption" value="Frecuencia de actualización de fotogramas" />
+        <string name="showVideoPlaybackStatisticsCaption" value="Mostrar estadísticas de reproducción de video" />
+        <string name="enableOnlyDefModeCaption" value="Usar editor avanzado de filtros" />
+    </module>
+    <module name="LocalAccount" namespace="odm.ui">
+        <string name="loginCaption" value="Nombre" />
+        <string name="passwordCaption" value="Contraseña" />
+        <string name="loginButton" value="Iniciar sesión" />
+        <string name="logoutButton" value="Cerrar sesión" />
+        <string name="remember" value="Recordar" />
+        <string name="loggedAs" value="Has iniciado sesión como" />
+    </module>
+	<module name="LocalTitles" namespace="odm.ui">
+		<string name="webPage" value="Página web" />
+		<string name="manualAdd" value="Agregar dispositivo" />
+		<string name="manualEdit" value="Editar URI" />
+		<string name="uiTest" value="Prueba de UI" />
+		<string name="batchUpgrade" value="Actualización masiva de firmware" />
+		<string name="batchRestore" value="Restauración masiva de configuraciones" />
+		<string name="devicesList" value="Lista de dispositivos" />
+		<string name="backgroundTasks" value="Tareas en segundo plano" />
+		<string name="identificationAndStatus" value="Identificación" />
+		<string name="receivers" value="Receptores" />
+		<string name="actions" value="Acciones" />
+		<string name="triggers" value="Disparadores" />
+		<string name="usermanager" value="Usuarios" />
+		<string name="appsettings" value="Configuración de la aplicación" />
+		<string name="accountmanager" value="Gestión de cuentas" />
+		<string name="about" value="Acerca de" />
+		<string name="sequrity" value="Certificados" />
+		<string name="timesettings" value="Configuración de tiempo" />
+		<string name="networkSettings" value="Configuración de red" />
+		<string name="digitalIO" value="Relés" />
+		<string name="maintenance" value="Mantenimiento" />
+		<string name="systemLog" value="Registro del sistema" />
+		<string name="onvifExplorer" value="Explorador ONVIF" />
+		<string name="commonEvents" value="Eventos comunes" />
+		<string name="liveVideo" value="Video en vivo" />
+		<string name="sensorSettings" value="Configuración de sensor" />
+		<string name="events" value="Eventos" />
+		<string name="metadata" value="Metadatos" />
+		<string name="depthCalibration" value="Calibración de profundidad" />
+		<string name="videoStreaming" value="Transmisión de video" />
+		<string name="displayAnnotation" value="Anotación" />
+		<string name="tamperingDetectors" value="Detectores de manipulación" />
+		<string name="objectTracker" value="Rastreo de objetos" />
+		<string name="ruleEngine" value="Reglas" />
+		<string name="cantishaker" value="Estabilizador" />
+		<string name="rotation" value="Rotación y reflexión" />
+		<string name="analogueOutput" value="Salida analógica" />
+		<string name="profileEditor" value="Perfiles" />
+		<string name="modules" value="Gestión de módulos analíticos" />
+		<string name="ptz" value="Control PTZ" />
+		<string name="analytics" value="Analítica" />
+		<string name="confAnalyticsModules" value="Configuración de módulos analíticos" />
+		<string name="analyticsModuleCofig" value="Configuración de módulo analítico" />
+		<string name="annotationModuleCofig" value="Configuración de módulo de anotación" />
+		<string name="regionRuleCofig" value="Configuración de regla de región" />
+		<string name="wireRuleCofig" value="Configuración de regla de línea" />
+		<string name="configuration" value="Configuración" />
+	</module>
+		<module name="LocalButtons" namespace="odm.ui">
+		<string name="save" value="Guardar" />
+		<string name="add" value="Agregar" />
+		<string name="apply" value="Aplicar" />
+		<string name="continue1" value="Continuar" />
+		<string name="abort" value="Abortar" />
+		<string name="finish" value="Finalizar" />
+		<string name="cancel" value="Cancelar" />
+		<string name="create" value="Crear" />
+		<string name="delete" value="Eliminar" />
+		<string name="modify" value="Modificar" />
+		<string name="edit" value="Editar" />
+		<string name="select" value="Seleccionar" />
+		<string name="close" value="Cerrar" />
+		<string name="pause" value="Pausar" />
+		<string name="resume" value="Reanudar" />
+		<string name="details" value="Mostrar detalles" />
+		<string name="background" value="Modo en segundo plano" />
+		<string name="refresh" value="Actualizar" />
+	</module>
+	<module name="LocalDevice" namespace="odm.ui">
+		<string name="currentAccount" value="Cuenta actual: " />
+		<string name="apply" value="Aplicar" />
+		<string name="accountManager" value="Gestor de cuentas" />
+		<string name="title" value="Dispositivo" />
+		<string name="languageEng" value="Inglés" />
+		<string name="languageRus" value="Ruso" />
+		<string name="loading" value="Cargando ..." />
+		<string name="uploading" value="Subiendo ..." />
+		<string name="downloading" value="Descargando ..." />
+		<string name="applying" value="Aplicando cambios..." />
+		<string name="information" value="Información" />
+		<string name="creating" value="Creando..." />
+		<string name="deleting" value="Eliminando..." />
+		<string name="configuring" value="Configurando..." />
+	</module>
+	<module name="LocalDeviceList" namespace="odm.ui">
+		<string name="firmware" value="Firmware" />
+		<string name="location" value="Ubicación" />
+		<string name="address" value="Dirección" />
+		<string name="refresh" value="Actualizar" />
+		<string name="manualadd" value="Agregar" />
+		<string name="Filter" value="Filtro: " />
+		<string name="search" value="nombre, lugar o dirección"/>
+	</module>
+	<module name="LocalNetworkSettings" namespace="odm.ui">
+		<string name="portsHttp" value="Puertos HTTP:" />
+		<string name="portsHttps" value="Puertos HTTPS:" />
+		<string name="portsRtsp" value="Puertos RTSP:" />
+		<string name="hostName" value="Nombre del servidor:" />
+		<string name="zeroCaption" value="Permitir configuración zero:" />
+		<string name="ipAddress" value="Dirección IP:" />
+		<string name="ipMask" value="Máscara de subred:" />
+		<string name="gateway" value="Dirección de puerta de enlace:" />
+		<string name="dnsFromDhcp" value="Obtener DNS desde DHCP:" />
+		<string name="dns" value="DNS:" />
+		<string name="ntp" value="Servidores NTP:" />
+		<string name="ntpFromDhcp" value="Obtener servidores NTP desde DHCP:" />
+		<string name="dhcp" value="DHCP:" />
+		<string name="discoveryMode" value="Modo de detección ONVIF:" />
+		<string name="applyindNtp" value="Aplicando nueva configuración de NTP..." />
+		<string name="applyindDns" value="Aplicando nueva configuración de DNS..." />
+		<string name="applyindGateway" value="Aplicando nueva configuración de puerta de enlace..." />
+		<string name="invalidIpForGateway" value="Dirección IP no válida para puerta de enlace" />
+		<string name="applyindZeroConf" value="Aplicando nueva configuración de zero-configuration..." />
+		<string name="applyindHostName" value="Aplicando nueva configuración de nombre de host..." />
+		<string name="applyindIp" value="Aplicando nueva configuración de IP..." />
+		<string name="on" value="Encender"/>
+		<string name="off" value="Apagar"/>
+		<string name="enable" value="Habilitar"/>
+		<string name="disable" value="Deshabilitar"/>
+		<string name="fromDhcp" value="DHCP"/>
+		<string name="manual" value="Manual" />
+		<string name="discoverable" value="Descubrimiento permitido"/>
+		<string name="nonDiscoverable" value="Descubrimiento no permitido"/>
+	</module>
+	<module name="LocalApproAnalytics" namespace="odm.ui">
+		<string name="title" value="Detector de movimiento Appro" />
+		<string name="isEnabled" value="Habilitar detector" />
+		<string name="sensitivity" value="Sensibilidad" />
+	</module>
+	<module name="LocalUserManagement" namespace="odm.ui">
+		<string name="usersCaption" value="Usuarios:" />
+		<string name="policiesCaption" value="Políticas:" />
+		<string name="createUserButton" value="Crear" />
+		<string name="modifyUserButton" value="Modificar" />
+		<string name="deleteUserButton" value="Eliminar" />
+		<string name="editPoliciesButton" value="Editar" />
+		<string name="downloadPoliciesButton" value="Guardar" />
+		<string name="uploadPoliciesButton" value="Restaurar" />
+		<string name="nameCaption" value="Nombre: " />
+		<string name="passwordCaption" value="Contraseña: " />
+		<string name="repeatPasswordCaption" value="Repetir contraseña: " />
+		<string name="roleCaption" value="Rol: " />
+		<string name="createSuccess" value="Usuario creado con éxito. Tenga en cuenta que esto puede afectar la configuración de seguridad y el dispositivo estará inaccesible durante esta sesión." />
+		<string name="changeSuccess" value="Cambios aplicados con éxito. Tenga en cuenta que esto puede afectar la configuración de seguridad y el dispositivo estará inaccesible durante esta sesión." />
+		<string name="deleteSuccess" value="Usuario eliminado con éxito. Tenga en cuenta que esto puede afectar la configuración de seguridad y el dispositivo estará inaccesible durante esta sesión." />
+	</module>
+	<module name="LocalEvents" namespace="odm.ui">
+		<string name="colArrivalTime" value="Hora de ocurrencia" />
+		<string name="colTopic" value="Tema" />
+		<string name="colId" value="Número" />
+		<string name="colProperty" value="Operación" />
+		<string name="colSource" value="Fuente" />
+		<string name="colKey" value="Clave" />
+		<string name="colData" value="Datos" />
+		<string name="colMessage" value="Mensaje" />
+		<string name="colDetails" value="Detalles" />
+	</module>
+	<module name="LocalDisplayAnnotation" namespace="odm.ui">
+		<string name="enableMovingRects" value="Mostrar rectángulos de seguimiento" />
+		<string name="enableSpeed" value="Mostrar velocidad" />
+		<string name="enableTimeStamp" value="Mostrar hora" />
+		<string name="enableSystemInformation" value="Mostrar información del sistema" />
+		<string name="enableChannelName" value="Mostrar nombre del canal" />
+		<string name="enableTracking" value="Mostrar seguimiento" />
+		<string name="enableUserRegion" value="Mostrar región de interés" />
+		<string name="enableRules" value="Mostrar reglas" />
+		<string name="enableCalibrationResults" value="Mostrar resultados de calibración" />
+	</module>
+	<module name="LocalMaintenance" namespace="odm.ui">
+		<string name="loadbuckup" value="Cargar archivo de recuperación" />
+		<string name="savebuckup" value="Guardar archivo de recuperación" />
+		<string name="selectfirmware" value="Seleccionar archivo de firmware" />
+		<string name="configurationCaption" value="Configuración" />
+		<string name="diagnosticsCaption" value="Diagnóstico y soporte" />
+		<string name="hardResetCaption" value="Restablecimiento completo a valores de fábrica" />
+		<string name="resetCaption" value="Reiniciar dispositivo" />
+		<string name="softResetCaption" value="Restablecimiento parcial a valores de fábrica" />
+		<string name="upgradeCaption" value="Actualización de firmware" />
+		<string name="unsupported" value="No soportado" />
+		<string name="btnBackup" value="Guardar" />
+		<string name="btnRestore" value="Restaurar" />
+		<string name="btnSoftReset" value="Restablecimiento parcial" />
+		<string name="btnHardReset" value="Restablecimiento completo" />
+		<string name="btnSoftResetTooltip" value="Todos los parámetros, excepto la configuración de red básica, como dirección IP, puerta de enlace, máscara de subred y configuración de DHCP, volverán a los valores predeterminados de fábrica" />
+		<string name="btnHardResetTooltip" value="Todos los parámetros volverán a los valores predeterminados de fábrica" />
+		<string name="factorySoftSuccess" value="El restablecimiento parcial a valores de fábrica se realizó con éxito. El dispositivo se está reiniciando. Por favor, espere a que vuelva a aparecer en la lista de dispositivos." />
+		<string name="factoryHardSuccess" value="El restablecimiento completo a valores de fábrica se realizó con éxito. El dispositivo se está reiniciando. Por favor, espere a que vuelva a aparecer en la lista de dispositivos." />
+		<string name="rebootSuccess" value="El dispositivo se está reiniciando. Por favor, espere a que aparezca en la lista de dispositivos." />
+		<string name="waitWhileAppear" value=" Por favor, espere a que el dispositivo aparezca en la lista de dispositivos." />
+		<string name="resetting" value="Restableciendo..." />
+		<string name="rebooting" value="Reiniciando..." />
+		<string name="btnReboot" value="Reiniciar" />
+		<string name="btnUpgrate" value="Actualizar" />
+		<string name="uploadingFirmware" value="Subiendo firmware, por favor espere..." />
+		<string name="upgradingFirmware" value="Actualizando firmware..." />
+		<string name="titleupgradingFirmware" value="Actualización de firmware"/>
+		<string name="autoclose" value="cerrar automáticamente al finalizar" />
+		<string name="doingBackup" value="Realizando copia de seguridad..." />
+		<string name="restoreSuccess" value="El dispositivo se restauró con éxito. Por favor, espere a que vuelva a aparecer en la lista de dispositivos." />
+		<string name="upgradeCompleteSuccess" value="La actualización del firmware se completó con éxito" />
+		<string name="backupCompleteSuccess" value="La copia de seguridad se completó con éxito" />
+	</module>
+	<module name="LocalProfile" namespace="odm.ui">
+		<string name="captionVecfg" value="Configuración de codificador de video" />
+		<string name="captionAecfg" value="Configuración de codificador de audio" />
+		<string name="captionVacfg" value="Configuración de análisis de video" />
+		<string name="captionPtzcfg" value="Configuración de PTZ" />
+		<string name="captionMetacfg" value="Configuración de metadatos" />
+		<string name="captionVideoSourceConfig" value="Configuración de fuente de video" />
+		<string name="captionAscfg" value="Configuración de fuente de audio" />
+		<string name="captionProfileName" value="Nombre del perfil:" />
+		<string name="creatingProfile" value="Creando perfil..." />
+		<string name="modifiedSuccess" value="El perfil se modificó con éxito. El canal se reiniciará." />
+		<string name="modifiedFail" value="Error al modificar el perfil" />
+		<string name="selectFail" value="Error al seleccionar el perfil" />
+		<string name="deleteFail" value="Error al eliminar el perfil" />
+		<string name="deleting" value="Eliminando perfil..." />
+		<string name="deletingSuccess" value="El perfil se eliminó con éxito. El canal se reiniciará." />
+	</module>
+    <module name="LocalBatchTasks" namespace="odm.ui">
+        <string name="batchUpgrade" value="Actualización por lotes" />
+        <string name="batchRestore" value="Restauración por lotes" />
+        <string name="filters" value="Filtros: " />
+        <string name="firmware" value="Firmware: " />
+        <string name="name" value="Nombre: " />
+        <string name="manufacturer" value="Fabricante: " />
+        <string name="model" value="Modelo: " />
+        <string name="address" value="Dirección: " />
+    </module>
+    <module name="LocalSequrity" namespace="odm.ui">
+        <string name="details" value="Detalles:" />
+        <string name="enterName" value="Ingrese el nombre del certificado:" />
+        <string name="selectCertificateHeader" value="Seleccione el archivo del certificado" />
+        <string name="setStatus" value="Establecer estado" />
+        <string name="uploadCertificate" value="Cargar certificado" />
+        <string name="btnUpload" value="Cargar..." />
+        <string name="validity" value="Válido" />
+        <string name="serialNumber" value="Número de serie" />
+    </module>
+    <!--v 1.0-->
+    <!-- REGION Common Application -->
+    <module name="CommonApplicationStrings" namespace="odm.ui.controls">
+        <string name="On" value="Encendido" />
+        <string name="Off" value="Apagado" />
+        <string name="Yes" value="Sí" />
+        <string name="No" value="No" />
+        <string name="contactInfo" value="Información de contacto" />
+        <string name="streaming" value="Transmisión" />
+        <string name="analytics" value="Analítica" />
+        <string name="startExpanded" value="Iniciar expandido" />
+        <string name="details" value="Descripción detallada :" />
+        <string name="applicationName" value="Gestor de Dispositivos ONVIF" />
+        <string name="aboutTitle" value="Acerca del Gestor de Dispositivos ONVIF" />
+        <string name="aboutCommon" value="El Gestor de Dispositivos ONVIF es un software libre. Puedes redistribuir y/o modificarlo de acuerdo con los términos de la Licencia Pública General GNU." />
+        <string name="aboutRus" value="ООО `Синезис`, РФ, 119019, г. Москва, Гоголевский бульвар, д. 2/18/1, стр. 1" />
+        <string name="aboutBelarus" value="ООО `Синезис`, РБ, 220043 г. Минск, пр.-т Независимости, дом 95, пом. 12, офис 316" />
+        <string name="aboutBelarusPhone" value="+375 (17) 281-77-85" />
+        <string name="aboutRusPhone" value="+7 (495) 660-77-47" />
+    </module>
+    <module name="DeviceControlStrings" namespace="odm.ui.controls">
+        <string name="currentAccount" value="Cuenta actual: " />
+        <string name="apply" value="Aplicar" />
+        <string name="accountManager" value="Gestor de cuentas" />
+        <string name="title" value="Dispositivo" />
+        <string name="languageEng" value="Inglés" />
+        <string name="languageRus" value="Ruso" />
+        <string name="languagetc" value="繁中" />
+    </module>
+    <module name="SaveCancelStrings" namespace="odm.ui.controls">
+        <string name="save" value="Aplicar" />
+        <string name="apply" value="Aplicar" />
+        <string name="continue1" value="Continuar" />
+        <string name="abort" value="Abortar" />
+        <string name="finish" value="Terminar" />
+        <string name="cancel" value="Cancelar" />
+        <string name="create" value="Crear" />
+        <string name="delete" value="Eliminar" />
+        <string name="modify" value="Modificar" />
+        <string name="select" value="Seleccionar" />
+        <string name="close" value="Cerrar" />
+        <string name="pause" value="Pausa" />
+        <string name="resume" value="Reanudar" />
+    </module>
+    <module name="LinkButtonsStrings" namespace="odm.ui.controls">
+        <string name="identificationAndStatus" value="Identificación" />
+        <string name="usermanager" value="Usuarios" />
+        <string name="properties" value="Configuraciones" />
+        <string name="accountmanager" value="Gestión de cuentas" />
+        <string name="about" value="Acerca de" />
+        <string name="sequrity" value="Certificados" />
+        <string name="timesettings" value="Configuración de tiempo" />
+        <string name="networkSettings" value="Configuración de red" />
+        <string name="digitalIO" value="Relés" />
+        <string name="maintenance" value="Mantenimiento" />
+        <string name="systemLog" value="Registro del sistema" />
+        <string name="onvifExplorer" value="Explorador ONVIF" />
+        <string name="commonEvents" value="Eventos comunes" />
+        <string name="liveVideo" value="Vídeo en vivo" />
+        <string name="sensorSettings" value="Configuración del sensor" />
+        <string name="events" value="Eventos" />
+        <string name="metadata" value="Metadatos" />
+        <string name="depthCalibration" value="Calibración de perspectiva" />
+        <string name="videoStreaming" value="Transmisión de vídeo" />
+        <string name="displayAnnotation" value="Anotación" />
+        <string name="tamperingDetectors" value="Detectores de manipulación" />
+        <string name="objectTracker" value="Rastreo" />
+        <string name="ruleEngine" value="Reglas" />
+        <string name="cantishaker" value="Estabilizador" />
+        <string name="rotation" value="Rotación y reflexión" />
+        <string name="analogueOutput" value="Salida analógica" />
+        <string name="profileEditor" value="Perfiles" />
+        <string name="modules" value="Gestión de módulos analíticos" />
+        <string name="ptz" value="Control PTZ" />
+        <string name="analytics" value="Analítica" />
+        <string name="confAnalyticsModules" value="Configuración de módulos analíticos" />
+        <string name="analyticsModuleCofig" value="Configuración del módulo analítico" />
+        <string name="annotationModuleCofig" value="Configuración del módulo de anotación" />
+        <string name="regionRuleCofig" value="Configuración de la regla RegionRule" />
+        <string name="wireRuleCofig" value="Configuración de la regla TripWireRule" />
+        <string name="configuration" value="Configuración" />
+
+        <string name="nvaControls" value="Controles" />
+        <string name="nvaAnalytics" value="Analítica" />
+        <string name="nvaInputs" value="Entradas" />
+        <string name="nvaMetadata" value="Metadatos" />
+        <string name="nvaSettings" value="Configuraciones" />
+		</module>
+	<module name="InfoFormStrings" namespace="odm.controllers">
+		<string name="titleSave" value="Guardando cambios..." />
+		<string name="titleInfo" value="Información..." />
+		<string name="close" value="Cerrar" />
+		<string name="refresh" value="Actualizar" />
+		<string name="applyChangesTitle" value="Aplicando cambios..." />
+		<string name="loadingData" value="Cargando datos..." />
+		<string name="ifoTitle" value="Información..." />
+		<string name="errorTitle" value="Error..." />
+		<string name="applyChanges" value="Por favor, espere mientras se aplican los cambios." />
+		<string name="needToReboot" value="Por favor, espere a que el dispositivo se reinicie." />
+		<string name="firmwareUpdated" value="La actualización del firmware se realizó con éxito. Por favor, espere a que el dispositivo se reinicie." />
+	</module>
+	<module name="EmptySelectionStrings" namespace="odm.ui.controls">
+		<string name="title" value="No hay dispositivos conectados" />
+		<string name="text" value="Por favor, verifique si el dispositivo está conectado" />
+		<string name="textContacts" value="" />
+		<!--<string name="sNotifierImg" value="Resources\Images\BigLogo.png" />-->
+	</module>
+	<!-- ENDOFREGION Common Application -->
+	<!-- REGION Errors -->
+	<module name="ExceptionStrings" namespace="nvc">
+		<string name="sExceptionWSDiscoveryTitle" value="Error al detectar el dispositivo (WS-Discover)." />
+		<string name="sErrorDevInfoNull" value="Error al leer la configuración del dispositivo. Por favor, actualice la lista de dispositivos." />
+		<string name="sErrorDeviceName" value="No establecido" />
+		<!--<string name="sErrorDeviceIPAddress" value="0.0.0.0" />-->
+		<string name="sErrorDeviceFirmware" value="No establecido" />
+		<string name="sErrorSaveVideoStreaming" value="Error al guardar la configuración del video. Por favor, actualice la lista de dispositivos." />
+		<string name="sErrorSaveNetworkSettings" value="Error al guardar la configuración de la red. Por favor, actualice la lista de dispositivos." />
+		<string name="sErrorSaveDeviceNameSettings" value="Error al guardar la configuración del dispositivo. Por favor, actualice la lista de dispositivos." />
+		<string name="sErrorVlc" value="Error de transmisión de medios" />
+		<string name="sErrorVlcPlayer" value="Error al reproducir la transmisión de video" />
+		<string name="sErrorVlcMediaUriIsEmpty" value="URL de transmisión de video vacía" />
+		<string name="sErrorVlcMediaUriIsBad" value="URL de transmisión de video incorrecta" />
+		<string name="sErrorNotAuthorized" value="Error de autorización. Por favor, use una cuenta con los privilegios adecuados." />
+		<string name="sErrorNameNotUnique" value="El nombre '{0}' ya está en uso." />
+	</module>
+	<!-- ENDOFREGION Errors -->
+	<!-- REGION Device settings -->
+	<module name="PropertyXMLExplorerStrings" namespace="odm.ui.controls">
+		<string name="title" value="Navegador XML" />
+		<string name="save" value="Guardar" />
+	</module>
+	<module name="PropertyIdentificationStrings" namespace="odm.ui.controls">
+		<string name="title" value="Identificación del dispositivo" />
+		<string name="name" value="Nombre" />
+		<string name="location" value="Ubicación" />
+		<string name="curTime" value="Hora actual" />
+		<string name="deviceID" value="ID del dispositivo" />
+		<string name="firmware" value="Firmware" />
+		<string name="hardware" value="Hardware" />
+		<string name="version" value="Versión ONVIF" />
+		<string name="ipAddress" value="Dirección de red" />
+		<string name="macAddress" value="Dirección MAC" />
+		<string name="manufacturer" value="Fabricante" />
+		<string name="model" value="Modelo" />
+	</module>
+	<module name="PropertyTimeZoneStrings" namespace="odm.ui.controls">
+		<string name="title" value="Configuración de la hora" />
+		<string name="currentTime" value="Hora actual" />
+		<string name="timeZone" value="Zona horaria:" />
+		<string name="timeSettings" value="Configuración de la hora:" />
+		<string name="autoAdjustString" value="Aplicar automáticamente el ajuste de horario de verano" />
+		<string name="synchronizeWithComp" value="Sincronizar con la hora del computador" />
+		<string name="date" value="Fecha:" />
+		<string name="time" value="Hora:" />
+		<string name="synchronizeWithNtp" value="Sincronizar con el servidor NTP" />
+		<string name="NTPserver" value="Servidor NTP:" />
+		<string name="manually" value="Establecer manualmente" />
+		<string name="timeMode" value="Modo de hora:" />
+		<string name="ntpServerSetupTitle" value="Configuración del servidor NTP" />
+		<string name="ntpServerSetupSet" value="Configurar" />
+		<string name="warning" value="Advertencia: la zona horaria del dispositivo es diferente a la del computador" />
+		<string name="ntpSetupInfo" value="Por favor, vaya al enlace de configuración de red para cambiar los servidores NTP" />
+		<string name="fromDHCP" value="Usar DHCP" />
+		<string name="newDateTime" value="Nueva hora:" />
+		<string name="applySuccess" value="Los cambios se aplicaron con éxito. Tenga en cuenta que esto puede afectar la configuración de seguridad y el dispositivo estará inactivo durante esta sesión." />
+	</module>
+	<module name="PropertyNetworkSettingsStrings" namespace="odm.ui.controls">
+		<string name="title" value="Configuración de red" />
+		<string name="dhcp" value="DHCP" />
+		<string name="ipAddr" value="Dirección IP del dispositivo" />
+		<string name="subnetMask" value="Máscara de subred" />
+		<string name="gateAddr" value="Dirección de la puerta de enlace" />
+		<string name="dnsAddr" value="Dirección DNS" />
+		<string name="ntpAddr" value="Dirección NTP" />
+		<string name="obtainNtp" value="Obtener NTP de DHCP" />
+		<string name="obtainDns" value="Obtener DNS de DHCP" />
+		<string name="macAddr" value="Dirección MAC" />
+	</module>
+	<module name="PropertyDigitalIOStrings" namespace="odm.ui.controls">
+		<string name="outputs" value="Salidas digitales (reles)" />
+		<string name="relayOptions" value="Opciones de relé:" />
+		<string name="relayState" value="Estado del relé:" />
+		<string name="relayToken" value="Token del relé" />
+		<string name="relayMode" value="Modo del relé" />
+		<string name="relayIdleState" value="Estado inactivo del relé" />
+		<string name="delayTime" value="Tiempo de retraso" />
+		<string name="btnSet" value="Configurar" />
+		<string name="btnActivate" value="Activar" />
+		<string name="btnDeactivate" value="Desactivar" />
+	</module>
+	<module name="UserManagementStrings" namespace="odm.ui.controls">
+		<string name="users" value="Usuarios:" />
+		<string name="policies" value="Políticas:" />
+		<string name="createNew" value="Crear nuevo usuario" />
+		<string name="modifyUser" value="Modificar usuario" />
+		<string name="name" value="Nombre" />
+		<string name="password" value="Contraseña" />
+		<string name="role" value="Rol" />
+		<string name="set" value="Establecer" />
+		<string name="newUser" value="Nuevo" />
+		<string name="delete" value="Eliminar" />
+		<string name="uploadPolicy" value="Agregar política" />
+		<string name="downloadPolicy" value="Obtener política" />
+	</module>
+	<module name="CommonEventsStrings" namespace="odm.ui.controls">
+		<string name="title" value="Eventos comunes" />
+		<string name="ruleID" value="ID de regla" />
+		<string name="eventID" value="ID de evento" />
+		<string name="dateTime" value="Fecha/hora" />
+		<string name="type" value="Tipo" />
+		<string name="details" value="Detalles" />
+	</module>
+	<module name="ActionEngineStrings" namespace="odm.ui.activities">
+		<string name="actionToken" value="Token" />
+		<string name="actionName" value="Nombre" />
+		<string name="actionType" value="Tipo" />
+		<string name="actionSimpleItems" value="Parámetros simples" />
+		<string name="triggerToken" value="Token" />
+		<string name="triggerTopicExpression" value="Filtro de tema" />
+		<string name="addTriggerTopicExprPart" value="Agregar" />
+		<string name="addTriggerTopicExprPartTooltip" value="Agregar tema alternativo" />
+		<string name="triggerContentExpression" value="Filtro de contenido" />
+		<string name="triggerAvailableActions" value="Acciones disponibles" />
+		<string name="triggerIncludedActions" value="Acciones planificadas" />
+		<string name="triggerAddAction" value="Agregar &gt;" />
+		<string name="triggerRemoveAction" value="&lt; Eliminar" />
+	</module>
+	<!-- ENDOFREGION Device settings -->
+	<!-- REGION Chanels settings -->
+	<module name="AnalyticsStrings" namespace="odm.ui.controls">
+		<string name="setNameCaption" value="Nombre:" />
+		<string name="setTypeCaption" value="Tipo:" />
+		<string name="setNameType" value="Ingrese los datos para la configuración" />
+		<string name="modules" value="Módulos disponibles:" />
+		<string name="rules" value="Reglas disponibles:" />
+	</module>
+	<module name="PropertyProfileEditorStrings" namespace="odm.ui.controls">
+		<string name="title" value="Editor de perfiles" />
+		<string name="profdetails" value="Descripción del perfil" />
+		<string name="newProf" value="Crear" />
+		<string name="rename" value="Renombrar" />
+		<string name="delete" value="Eliminar" />
+		<string name="select" value="Aplicar" />
+	</module>
+	<module name="PropertyModulesStrings" namespace="odm.ui.controls">
+	</module>
+	<module name="PropertyPTZStrings" namespace="odm.ui.controls">
+		<string name="presets" value="Preajustes:" />
+		<string name="settings" value="Configuraciones:" />
+		<string name="quicksets" value="Configuraciones rápidas:" />
+		<string name="zoom" value="Zoom relativo:" />
+		<string name="absoluteZoom" value="Zoom absoluto:" />
+		<string name="relativemove" value="Movimiento relativo:" />
+		<string name="absolute" value="Movimiento absoluto:" />
+		<string name="select" value="Seleccionar" />
+		<string name="delete" value="Eliminar" />
+		<string name="apply" value="Aplicar" />
+		<string name="go_to" value="Ir a" />
+		<string name="sethome" value="Establecer hogar" />
+		<string name="setpreset" value="Establecer preajuste" />
+		<string name="panspeed" value="Velocidad de Pan:" />
+		<string name="tiltspeed" value="Velocidad de Tilt:" />
+		<string name="zoomspeed" value="Velocidad de Zoom:" />
+		<string name="selectnode" value="Seleccionar Nodo:" />
+		<string name="setlimits" value="Establecer límites:" />
+		<string name="tiltmin" value="Tilt mínimo:" />
+		<string name="tiltmax" value="Tilt máximo:" />
+		<string name="panmin" value="Pan mínimo:" />
+		<string name="panmax" value="Pan máximo:" />
+		<string name="zoommin" value="Zoom mínimo:" />
+		<string name="zoommax" value="Zoom máximo:" />
+	</module>
+	<module name="PropertyLiveVideoStrings" namespace="odm.ui.controls">
+		<string name="title" value="Vídeo en vivo" />
+		<string name="folder" value="Seleccionar" />
+		</module>
+	<module name="PropertyChannelEventsStrings" namespace="odm.ui.controls">
+		<string name="title" value="Eventos" />
+		<string name="ruleID" value="ID de regla" />
+		<string name="eventID" value="ID de evento" />
+		<string name="dateTime" value="Fecha/hora" />
+		<string name="type" value="Tipo" />
+		<string name="details" value="Detalles" />
+	</module>
+	<module name="PropertyDepthCalibrationStrings" namespace="odm.ui.controls">
+		<string name="focalLength" value="Longitud focal, mm" />
+		<string name="sensorPixel" value="Tamaño del píxel del sensor, mm" />
+		<string name="matrixFormat" value="Formato de la matriz" />
+		<string name="heightMarker" value="Marcador de altura" />
+		<string name="marker2D" value="Marcador 2D" />
+		<string name="physHeight" value="Altura del objeto real, cm" />
+		<string name="physWidth" value="Anchura del objeto real, cm" />
+		<string name="infoMarker1" value="INFORMACIÓN: Las proporciones del marcador №1 no son correctas. Necesita aumentar su ancho o reducir su altura." />
+		<string name="infoMarker2" value="INFORMACIÓN: Las proporciones del marcador №2 no son correctas. Necesita aumentar su ancho o reducir su altura." />
+		<string name="infoMarkerWhidth" value="INFORMACIÓN: La anchura del marcador inferior debe ser mayor que la del superior" />
+		<string name="infoDisplacement" value="INFORMACIÓN: La profundidad de la escena no es suficiente. Se deben separar los marcadores a una mayor distancia en altura; para la calibración, la distancia debe ser al menos 1/4 de la pantalla." />
+	</module>
+	<module name="PropertyVideoStreamingStrings" namespace="odm.ui.controls">
+		<string name="title" value="Transmisión de video" />
+		<string name="resolution" value="Codificador y resolución (píxeles)" />
+		<string name="frameRate" value="Frecuencia de imágenes, imágenes/s" />
+		<string name="encodingInterval" value="Intervalo de codificación, número de imágenes" />
+		<string name="encoder" value="Codificador" />
+		<string name="bitrate" value="Límite de bitrate, kbps" />
+		<string name="prioriy" value="Prioridad" />
+		<string name="quality" value="Calidad" />
+		<string name="govLength" value="Longitud de GOV" />
+		<string name="metadata" value="Flujo de metadatos" />
+		<string name="channelName" value="Nombre del canal" />
+	</module>
+	<module name="PropertyTamperingDetectorsStrings" namespace="odm.ui.controls">
+		<string name="cameraRedirected" value="Cámara desviada" />
+		<string name="cameraRedirectedTip" value='Para habilitar este detector, también debe habilitar el estabilizador' />
+		<string name="imageTooDark" value="Imagen oscura" />
+		<string name="cameraObstructed" value="Visión de la cámara obstruida" />
+		<string name="cameraObstructedTip" value='Para habilitar este detector, también debe habilitar el seguimiento de objetos' />
+		<string name="imageTooBlurry" value="Imagen borrosa" />
+		<string name="imageTooBright" value="Imagen sobreexpuesta" />
+		<string name="imageTooNoisy" value="Imagen ruidosa" />
+	</module>
+	<module name="PropertyObjectTrackerStrings" namespace="odm.ui.controls">
+		<string name="useObjectTracker" value="Habilitar seguimiento de objetos" />
+		<string name="contrast" value="Sensibilidad al contraste" />
+		<string name="areaMin" value="Área mínima del objeto, m²" />
+		<string name="areaMax" value="Área máxima del objeto, m²" />
+		<string name="speedMax" value="Velocidad máxima, m/s" />
+		<string name="stabilization" value="Tiempo de estabilización, ms" />
+		<string name="displacement" value="Sensibilidad al desplazamiento" />
+		<string name="direction" value="Dirección" />
+		<string name="all" value="Activar" />
+		<string name="none" value="Desactivar" />
+		<string name="sensitivity" value="Sensibilidad" />
+	</module>
+	<module name="PropertyRuleEngineStrings" namespace="odm.ui.controls">
+		<string name="enableRule" value="Movimiento" />
+		<string name="btnAdd" value="Agregar" />
+		<string name="btnRemove" value="Eliminar" />
+		<string name="name" value="Nombre" />
+		<string name="groupRule" value="Iniciar alarma cuando:" />
+		<string name="groupAction" value="En alarma:" />
+		<string name="moving" value="Movimiento" />
+		<string name="meters" value="m" />
+		<string name="movingInDirections" value="en direcciones:" />
+		<string name="loitering" value="Merodeo" />
+		<string name="seconds" value="s" />
+		<string name="within" value="dentro de" />
+		<string name="running" value="Movimiento rápido superior a" />
+		<string name="speed" value="m/s" />
+		<string name="speed_kmh" value="km/h" />
+		<string name="runtime" value="durante" />
+		<string name="abandoning" value="Objeto abandonado" />
+		<string name="sendOnvif" value="Enviar mensaje ONVIF" />
+		<string name="setFramerate" value="Cambiar frecuencia de imágenes" />
+		<string name="fps" value="fps" />
+		<string name="turnOnRelay" value="Encender relé" />
+		<string name="direction" value="Dirección:" />
+		<string name="turnOnAnalog" value="Encender salida analógica" />
+		<string name="record" value="Grabar en disco" />
+		<string name="ptz" value="Dirigir cámara PTZ" />
+	</module>
+	<module name="PropertyAntishakerStrings" namespace="odm.ui.controls">
+		<string name="useAntishaker" value="Habilitar estabilizador" />
+		<string name="enableDisplacement" value="Permitir generación de mensajes de desplazamiento" />
+		<string name="enableOutputShift" value="Permitir estabilización de la imagen de salida" />
+	</module>
+	<module name="PropertyRotationStrings" namespace="odm.ui.controls">
+		<string name="title" value="Rotación" />
+		<string name="rotate" value="Rotación:" />
+		<string name="rotate0" value="0' (Ninguna)" />
+		<string name="rotate90" value="90'" />
+		<string name="rotate180" value="180'" />
+		<string name="rotate270" value="270'" />
+		<string name="flip" value="Reflexión:" />
+		<string name="flipH0" value="Ninguna" />
+		<string name="flipH" value="Horizontal" />
+		<string name="flipV0" value="Ninguna" />
+		<string name="flipV" value="Vertical" />
+	</module>
+	<module name="PropertyAnalogueOutputStrings" namespace="odm.ui.controls">
+		<string name="title" value="Salida analógica" />
+		<string name="loop" value="Conexión en bucle" />
+		<string name="digital" value="Procesamiento digital" />
+		<string name="off" value="Apagar" />
+	</module>
+	<!-- ENDOFREGION Chanels settings -->
+</localized-strings>

@@ -74,6 +74,13 @@ Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "odm.ui.activities", "odm\od
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "live555", "libs\live555-2013.02.11\live555.vcxproj", "{9819B4D5-2F85-4349-8159-E3A64CF97DC1}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{2607213E-A279-4726-A87A-484F902EDF30}"
+	ProjectSection(SolutionItems) = preProject
+		odm.setup\odm.setup.vdproj = odm.setup\odm.setup.vdproj
+	EndProjectSection
+EndProject
+Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "odm.setup", "odm.setup\odm.setup.vdproj", "{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -196,6 +203,10 @@ Global
 		{9819B4D5-2F85-4349-8159-E3A64CF97DC1}.Debug|x64.Build.0 = Debug|x64
 		{9819B4D5-2F85-4349-8159-E3A64CF97DC1}.Release|x64.ActiveCfg = Release|x64
 		{9819B4D5-2F85-4349-8159-E3A64CF97DC1}.Release|x64.Build.0 = Release|x64
+		{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}.Debug|x64.ActiveCfg = Debug
+		{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}.Debug|x64.Build.0 = Debug
+		{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}.Release|x64.ActiveCfg = Release
+		{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}.Release|x64.Build.0 = Release
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -224,6 +235,7 @@ Global
 		{9819B4D5-2F85-4349-8159-E3A64CF97DC1} = {9D58181E-BC7B-470A-AC72-564E4A2838C9}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C0B814DF-B60F-4BCC-9194-3DC726AB2107}
 		EnterpriseLibraryConfigurationToolBinariesPath = packages\Unity.2.1.505.0\lib\NET35
 		SolutionGuid = {E265CFCC-EA0F-4E8A-9175-3CD88FBF7ADC}
 	EndGlobalSection
