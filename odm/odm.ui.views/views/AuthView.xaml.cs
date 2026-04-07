@@ -138,37 +138,39 @@ namespace odm.ui.views
             {
                 var name = username.Text;
                 var pwd  = password.Password;
-                bool hasFields = !string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(pwd);
+                int storeCount = AccountManager.Instance.GetAllCredentials().Count;
 
-                AuthLog("btLogin_Click: hasFields=" + hasFields + " storeCount=" + AccountManager.Instance.GetAllCredentials().Count);
+                AuthLog("btLogin_Click: name=" + name + " storeCount=" + storeCount);
 
-                if (hasFields)
+                switch (LoginActionHelper.Determine(name, pwd, storeCount))
                 {
-                    // Case 1: explicit credentials entered — always save and connect.
-                    AccountManager.Instance.SetCurrentAccount(
-                        new Account { Name = name, Password = pwd }, remember: true);
+                    case LoginAction.Case1SetAndRefresh:
+                        // Case 1: explicit credentials entered — always save and connect.
+                        AccountManager.Instance.SetCurrentAccount(
+                            new Account { Name = name, Password = pwd }, remember: true);
 
-                    _loginCommand.RaiseCanExecuteChanged();
+                        _loginCommand.RaiseCanExecuteChanged();
 
-                    eventAggregator.GetEvent<Refresh>().Publish(true);
-                }
-                else if (AccountManager.Instance.GetAllCredentials().Count > 0)
-                {
-                    // Case 2: no fields entered but store has entries — use first stored credential.
-                    var stored = AccountManager.Instance.GetAllCredentials();
-                    AccountManager.Instance.SetCurrentAccount(stored[0], remember: false);
-                    Update(); // force panel update even if CurrentAccount didn't change
-                    AuthLog("btLogin_Click Case2: SetCurrentAccount=" + stored[0].Name + " Autorized=" + AccountManager.Instance.Autorized);
-                    eventAggregator.GetEvent<Refresh>().Publish(true);
-                }
-                else
-                {
-                    // Case 3: no fields and no stored credentials — block.
-                    MessageBox.Show(
-                        "Please enter a username and password.",
-                        "Credentials Required",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
+                        eventAggregator.GetEvent<Refresh>().Publish(true);
+                        break;
+
+                    case LoginAction.Case2RefreshWithStored:
+                        // Case 2: no fields entered but store has entries — use first stored credential.
+                        var stored = AccountManager.Instance.GetAllCredentials();
+                        AccountManager.Instance.SetCurrentAccount(stored[0], remember: false);
+                        Update(); // force panel update even if CurrentAccount didn't change
+                        AuthLog("btLogin_Click Case2: SetCurrentAccount=" + stored[0].Name + " Autorized=" + AccountManager.Instance.Autorized);
+                        eventAggregator.GetEvent<Refresh>().Publish(true);
+                        break;
+
+                    default: // Case3Block
+                        // Case 3: no fields and no stored credentials — block.
+                        MessageBox.Show(
+                            "Please enter a username and password.",
+                            "Credentials Required",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                        break;
                 }
             }
             catch (Exception err)

@@ -259,6 +259,7 @@
     </Compile>
     <Compile Include="core\AccountManager.cs" />
     <Compile Include="core\CredentialStore.cs" />
+    <Compile Include="core\LoginActionHelper.cs" />
     <Compile Include="core\CustomCommands.cs" />
     <Compile Include="core\DataProcessInfo.cs" />
     <Compile Include="core\DeviceDescriptionHolder.cs" />
