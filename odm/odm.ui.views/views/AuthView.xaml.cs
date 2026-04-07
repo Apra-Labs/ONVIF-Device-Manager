@@ -28,11 +28,12 @@ namespace odm.ui.views
     {
 
         IEventAggregator eventAggregator;
+        DelegateCommand _loginCommand;
 
         public AuthView(IUnityContainer container)
         {
             eventAggregator = container.Resolve<IEventAggregator>();
-            
+
             InitializeComponent();
 
             Init();
@@ -68,11 +69,29 @@ namespace odm.ui.views
 
         #endregion Dependency Properties
 
+        bool CanLogin()
+        {
+            bool hasFields = !string.IsNullOrEmpty(username.Text)
+                          && !string.IsNullOrEmpty(password.Password);
+            bool hasStored = AccountManager.Instance.GetAllCredentials().Count > 0;
+            return hasFields || hasStored;
+        }
+
         void Init()
         {
-            btLogin.Command = new DelegateCommand(new Action(btLogin_Click));
+            _loginCommand = new DelegateCommand(btLogin_Click, CanLogin);
+            btLogin.Command = _loginCommand;
             btLogout.Command = new DelegateCommand(new Action(btLogout_Click));
             btManageCredentials.Click += BtManageCredentials_Click;
+
+            username.TextChanged += (s, e) => _loginCommand.RaiseCanExecuteChanged();
+
+            // TogglePasswordBox exposes Password as a DependencyProperty; use
+            // DependencyPropertyDescriptor to get change notifications.
+            var pwdDescriptor = DependencyPropertyDescriptor.FromProperty(
+                TogglePasswordBox.PasswordProperty, typeof(TogglePasswordBox));
+            pwdDescriptor.AddValueChanged(password, (s, e) => _loginCommand.RaiseCanExecuteChanged());
+
             username.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             password.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             this.Loaded += AuthView_Loaded;
@@ -101,6 +120,8 @@ namespace odm.ui.views
                 var win = new CredentialManagerView(eventAggregator);
                 win.Owner = Window.GetWindow(this);
                 win.ShowDialog();
+                // Credentials may have been added or removed — re-evaluate button state.
+                _loginCommand.RaiseCanExecuteChanged();
             }
             catch (Exception err)
             {
@@ -114,11 +135,40 @@ namespace odm.ui.views
             {
                 var name = username.Text;
                 var pwd  = password.Password;
-                var doRemember = remember.IsChecked == true;
+                bool hasFields = !string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(pwd);
 
-                AccountManager.Instance.SetCurrentAccount(
-                    new Account { Name = name, Password = pwd }, doRemember);
-                eventAggregator.GetEvent<Refresh>().Publish(true);
+                if (hasFields)
+                {
+                    // Case 1: explicit credentials entered — set account, offer to save, connect.
+                    var save = MessageBox.Show(
+                        "Save this credential to the store?",
+                        "Save Credential",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question) == MessageBoxResult.Yes;
+
+                    AccountManager.Instance.SetCurrentAccount(
+                        new Account { Name = name, Password = pwd }, save);
+
+                    if (save)
+                        _loginCommand.RaiseCanExecuteChanged();
+
+                    eventAggregator.GetEvent<Refresh>().Publish(true);
+                }
+                else if (AccountManager.Instance.GetAllCredentials().Count > 0)
+                {
+                    // Case 2: no fields entered but store has entries — let the device
+                    // connection flow (TrySessionWithCredentials) iterate the store.
+                    eventAggregator.GetEvent<Refresh>().Publish(true);
+                }
+                else
+                {
+                    // Case 3: no fields and no stored credentials — block.
+                    MessageBox.Show(
+                        "Please enter a username and password.",
+                        "Credentials Required",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
             }
             catch (Exception err)
             {
