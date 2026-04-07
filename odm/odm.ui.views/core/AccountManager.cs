@@ -26,7 +26,7 @@ namespace odm.ui.core
                 return false;
 
             Account another = (Account)obj;
-            return this.Name == another.Name;
+            return this.Name == another.Name && this.Password == another.Password;
         }
 
         public static bool operator == (Account that, Account another)
@@ -40,7 +40,10 @@ namespace odm.ui.core
 
         public override int GetHashCode()
         {
-            return this.Name.GetHashCode();
+            unchecked
+            {
+                return (this.Name.GetHashCode() * 397) ^ this.Password.GetHashCode();
+            }
         }
     }
 
