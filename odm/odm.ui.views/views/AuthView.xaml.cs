@@ -129,6 +129,18 @@ namespace odm.ui.views
             }
         }
 
+        static void AuthLog(string msg)
+        {
+            try
+            {
+                string logPath = System.IO.Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "logs", "auth.log");
+                string line = DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + "\r\n";
+                System.IO.File.AppendAllText(logPath, line);
+            }
+            catch { }
+        }
+
         void btLogin_Click()
         {
             try
@@ -137,20 +149,15 @@ namespace odm.ui.views
                 var pwd  = password.Password;
                 bool hasFields = !string.IsNullOrEmpty(name) && !string.IsNullOrEmpty(pwd);
 
+                AuthLog("btLogin_Click: hasFields=" + hasFields + " storeCount=" + AccountManager.Instance.GetAllCredentials().Count);
+
                 if (hasFields)
                 {
-                    // Case 1: explicit credentials entered — set account, offer to save, connect.
-                    var save = MessageBox.Show(
-                        "Save this credential to the store?",
-                        "Save Credential",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Question) == MessageBoxResult.Yes;
-
+                    // Case 1: explicit credentials entered — always save and connect.
                     AccountManager.Instance.SetCurrentAccount(
-                        new Account { Name = name, Password = pwd }, save);
+                        new Account { Name = name, Password = pwd }, remember: true);
 
-                    if (save)
-                        _loginCommand.RaiseCanExecuteChanged();
+                    _loginCommand.RaiseCanExecuteChanged();
 
                     eventAggregator.GetEvent<Refresh>().Publish(true);
                 }

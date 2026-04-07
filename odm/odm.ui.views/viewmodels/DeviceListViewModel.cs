@@ -243,11 +243,18 @@ namespace odm.ui.viewModels {
 			var allCreds = AccountManager.Instance.GetAllCredentials();
 			var attempts = new List<System.Net.NetworkCredential>();
 
+			// Always try CurrentAccount first (may have been entered but not saved yet)
+			var current = AccountManager.Instance.CurrentAccount;
+			if (!current.IsAnonymous)
+				attempts.Add(new System.Net.NetworkCredential() { UserName = current.Name, Password = current.Password });
+
+			// Then try all stored credentials (skip duplicates of current)
 			foreach (var cred in allCreds) {
-				if (!cred.IsAnonymous) {
-					attempts.Add(new System.Net.NetworkCredential() { UserName = cred.Name, Password = cred.Password });
-				}
+				if (string.Equals(cred.Name, current.Name, StringComparison.OrdinalIgnoreCase) && cred.Password == current.Password)
+					continue; // already added above
+				attempts.Add(new System.Net.NetworkCredential() { UserName = cred.Name, Password = cred.Password });
 			}
+
 			attempts.Add(null); // anonymous fallback
 
 			TryNextCredentialManual(devHolder, attempts, 0);
@@ -518,24 +525,46 @@ namespace odm.ui.viewModels {
 			FullCredentialIteration(devHolder, publishEvent);
 		}
 
+		static void AuthLog(string msg) {
+			try {
+				string logPath = System.IO.Path.Combine(
+					AppDomain.CurrentDomain.BaseDirectory, "logs", "auth.log");
+				string line = DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + "\r\n";
+				System.IO.File.AppendAllText(logPath, line);
+			} catch { }
+		}
+
 		void FullCredentialIteration(DeviceDescriptionHolder devHolder, bool publishEvent) {
 			var allCreds = AccountManager.Instance.GetAllCredentials();
 			var attempts = new List<System.Net.NetworkCredential>();
 
+			// Always try CurrentAccount first (may have been entered but not saved yet)
+			var current = AccountManager.Instance.CurrentAccount;
+			if (!current.IsAnonymous)
+				attempts.Add(new System.Net.NetworkCredential() { UserName = current.Name, Password = current.Password });
+
+			// Then try all stored credentials (skip duplicates of current)
 			foreach (var cred in allCreds) {
-				if (!cred.IsAnonymous) {
-					attempts.Add(new System.Net.NetworkCredential() { UserName = cred.Name, Password = cred.Password });
-				}
+				if (string.Equals(cred.Name, current.Name, StringComparison.OrdinalIgnoreCase) && cred.Password == current.Password)
+					continue; // already added above
+				attempts.Add(new System.Net.NetworkCredential() { UserName = cred.Name, Password = cred.Password });
 			}
+
 			// Anonymous (null credential) as final fallback
 			attempts.Add(null);
+
+			var cacheKey = GetDeviceCacheKey(devHolder);
+			AuthLog("FullCredentialIteration: " + attempts.Count + " creds for " + (cacheKey ?? "?"));
 
 			TryNextCredential(devHolder, attempts, 0, publishEvent);
 		}
 
 		void TryNextCredential(DeviceDescriptionHolder devHolder, List<System.Net.NetworkCredential> credentials, int index, bool publishEvent) {
+			var cacheKey = GetDeviceCacheKey(devHolder);
+
 			if (index >= credentials.Count) {
 				// All credentials exhausted — last-resort fallback: anonymous on the last URI only
+				AuthLog("ALL CREDENTIALS FAILED for " + (cacheKey ?? "?"));
 				var fallbackFactory = new NvtSessionFactory(null);
 				_deviceFactories[devHolder] = fallbackFactory;
 				devHolder.Account = null;
@@ -544,12 +573,15 @@ namespace odm.ui.viewModels {
 				return;
 			}
 
+			AuthLog("TryNextCredential idx=" + index + " cred=" + (credentials[index] == null ? "anonymous" : credentials[index].UserName));
+
 			var cred = credentials[index];
 			var factory = new NvtSessionFactory(cred);
 			IdentitySubscriptions.Add(factory.CreateSession(devHolder.Uris)
 				.ObserveOnCurrentDispatcher()
 				.Subscribe(session => {
 					// Success — store working credential and factory for this device, update cache
+					AuthLog("SUCCESS cred=" + cred.UserName + " host=" + (cacheKey ?? "?"));
 					devHolder.Account = cred;
 					_deviceFactories[devHolder] = factory;
 					CacheCredential(devHolder, new Account() { Name = cred.UserName, Password = cred.Password });
