@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Microsoft.Practices.Prism.Events;
 using odm.ui.core;
 using utils;
@@ -45,7 +46,7 @@ namespace odm.ui.views
 
     /// <summary>
     /// Child window for managing stored credential pairs.
-    /// Supports add (inline DataGrid row), edit, remove, and reorder.
+    /// Supports add (+ Add button), edit, remove (× column or Delete key), and reorder.
     /// All changes are saved immediately to CredentialStore and a Refresh is published.
     /// </summary>
     public partial class CredentialManagerView : Window
@@ -62,7 +63,6 @@ namespace odm.ui.views
             credGrid.RowEditEnding += CredGrid_RowEditEnding;
             btMoveUp.Click   += BtMoveUp_Click;
             btMoveDown.Click += BtMoveDown_Click;
-            btRemove.Click   += BtRemove_Click;
             btClose.Click    += (s, e) => Close();
         }
 
@@ -99,6 +99,40 @@ namespace odm.ui.views
             }
         }
 
+        void BtAdd_Click(object sender, RoutedEventArgs e)
+        {
+            var newItem = new CredentialItem();
+            _items.Add(newItem);
+            credGrid.SelectedItem = newItem;
+            credGrid.ScrollIntoView(newItem);
+            credGrid.CurrentCell = new DataGridCellInfo(newItem, credGrid.Columns[0]);
+            credGrid.BeginEdit();
+        }
+
+        void BtDeleteRow_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            if (btn == null) return;
+            var item = btn.DataContext as CredentialItem;
+            if (item == null) return;
+            _items.Remove(item);
+            SaveAndRefresh();
+        }
+
+        void CredGrid_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Delete)
+            {
+                var item = credGrid.SelectedItem as CredentialItem;
+                if (item != null)
+                {
+                    _items.Remove(item);
+                    SaveAndRefresh();
+                    e.Handled = true;
+                }
+            }
+        }
+
         void BtMoveUp_Click(object sender, RoutedEventArgs e)
         {
             int idx = credGrid.SelectedIndex;
@@ -115,24 +149,6 @@ namespace odm.ui.views
             _items.Move(idx, idx + 1);
             credGrid.SelectedIndex = idx + 1;
             SaveAndRefresh();
-        }
-
-        void BtRemove_Click(object sender, RoutedEventArgs e)
-        {
-            var item = credGrid.SelectedItem as CredentialItem;
-            if (item == null) return;
-
-            var result = MessageBox.Show(
-                string.Format("Remove credential for '{0}'?", item.Name),
-                "Confirm Remove",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (result == MessageBoxResult.Yes)
-            {
-                _items.Remove(item);
-                SaveAndRefresh();
-            }
         }
     }
 }
