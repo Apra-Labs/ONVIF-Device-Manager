@@ -209,17 +209,26 @@ namespace odm.ui.viewModels {
 			SaveManualList();
 		}
 		void ManualSessionProcess(DeviceDescriptionHolder devHolder) {
-			IdentitySubscriptions.Add(sessionFactory.CreateSession(devHolder.Uris)
-					  .ObserveOnCurrentDispatcher()
-					  .Subscribe(isession => {
-						  ManualInitDeviceHolder(isession, devHolder);
-					  }, err => {
-						  dbg.Error(err);
-					  }));
+			var creds = GetAllNetworkCredentials();
+			TryManualSessionWithCredentials(devHolder, creds, 0);
 		}
 
-		void ManualInitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder) {
+		void TryManualSessionWithCredentials(DeviceDescriptionHolder devHolder,
+			List<System.Net.NetworkCredential> creds, int index) {
+			if (index >= creds.Count) return;
+			var factory = new NvtSessionFactory(creds[index]);
+			IdentitySubscriptions.Add(factory.CreateSession(devHolder.Uris)
+				.ObserveOnCurrentDispatcher()
+				.Subscribe(isession => {
+					ManualInitDeviceHolder(isession, devHolder, factory);
+				}, err => {
+					TryManualSessionWithCredentials(devHolder, creds, index + 1);
+				}));
+		}
+
+		void ManualInitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder, NvtSessionFactory factory = null) {
 			devHolder.session = session;
+			if (factory != null) _deviceFactories[devHolder] = factory;
 
 			facade = new OdmSession(session);
 			var model = new IdentificationModel();
@@ -261,6 +270,7 @@ namespace odm.ui.viewModels {
 #endregion manual
 
 		void ReleaseDeviceSubscription() {
+			_deviceFactories.Clear();
 			IdentitySubscriptions.Dispose();
 			IdentitySubscriptions = new CompositeDisposable();
 			subscriptions.Dispose();
@@ -329,6 +339,23 @@ namespace odm.ui.viewModels {
 		System.Net.NetworkCredential GetCurrentAccount() {
 			return currentAccount;
 		}
+
+		List<System.Net.NetworkCredential> GetAllNetworkCredentials() {
+			var result = new List<System.Net.NetworkCredential>();
+			if (!AccountManager.Instance.LoggedOutExplicitly) {
+				var current = AccountManager.Instance.CurrentAccount;
+				if (!current.IsAnonymous)
+					result.Add(new System.Net.NetworkCredential { UserName = current.Name, Password = current.Password });
+				foreach (var acc in AccountManager.Instance.GetAllCredentials()) {
+					bool isDupe = result.Any(c => c != null && c.UserName == acc.Name && c.Password == acc.Password);
+					if (!isDupe)
+						result.Add(new System.Net.NetworkCredential { UserName = acc.Name, Password = acc.Password });
+				}
+			}
+			result.Add(null); // anonymous fallback
+			return result;
+		}
+
 		CompositeDisposable IdentitySubscriptions = new CompositeDisposable();
 
 		public void LoadDevices() {
@@ -399,6 +426,7 @@ namespace odm.ui.viewModels {
 
 		
 		NvtSessionFactory _sessionFactory;
+		readonly Dictionary<DeviceDescriptionHolder, NvtSessionFactory> _deviceFactories = new Dictionary<DeviceDescriptionHolder, NvtSessionFactory>();
 		NvtSessionFactory sessionFactory {
 			get {
 				if (_sessionFactory == null)
@@ -407,18 +435,26 @@ namespace odm.ui.viewModels {
 			}
 		}
 		void SessionProcess(DeviceDescriptionHolder devHolder, bool publishEvent) {
-			IdentitySubscriptions.Add(sessionFactory.CreateSession(devHolder.Uris)
-					  .ObserveOnCurrentDispatcher()
-					  .Subscribe(isession => {
-						  InitDeviceHolder(isession, devHolder, publishEvent);
-					  }, err => {
-						  //dbg.Error(err);
-						  InitDeviceHolder(sessionFactory.CreateSession(devHolder.Uris[devHolder.Uris.Count() - 1]), devHolder, publishEvent);
-					  }));
+			var creds = GetAllNetworkCredentials();
+			TrySessionWithCredentials(devHolder, publishEvent, creds, 0);
 		}
 
-		void InitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder, bool publish) {
+		void TrySessionWithCredentials(DeviceDescriptionHolder devHolder, bool publishEvent,
+			List<System.Net.NetworkCredential> creds, int index) {
+			if (index >= creds.Count) return;
+			var factory = new NvtSessionFactory(creds[index]);
+			IdentitySubscriptions.Add(factory.CreateSession(devHolder.Uris)
+				.ObserveOnCurrentDispatcher()
+				.Subscribe(isession => {
+					InitDeviceHolder(isession, devHolder, publishEvent, factory);
+				}, err => {
+					TrySessionWithCredentials(devHolder, publishEvent, creds, index + 1);
+				}));
+		}
+
+		void InitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder, bool publish, NvtSessionFactory factory = null) {
 			devHolder.session = session;
+			if (factory != null) _deviceFactories[devHolder] = factory;
 			facade = new OdmSession(session);
 			var model = new IdentificationModel();
 			IdentitySubscriptions.Add(
@@ -426,8 +462,10 @@ namespace odm.ui.viewModels {
 							.ObserveOnCurrentDispatcher()
 							.Subscribe(mod => {
 								devHolder.Init(mod);
-								if (publish)
-									DeviceSelectedPublish(devHolder, sessionFactory);
+								if (publish) {
+									NvtSessionFactory f;
+									DeviceSelectedPublish(devHolder, _deviceFactories.TryGetValue(devHolder, out f) ? f : sessionFactory);
+								}
 							}, err => {
 								//dbg.Error(err);
 								//MessageBox.Show(err.Message);
@@ -497,7 +535,8 @@ namespace odm.ui.viewModels {
 
 			DeviceSelectedEventArgs evargs = new DeviceSelectedEventArgs();
 			evargs.devHolder = dev;
-			evargs.sessionFactory = sessionFactory;
+			NvtSessionFactory f;
+			evargs.sessionFactory = _deviceFactories.TryGetValue(dev, out f) ? f : sessionFactory;
 			eventAggregator.GetEvent<DeviceSelectedEvent>().Publish(evargs);
 		}
 
