@@ -1,153 +1,129 @@
-# ODM Credentials UI — Plan Review
+# ODM Credentials UI — Phase 1 Code Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-07 12:00:00+00:00
+**Date:** 2026-04-07 04:55:00+00:00
 **Verdict:** APPROVED
 
 > See the recent git history of this file to understand the context of this review.
 
 ---
 
-## 1. Clear "Done" Criteria — PASS
+## 1. CredentialStore — DPAPI Encryption and Persistence
 
-Every task has a "Done:" line with testable, unambiguous conditions. The new tasks since last review maintain this standard: Task 1.0 (spike) has "Exception types documented above; Task 2.1 updated to reference this finding" — clear and verifiable. Task 2.2 (credential cache) has "cache is consulted first and iteration is skipped ... cache entry is evicted and re-iterated correctly" — two specific behavioral tests.
+**PASS.** DPAPI usage is correct. `ProtectedData.Protect` and `Unprotect` are called with `DataProtectionScope.CurrentUser` and no additional entropy (`null`), which is the standard pattern for user-scoped encryption. The `System.Security` assembly reference was added to `odm.ui.views.csproj`. Credentials are serialized via `XmlSerializer` into XML, then encrypted as a byte blob to `credentials.dat` — at no point are credentials written to disk in plaintext.
 
-Task 1.V's done criteria ("no regressions in existing code paths") remains the weakest, but as noted in the prior review, this is acceptable given the project has no test suite. No change needed.
+**Atomic write (R4 mitigation): PASS.** `SaveInternal` writes to `_storePath + ".tmp"`, then deletes the existing file and moves the temp file into place. This prevents a crash mid-write from corrupting the store. There is a tiny window between `File.Delete` and `File.Move` where the file doesn't exist, but this is standard practice on Windows and acceptable — `File.Replace` would be marginally more atomic but has its own quirks on .NET 4.0. No data loss path exists under normal operation.
 
----
+**Migration from `account.def.xml` (R4): PASS.** The migration path in `Load()` is correctly sequenced: deserialize legacy XML, build the migrated list, call `SaveInternal` to write the encrypted store, and only then `File.Delete` the legacy file. If `SaveInternal` throws, the catch block prevents the delete — the old file survives and migration retries on next launch. If the app crashes after `SaveInternal` but before `File.Delete`, the old file persists and migration re-runs, harmlessly overwriting the already-migrated encrypted store with identical content.
 
-## 2. Cohesion and Coupling — PASS
-
-The architecture remains well-decomposed. The addition of Task 2.2 (per-device credential cache) fits cleanly within Phase 2 since it is a direct optimization of the iteration logic in Task 2.1, modifying the same file (`DeviceListViewModel.cs`). It doesn't introduce cross-phase coupling — the cache is internal to the connection flow and invisible to the UI or storage layers.
+**Fallthrough behavior: NOTE.** If `credentials.dat` exists but is corrupt (decryption fails), the code falls through to attempt legacy migration. If no legacy file exists either, the result is an empty credential list. This is acceptable given the atomic write pattern makes corruption very unlikely, and silently returning empty is better than crashing. The `dbg.Error` call ensures the exception is logged.
 
 ---
 
-## 3. Key Abstractions in Earliest Tasks — PASS
+## 2. CredentialStore — API Design and Singleton Pattern
 
-`CredentialStore` (Task 1.1) and `AccountManager` multi-credential API (Task 1.2) remain the foundational abstractions, placed first. The credential cache in Task 2.2 is not a shared abstraction — it's an internal optimization within `DeviceListViewModel` — so its later placement is correct.
+**PASS.** The singleton pattern (`static readonly _instance`, private constructor) matches the existing `AccountManager` pattern exactly. The public API — `GetAll()`, `Add()`, `Remove(int)`, `Update(int, Account)`, `SetAll()` — matches the plan specification. Index-based `Remove` and `Update` sidestep the `Account.Equals` case-sensitivity trap (noted in prior plan reviews).
 
----
+`GetAll()` returns `_credentials.AsReadOnly()`, which provides a read-only wrapper. The return type was changed from `IReadOnlyList<Account>` to `IList<Account>` in the verify commit (3474e8b) for .NET 4.0 compatibility — `IReadOnlyList<T>` was introduced in .NET 4.5. The `ReadOnlyCollection<T>` returned by `AsReadOnly()` still prevents mutation; the `IList<Account>` return type is a compile-time concession, not a runtime one.
 
-## 4. Riskiest Assumption Validated Early — PASS (previously FAIL)
+**Thread safety: PASS (consistent with codebase).** `_credentials` is mutated without locking. The original `AccountManager` had no thread safety either. The WPF app is single-threaded (UI thread), so this is consistent with existing conventions. No change needed.
 
-**Prior finding:** The plan hand-waved error discrimination between auth failures and network errors. A spike was required.
-
-**Resolution:** Task 1.0 now exists as a dedicated spike that thoroughly documents the finding: auth failures surface as generic `FaultException` while network errors surface as `CommunicationException` subtypes, and the existing `SessionProcess` catches all exceptions generically with no discrimination. The spike correctly concludes that iteration must treat all failures as "try next credential" and explicitly states the implication for Task 2.1. Task 2.1's blocker note now cross-references Task 1.0's finding.
-
-This is a well-executed resolution. The spike answered the question, documented the answer, and the downstream task was updated to reflect the constrained design space. The "try all, fallback to anonymous" strategy is the only viable approach given the WCF/SOAP fault architecture.
+**Nested `CredentialList` class: PASS.** The `CredentialList` wrapper class is `public` — required by `XmlSerializer` in .NET 4.0 which cannot serialize non-public types. It serves only as a serialization container and is appropriately scoped inside `CredentialStore`.
 
 ---
 
-## 5. Later Tasks Reuse Early Abstractions (DRY) — PASS
+## 3. AccountManager — Backward Compatibility
 
-Same as prior review. Task 2.2 adds a new internal data structure (`_credentialCache` dictionary) but correctly reuses the `Account` struct from `AccountManager` and the `TrySessionWithCredentials` helper from Task 2.1. No redundant abstractions introduced.
+**PASS.** The `CurrentAccount` property, `CurrentAccountChanged` event, `Autorized` property (note: pre-existing typo, not introduced here), and `SetCurrentAccount(Account, bool)` method signature are all preserved. Existing callers in `ToolBarViewModel.cs:62` and `ToolBarView.xaml.cs:111` that compare `CurrentAccount == anonymous` continue to work unchanged.
 
----
+The constructor now reads from `CredentialStore.Instance.GetAll()` instead of the old `Load()` method, selecting `all[0]` as `CurrentAccount` or falling back to `Account.Anonymous`. This preserves the original behavior: on startup, the app loads the saved credential (now the first in the encrypted list) as the active account.
 
-## 6. Phase Structure (2-3 Tasks + Verify) — PASS
-
-Phase counts have shifted since the prior review:
-- Phase 1: 1 spike + 2 work tasks + verify (3 tasks total, but the spike is read-only and produces no code)
-- Phase 2: 2 work tasks + verify (improved from 1 task — see below)
-- Phase 3: 2 work tasks + verify
-- Phase 4: 1 work task + verify
-
-Phase 2 now has two work tasks (2.1 iteration + 2.2 cache), which is better than before. The prior review accepted the single-task phase; now it conforms to the 2-3 task guideline.
+**Behavioral change in `SetCurrentAccount` with `remember=false`: NOTE.** The original code called `Save(Account.Anonymous)` when `remember=false`, which cleared the stored credential file. The new code does nothing to the store when `remember=false` — it only sets the in-memory `CurrentAccount`. This means unchecking "Remember me" no longer wipes previously stored credentials. This is the correct behavior for a multi-credential store (a single login action should not destroy the entire credential list), but it is a semantic change from the original. In practice this is harmless: the "Remember me" checkbox controlled a single credential; now it controls whether this particular credential is added/updated in the store. Existing users who relied on uncheck-to-forget will find their previously saved credentials still present, which is reasonable.
 
 ---
 
-## 7. Each Task Completable in One Session — PASS
+## 4. AccountManager — New Methods
 
-Task 2.2 (credential cache) is well-scoped: one dictionary field, populate on success, check before iteration, evict on failure. This is additive to a single file and straightforward. All other tasks remain session-sized as previously reviewed.
+**`GetAllCredentials()`: PASS.** Thin delegate to `CredentialStore.Instance.GetAll()`. Returns the same read-only view. Clean passthrough — no logic, no transformation.
 
----
+**`SetCredentials(List<Account>)`: PASS.** Thin delegate to `CredentialStore.Instance.SetAll()`. Will be consumed by the credential management UI in Phase 3.
 
-## 8. Dependencies Satisfied in Order — PASS
+**`SetCurrentAccount` upsert logic: PASS.** When `remember=true` and the account is not anonymous, the method searches for an existing credential by username using `string.Equals` with `StringComparison.OrdinalIgnoreCase`, then either updates or adds. This matches the plan's deduplication rule ("case-insensitive comparison ... never create a duplicate username entry"). The `for` loop with index tracking is .NET 4.0 compatible (no LINQ `FindIndex`).
 
-The dependency chain remains correct. Task 2.2 correctly follows Task 2.1 (it extends the `TrySessionWithCredentials` helper that 2.1 creates). The full chain: 1.0 → 1.1 → 1.2 → 2.1 → 2.2 for the storage-to-connection path, and 1.1 → 3.1 → 3.2 → 4.1 for the storage-to-UI path.
-
-**NOTE:** Task 1.0 is missing from the Summary table. This is a minor documentation gap — the spike is documented in the Phase 1 section, so there's no risk of it being skipped, but the table should be complete. Not blocking.
+**Account.Equals case sensitivity mismatch: NOTE.** `Account.Equals` compares `Name` with `==` (case-sensitive, ordinal), but `SetCurrentAccount` deduplicates with `OrdinalIgnoreCase`. This means `Account.Equals("Admin") != Account.Equals("admin")` but the store treats them as the same user. This is actually correct — the store-level deduplication should be case-insensitive (usernames are typically case-insensitive), while `Account.Equals` is used for change detection in `CurrentAccount.set` (where exact match is fine). However, Phase 3 implementers should be aware that `Account` equality and store deduplication use different case rules. Not a bug, but worth tracking.
 
 ---
 
-## 9. Vague or Ambiguous Tasks — PASS (previously FAIL)
+## 5. Code Style and Conventions
 
-**Prior finding:** Four specific ambiguities in Tasks 3.1 and 3.2 — DataGrid vs. ListBox, inline vs. dialog, quick-login interaction, and credential deduplication semantics.
+**PASS.** The new code follows existing codebase patterns:
+- Singleton via `static readonly` + private constructor (matches `AccountManager`)
+- `dbg.Error(err)` for exception logging (matches `AccountManager.Load/Save`)
+- `XmlSerializer` usage for serialization (matches original `AccountManager`)
+- `AppDefaults.ConfigFolderPath` for file paths (matches original `settingsPath`)
+- No LINQ usage in `CredentialStore.cs` (the file doesn't import `System.Linq`; LINQ is available in the codebase but the new code uses explicit loops, which is consistent with the simpler helpers)
+- `using utils;` for `dbg` class access (added in verify commit, consistent with other files in `core/`)
 
-**Resolution:** All four have been resolved in the plan text:
+**Whitespace changes: PASS.** The BOM was removed from `AccountManager.cs` and trailing whitespace was cleaned up in a few places. These are minor formatting normalizations that don't affect behavior.
 
-1. **DataGrid chosen** (Task 3.1, line 104): "DataGrid chosen over ListBox because it provides inline editing natively without custom item templates." Clear choice with stated rationale.
-
-2. **Inline add via CanUserAddRows** (Task 3.1, line 105): "Inline DataGrid row via `DataGrid.CanUserAddRows = true` — no separate dialog." Unambiguous.
-
-3. **Quick-login fields kept** (Task 3.2, line 118): "Keep the existing username/password quick-login fields in AuthView. Add a 'Manage Credentials' button that opens CredentialManagerView as a child window." The interaction model is clear — quick-login for single use, child window for management.
-
-4. **Deduplication rule defined** (Task 3.2, lines 119-120): "Match on username using case-insensitive comparison. If username matches, prompt to update the stored password — never create a duplicate username entry." This is explicit and addresses the `Account.Equals` concern from the prior review.
-
-Two developers would now build the same UI from these specifications.
+**No hardcoded secrets: PASS.** Searched all changed files — no credentials, keys, tokens, or sensitive values are hardcoded anywhere.
 
 ---
 
-## 10. Hidden Dependencies — NOTE
+## 6. Plan Alignment
 
-The two items from the prior review remain as minor notes:
+**Task 1.0 (spike): PASS.** Spike findings are documented in PLAN.md with the specific exception types (`FaultException`, `CommunicationException`) and the implication for Task 2.1. No code was written — correct for a read-only spike. Progress.json notes capture the key finding.
 
-1. **Event class naming** — Task 3.1 still says "publish Refresh event so devices re-authenticate" without naming the specific Prism event class. The implementer will need to inspect `AuthView.xaml.cs:btLogin_Click()` to find the correct event type. This is a small lookup, not a design ambiguity, so it remains a NOTE rather than a FAIL.
+**Task 1.1 (CredentialStore): PASS.** All plan requirements met:
+- `List<Account>` storage with `Account` struct reuse
+- DPAPI encryption with `CurrentUser` scope to `credentials.dat`
+- `Load()`, `Save()`, `Add()`, `Remove(int)`, `Update(int, Account)`, `GetAll()` methods present
+- Singleton pattern
+- Legacy migration from `account.def.xml`
+- `System.Security.dll` reference added to csproj
 
-2. **Account equality semantics** — Task 1.1 specifies index-based operations (`Remove(int index)`, `Update(int index, Account)`), which sidesteps the `Account.Equals` by-name-only trap. Task 3.2 now explicitly defines deduplication as case-insensitive username comparison with password update prompt, so the equality semantics are clear at every layer. This concern is effectively resolved.
+**Task 1.2 (AccountManager update): PASS.** All plan requirements met:
+- `GetAllCredentials()` delegates to `CredentialStore.Instance.GetAll()`
+- `CurrentAccount` and `SetCurrentAccount` preserved for backward compat
+- `SetCredentials(List<Account>)` added for bulk update
+- Old `Save()`/`Load()` methods and `settingsPath` field removed
+- Plan said `IReadOnlyList<Account>` but implementation uses `IList<Account>` — this was a necessary .NET 4.0 fix caught in Task 1.V. Acceptable deviation.
 
-**New note:** Task 2.2's cache key is described as "device URI / host" — the slash suggests either could work, but the implementer should pick one. URI is more specific (handles multiple cameras on the same host with different ports), so URI is the better default. Minor — the implementer can make this call.
-
----
-
-## 11. Risk Register — PASS (previously FAIL)
-
-**Prior finding:** No risk register existed.
-
-**Resolution:** A Risk Register section now exists with 6 risks (R1-R6). Reviewing each:
-
-- **R1 (DPAPI portability):** The doer reframed this from "DPAPI blocked by group policy" to "credentials are machine/user-bound" — this is actually a more likely real-world concern and a better risk description. Mitigation (document the limitation) is pragmatic. PASS.
-- **R2 (Error discrimination):** Correctly marked as resolved by Task 1.0 spike. PASS.
-- **R3 (Iteration latency):** Mitigation says "preserve existing timeout values; add cancellation support if already present." This is weaker than the original suggestion of "2-3s per-credential timeout" but more honest — the plan doesn't want to introduce arbitrary timeout constants into an existing flow. Task 2.2's credential cache also mitigates this for repeat connections. Acceptable.
-- **R4 (Migration data loss):** Mitigation is correct — write-then-delete with verification. PASS.
-- **R5 (Toggle UX):** Reframed from cursor-position loss to "plaintext visible while typing" — this is a more realistic concern. Accepted as standard behavior. PASS.
-- **R6 (Credential cache invalidation):** New risk added for the new Task 2.2. Mitigation (evict on failure, re-iterate) is correct and matches the task description. Good addition.
-
-The register covers the key project-level risks with reasonable mitigations. It is no longer just per-task "Blocker" notes.
+**Task 1.V (verify): PASS.** Build confirmed clean. Two .NET 4.0 compatibility fixes applied in the verify commit: `IReadOnlyList` → `IList`, and `using utils;` added. Both are correct fixes for legitimate build failures.
 
 ---
 
-## 12. Alignment with Requirements — PASS
+## 7. Build Verification
 
-The plan continues to map correctly to requirements:
+**PASS.** `msbuild odm.sln -p:Configuration=Release` completes with 0 errors. Warning count is consistent with pre-existing warnings (all in unrelated files: `SynesisAnalyticsConfigView`, `TimeSettingsView`, `ToolBarView`, etc.). No new warnings introduced by the Phase 1 changes.
 
-| Requirement | Plan Coverage |
-|-------------|--------------|
-| REQ-2: Add, edit, delete multiple credential pairs | Tasks 3.1, 3.2 |
-| REQ-2: Secure persistent storage | Task 1.1 (DPAPI) |
-| REQ-2: Iterate credentials on connect | Tasks 2.1, 2.2 |
-| REQ-2: Failed pairs skipped silently | Task 2.1 (try-all strategy from spike) |
-| REQ-2: Not stored in plaintext | Task 1.1 (DPAPI encryption) |
-| REQ-1: Eye icon on every password field | Task 4.1 |
-| REQ-3, REQ-4 | Out of scope (correct) |
+---
 
-Task 2.2 (credential cache) is not explicitly required but is a reasonable UX optimization that prevents re-iterating N credentials on every refresh for known devices. It doesn't add scope creep — it's a small additive task within the connection phase.
+## 8. Requirements Alignment
+
+**PASS.** Phase 1 delivers the storage foundation for REQ-2:
+- **"Credentials must be stored securely"** — DPAPI encryption, not plaintext. Met.
+- **"Credentials persist across application restarts"** — `credentials.dat` written to disk, loaded on startup. Met.
+- **"Credentials are not stored in plaintext"** — enforced by `ProtectedData.Protect`. Met.
+
+The remaining REQ-2 acceptance criteria (UI for add/edit/delete, iteration on connect) are correctly deferred to Phases 2-3.
 
 ---
 
 ## Summary
 
-**All 12 checks pass.** The three prior FAIL findings have been resolved:
+**Phase 1 is approved.** All four commits (1.0 spike, 1.1 CredentialStore, 1.2 AccountManager, 1.V verify) are clean, well-structured, and aligned with the plan and requirements.
 
-1. **Check 4 (was FAIL, now PASS):** Task 1.0 spike thoroughly investigated auth-failure exception types, documented that discrimination is not possible, and Task 2.1 was updated to use the "try all, fallback to anonymous" strategy.
+**What passed:**
+- DPAPI encryption is correctly implemented with `CurrentUser` scope
+- Atomic write pattern prevents data corruption (R4 mitigation)
+- Legacy migration is safely sequenced (write-before-delete)
+- Backward compatibility preserved — existing callers of `AccountManager.CurrentAccount` and `SetCurrentAccount` are unaffected
+- No secrets hardcoded, no new warnings introduced
+- Code style consistent with existing .NET 4.0 / WPF / singleton patterns
+- Build is clean (0 errors)
 
-2. **Check 9 (was FAIL, now PASS):** All four UI ambiguities resolved — DataGrid with inline editing, CanUserAddRows for new entries, quick-login fields retained alongside a child window for credential management, and case-insensitive username deduplication with password update prompt.
-
-3. **Check 11 (was FAIL, now PASS):** Risk register added with 6 risks covering DPAPI portability, error discrimination, iteration latency, migration safety, toggle UX, and cache invalidation. Mitigations are pragmatic.
-
-**Minor notes (not blocking):**
-- Task 1.0 is missing from the Summary table
-- Task 3.1 should name the Prism event class for the refresh trigger
-- Task 2.2 cache key should be device URI (not host) for multi-port scenarios
-
-The plan is ready for implementation.
+**Notes for future phases (not blocking):**
+1. `Account.Equals` is case-sensitive but store deduplication is case-insensitive — Phase 3 UI code should use explicit case-insensitive comparison for username matching, not rely on `Account.Equals`
+2. `SetCurrentAccount(account, remember=false)` no longer clears the stored credential — this is correct for multi-credential but is a behavioral change from the original single-credential flow
+3. The `IList<Account>` return type on `GetAll()`/`GetAllCredentials()` exposes mutating methods at compile time even though the runtime object is read-only — callers should treat it as read-only (enforced by `ReadOnlyCollection` at runtime)
