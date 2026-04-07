@@ -157,6 +157,8 @@ namespace odm.ui.views
                     // Case 2: no fields entered but store has entries — use first stored credential.
                     var stored = AccountManager.Instance.GetAllCredentials();
                     AccountManager.Instance.SetCurrentAccount(stored[0], remember: false);
+                    Update(); // force panel update even if CurrentAccount didn't change
+                    AuthLog("btLogin_Click Case2: SetCurrentAccount=" + stored[0].Name + " Autorized=" + AccountManager.Instance.Autorized);
                     eventAggregator.GetEvent<Refresh>().Publish(true);
                 }
                 else
