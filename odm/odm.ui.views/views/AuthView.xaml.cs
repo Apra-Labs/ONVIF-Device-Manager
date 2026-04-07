@@ -154,8 +154,9 @@ namespace odm.ui.views
                 }
                 else if (AccountManager.Instance.GetAllCredentials().Count > 0)
                 {
-                    // Case 2: no fields entered but store has entries — let the device
-                    // connection flow (TrySessionWithCredentials) iterate the store.
+                    // Case 2: no fields entered but store has entries — use first stored credential.
+                    var stored = AccountManager.Instance.GetAllCredentials();
+                    AccountManager.Instance.SetCurrentAccount(stored[0], remember: false);
                     eventAggregator.GetEvent<Refresh>().Publish(true);
                 }
                 else
