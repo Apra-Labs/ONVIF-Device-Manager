@@ -290,6 +290,9 @@
     <Compile Include="views\AuthView.xaml.cs">
       <DependentUpon>AuthView.xaml</DependentUpon>
     </Compile>
+    <Compile Include="views\CredentialManagerView.xaml.cs">
+      <DependentUpon>CredentialManagerView.xaml</DependentUpon>
+    </Compile>
     <Compile Include="views\KeyValuePairsBlock.xaml.cs">
       <DependentUpon>KeyValuePairsBlock.xaml</DependentUpon>
     </Compile>
@@ -622,6 +625,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="views\AuthView.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="views\CredentialManagerView.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
