@@ -63,28 +63,7 @@
             </Border>
 
             <Border Background="White" BorderThickness="0" CornerRadius="2" Margin="3" VerticalAlignment="Center">
-                <PasswordBox x:Name="password" l:PasswordBoxAssistant.BindPassword="true" Height="{Binding Path=ActualHeight, ElementName=username}" MinWidth="100" MaxWidth="300"  KeyboardNavigation.TabIndex="1">
-                    <PasswordBox.Style>
-                        <Style TargetType="{x:Type PasswordBox}" BasedOn="{StaticResource {x:Type PasswordBox}}">
-                            <Style.Triggers>
-                                <MultiTrigger>
-                                    <MultiTrigger.Conditions>
-                                        <Condition Property="l:PasswordBoxAssistant.BoundPassword" Value=""/>
-                                        <Condition Property="IsFocused" Value="False"/>
-                                    </MultiTrigger.Conditions>
-                                    <Setter Property="Background" Value="{StaticResource PasswordWatermarkBrush}"/>
-                                </MultiTrigger>
-                                <MultiTrigger>
-                                    <MultiTrigger.Conditions>
-                                        <Condition Property="l:PasswordBoxAssistant.BoundPassword" Value="{x:Null}"/>
-                                        <Condition Property="IsFocused" Value="False"/>
-                                    </MultiTrigger.Conditions>
-                                    <Setter Property="Background" Value="{StaticResource PasswordWatermarkBrush}"/>
-                                </MultiTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </PasswordBox.Style>
-                </PasswordBox>
+                <l:TogglePasswordBox x:Name="password" Height="{Binding Path=ActualHeight, ElementName=username}" MinWidth="100" MaxWidth="300" KeyboardNavigation.TabIndex="1"/>
             </Border>
 
 

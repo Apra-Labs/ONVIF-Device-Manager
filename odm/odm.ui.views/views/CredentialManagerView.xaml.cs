@@ -102,7 +102,7 @@ namespace odm.ui.views
         void BtMoveUp_Click(object sender, RoutedEventArgs e)
         {
             int idx = credGrid.SelectedIndex;
-            if (idx <= 0) return;
+            if (idx <= 0 || idx >= _items.Count) return;
             _items.Move(idx, idx - 1);
             credGrid.SelectedIndex = idx - 1;
             SaveAndRefresh();

@@ -116,6 +116,9 @@
     <Compile Include="controls\DateTimeControl.xaml.cs">
       <DependentUpon>DateTimeControl.xaml</DependentUpon>
     </Compile>
+    <Compile Include="controls\TogglePasswordBox.xaml.cs">
+      <DependentUpon>TogglePasswordBox.xaml</DependentUpon>
+    </Compile>
     <Compile Include="controls\DeviceEngineControl.cs" />
     <Compile Include="controls\ExpressionDefaultEditor.xaml.cs">
       <DependentUpon>ExpressionDefaultEditor.xaml</DependentUpon>
@@ -581,6 +584,10 @@
   </ItemGroup>
   <ItemGroup>
     <Page Include="controls\DateTimeControl.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="controls\TogglePasswordBox.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>

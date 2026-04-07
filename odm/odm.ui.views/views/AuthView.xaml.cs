@@ -85,7 +85,7 @@ namespace odm.ui.views
             Authorized = AccountManager.Instance.Autorized;
             var account = AccountManager.Instance.CurrentAccount;
             username.Text = account.Name;
-            password.Password = account.Password;
+            password.Password = account.Password ?? string.Empty;
             loggedUsername.Text = account.Name;
         }
 

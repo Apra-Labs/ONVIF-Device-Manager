@@ -99,8 +99,8 @@
       "title": "Add password visibility toggle to all password fields",
       "type": "work",
       "tier": "standard",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Created TogglePasswordBox UserControl (controls/TogglePasswordBox.xaml + .cs). Password DP syncs PasswordBox and TextBox via re-entrancy guard. Show/Hide ToggleButton switches visibility. Replaced PasswordBox in AuthView.xaml with TogglePasswordBox. Used TogglePasswordBox in CredentialManagerView.xaml CellEditingTemplate. Fixed BtMoveUp_Click guard: idx <= 0 || idx >= _items.Count. Added Compile + Page entries to csproj."
     },
     {
       "id": "4.V",
@@ -108,8 +108,8 @@
       "title": "Verify Phase 4",
       "type": "verify",
       "tier": null,
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Full MSBuild Release: 0 errors, warnings are all pre-existing. TogglePasswordBox compiles clean. AuthView and CredentialManagerView compile clean with new control."
     }
   ]
 }
