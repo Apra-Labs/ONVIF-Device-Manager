@@ -27,8 +27,8 @@
       "title": "Update AccountManager to use CredentialStore and support multi-credential iteration",
       "type": "work",
       "tier": "standard",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Removed old plain-XML Load/Save. Constructor now reads first credential from CredentialStore. Added GetAllCredentials() delegating to CredentialStore. Added SetCredentials(List<Account>) for bulk update. SetCurrentAccount now stores to CredentialStore when remember=true, with case-insensitive deduplication by username."
     },
     {
       "id": "1.V",
