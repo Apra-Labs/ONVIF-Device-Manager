@@ -1,182 +1,105 @@
-# PLAN — ODM Credentials UI
+# Sprint 2 Plan — Credentials UX Fixes
 
-## Branch
-feat/credentials-ui (base: development)
-
-## Exploration Summary
-
-### Current Architecture
-- **Single credential pair**: `Account` struct in `AccountManager.cs` holds one username/password
-- **Storage**: Plain XML serialization to `config/account.def.xml` — **no encryption**
-- **Auth UI**: `AuthView.xaml` in toolbar — username TextBox + PasswordBox + Login button + "Remember me" checkbox
-- **Connection flow**: `DeviceListViewModel.Refresh()` → `LoadCurrentAccount()` → creates `NvtSessionFactory(credential)` → `CreateSession(uris)` per discovered device
-- **Session factory**: `NvtSessionFactory` (F#) takes a single `NetworkCredential`, creates WCF channel factories with/without security token based on whether credentials are non-null
-- **No tests exist** in the solution
-- **Framework**: .NET 4.0, WPF, Prism (Unity IoC, EventAggregator), Reactive Extensions
-- **Password binding helper**: `PasswordBoxAssistant.cs` — attached properties for PasswordBox data binding
-
-### Key Constraints
-- .NET 4.0 — can use `System.Security.Cryptography.ProtectedData` (DPAPI) for encryption, available via `System.Security.dll`
-- `NvtSessionFactory` is constructed once per refresh with a single `NetworkCredential` — multi-credential iteration must happen at a higher level (in `DeviceListViewModel`)
-- The F# session layer should not be modified if possible — credential iteration belongs in C# calling code
+**Branch:** `feat/credentials-ui` (base: `development`)
+**Items:** BUG-1, BUG-2, UX-1, UX-2, UX-3
 
 ---
 
-## Phase 1 — Credential Storage Foundation
+## Root Cause Analysis
 
-### Task 1.0 — Spike: Identify auth-failure exception types in ONVIF session layer
-- **Files:** Read-only: `onvif/onvif.session/NvtSession.fs`, `odm/odm.ui.views/viewmodels/DeviceListViewModel.cs`
-- **Type:** spike (code-reading only, no code written)
-- **Goal:** Determine whether auth failures produce a distinct exception type (e.g. `MessageSecurityException`, specific SOAP fault code) vs. network/timeout errors when `NvtSessionFactory.CreateSession` / `SessionProcess` fails.
-- **Finding (resolved):**
-  Auth failures do **not** produce a distinct exception type from network errors. The ONVIF session layer (`NvtSession.fs`) uses WCF channels with `SecurityUserNameToken` (lines 90–165) injected via `SetupUserNameToken()` (lines 689–694). Auth failures propagate as generic `FaultException` (SOAP faults) while network errors propagate as `CommunicationException` subtypes (`TimeoutException`, `EndpointNotFoundException`, etc.). The codebase has no `MessageSecurityException` or auth-specific catches anywhere. The only `FaultException` catch is for `ActionNotSupported` SOAP faults (line 240+), not auth.
-  `SessionProcess` in `DeviceListViewModel.cs` (lines 407–416) catches **all** errors generically — on any failure it falls back to the last URI with no error discrimination.
-- **Implication for Task 2.1:** Since auth failures cannot be reliably distinguished from network errors, the credential iteration logic must treat all failures as "try next credential." To avoid timeout multiplication, iteration should preserve existing timeout values and support cancellation if already present in the connection flow.
-- **Done:** Exception types documented above; Task 2.1 updated to reference this finding.
+### BUG-2 & BUG-1 share a root cause: `Account.Equals()` compares only `Name`
+
+`Account.Equals()` (AccountManager.cs:23–30) ignores `Password`:
+```csharp
+return this.Name == another.Name;  // Password is NOT compared
+```
+
+This breaks multiple things:
+1. **BUG-2 — Credentials not used:** `AccountManager.CurrentAccount` setter (line 67) uses `==` which calls this broken `Equals`. Setting `admin/newpass` when current is `admin/oldpass` short-circuits — the setter returns early, `CurrentAccountChanged` never fires, no refresh propagates to devices. Stored credentials are silently collapsed: `SetCurrentAccount` finds existing entry by name and overwrites password (line 111–123).
+2. **BUG-1 — Dedup blocks entries:** Same name-only dedup in `SetCurrentAccount` and in `AuthView.btLogin_Click` (line 121–146) prevents storing `admin/pass1` and `admin/pass2` as separate entries.
+
+### UX-3 — Already resolved in Sprint 1
+`CredentialManagerView.xaml` line 48 already uses `<l:TogglePasswordBox>` in the CellEditingTemplate. The display template shows bullets (standard DataGrid behavior). No separate PasswordBox + TextBox inline implementation exists. Task 4.1 is verification-only.
+
+---
+
+## Phase 1 — Fix Account equality & credential dedup (BUG-2 + BUG-1)
+
+### Task 1.1 — Fix Account.Equals to compare (Name, Password)
+- **File:** `odm/odm.ui.views/core/AccountManager.cs`
+- **Change:** `Account.Equals()` → compare both `Name` AND `Password`. `GetHashCode()` → combine both fields. `IsAnonymous` still works correctly (empty name + empty password = Anonymous).
+- **Done:** Two accounts with same name but different password are NOT equal. `CurrentAccount` setter fires change events when password changes.
 - **Tier:** cheap
 
-### Task 1.1 — Create `CredentialStore` with DPAPI-encrypted persistence
-- **Files:** `odm/odm.ui.views/core/CredentialStore.cs` (new), `odm/odm.ui.views/odm.ui.views.csproj` (add reference to System.Security)
-- **Change:** Create `CredentialStore` class that:
-  - Holds a `List<Account>` of credential pairs (reusing existing `Account` struct)
-  - Serializes to `config/credentials.dat` using `XmlSerializer` → byte[] → `ProtectedData.Protect()` with `DataProtectionScope.CurrentUser`
-  - Provides `Load()`, `Save()`, `Add(Account)`, `Remove(int index)`, `Update(int index, Account)`, `GetAll()` methods
-  - Singleton pattern (like existing `AccountManager`)
-  - On first load, migrates existing `account.def.xml` single credential into the new store (if present and non-anonymous)
-- **Done:** `CredentialStore` compiles, can round-trip encrypt/decrypt a list of credentials, migration from old format works
-- **Blocker:** Need to add `System.Security.dll` reference to csproj (should be available in .NET 4.0 GAC)
-- **Tier:** standard
-
-### Task 1.2 — Update `AccountManager` to use `CredentialStore` and support multi-credential iteration
-- **Files:** `odm/odm.ui.views/core/AccountManager.cs`
-- **Change:**
-  - Add `IReadOnlyList<Account> GetAllCredentials()` method that delegates to `CredentialStore.Instance.GetAll()`
-  - Keep `CurrentAccount` and `SetCurrentAccount` working for backward compatibility (the "active/last successful" credential)
-  - Add `SetCredentials(List<Account>)` method for bulk update from UI
-  - Remove old plain-XML `Save()`/`Load()` methods, delegate to `CredentialStore`
-- **Done:** `AccountManager` compiles, existing code that reads `CurrentAccount` still works, new `GetAllCredentials()` returns all stored pairs
-- **Blocker:** None — additive change to existing singleton
+### Task 1.2 — Fix SetCurrentAccount and AuthView dedup logic
+- **File:** `odm/odm.ui.views/core/AccountManager.cs`, `odm/odm.ui.views/views/AuthView.xaml.cs`
+- **Change in AccountManager.SetCurrentAccount (lines 111–123):** Match on both `Name` AND `Password` (case-insensitive name, exact password). If exact (name, password) pair exists → skip (already stored). If name matches but password differs → ADD new entry, don't overwrite. This allows `admin/pass1` and `admin/pass2` to coexist.
+- **Change in AuthView.btLogin_Click (lines 121–146):** Remove the "Update the stored password?" prompt and name-only dedup. Instead: if the exact (name, password) pair is already in the store, do nothing extra. If not, add it (when "Remember" is checked).
+- **Done:** Multiple credentials with same username coexist. Login with remember adds new pairs without overwriting.
 - **Tier:** standard
 
 ### Task 1.V — Verify Phase 1
-- **Type:** verify
-- **Steps:** Build solution (`msbuild odm.sln`), verify no compile errors, verify `CredentialStore` can be instantiated
-- **Done:** Solution builds clean, no regressions in existing code paths
+- Build with `msbuild`. Confirm: no errors, `Account.Equals` compares both fields, `SetCurrentAccount` preserves distinct password entries.
 
 ---
 
-## Phase 2 — Multi-Credential Connection Logic
+## Phase 2 — Credential Manager list UX redesign (UX-1)
 
-### Task 2.1 — Implement credential iteration in `DeviceListViewModel`
-- **Files:** `odm/odm.ui.views/viewmodels/DeviceListViewModel.cs`
-- **Change:**
-  - Modify `Refresh()` / `LoadDevices()` flow: instead of creating one `NvtSessionFactory` with one credential, iterate through `AccountManager.Instance.GetAllCredentials()`
-  - For each discovered device, try `SessionProcess` with each credential in order:
-    1. Create `NvtSessionFactory(credential)` 
-    2. Attempt `CreateSession(uris)`
-    3. On success → use that session, stop iterating
-    4. On failure → try next credential
-    5. If all fail → try anonymous (null credential) as final fallback
-  - Extract credential iteration into a helper method `TrySessionWithCredentials(DeviceDescriptionHolder, IList<Account>)`
-- **Done:** When multiple credentials are stored, the app tries each one per device until authentication succeeds; single-credential behavior is unchanged
-- **Blocker:** Resolved by Task 1.0 spike — auth failures are indistinguishable from network errors (both surface as `FaultException` or `CommunicationException`). Iteration must treat all failures as "try next credential" rather than discriminating error types.
-- **Tier:** premium
-
-### Task 2.2 — Per-device credential cache (in-memory)
-- **Files:** `odm/odm.ui.views/viewmodels/DeviceListViewModel.cs`
-- **Change:** Add a `Dictionary<string, Account> _credentialCache` field (keyed on device URI / host) to `DeviceListViewModel`. Populate it in `TrySessionWithCredentials` whenever a credential succeeds. On subsequent calls for the same device URI, check cache first — if hit, try cached credential directly before falling back to full iteration. On any auth failure with a cached credential, evict the entry and fall back to full iteration, updating cache on the new successful credential. Cache lives only for the application lifetime — not persisted.
-- **Done:** On second and subsequent refresh/SOAP calls for a device whose working credential is already known, the cache is consulted first and iteration is skipped. On camera password change mid-session, the cache entry is evicted and re-iterated correctly.
-- **Blocker:** None — additive to Task 2.1 helper.
+### Task 2.1 — Add × delete column, Delete key, explicit Add button
+- **Files:** `odm/odm.ui.views/views/CredentialManagerView.xaml`, `odm/odm.ui.views/views/CredentialManagerView.xaml.cs`
+- **XAML:**
+  1. Set `CanUserAddRows="False"` on DataGrid
+  2. Add `DataGridTemplateColumn` (last column) with × Button (~30px wide), `Click` bound to remove handler
+  3. Remove `btRemove` from bottom StackPanel
+  4. Add `"+ Add"` Button in bottom StackPanel (before Move Up)
+- **Code-behind:**
+  1. × button handler: get `CredentialItem` from button's `DataContext`, remove from `_items`, call `SaveAndRefresh()`
+  2. `credGrid.KeyDown` handler: if `Key.Delete` + selected item → remove + `SaveAndRefresh()`
+  3. "+ Add" handler: append new `CredentialItem()` to `_items`, select it, begin edit on username cell
+  4. Remove `BtRemove_Click` and its wiring
+- **Done:** × per row, Delete key works, explicit Add button, no implicit blank row.
 - **Tier:** standard
 
 ### Task 2.V — Verify Phase 2
-- **Type:** verify
-- **Steps:** Build solution, manually test with a device using correct credentials in position 2 of the list — verify it connects after skipping credential 1
-- **Done:** Device connects successfully after iterating past wrong credentials
+- Build with `msbuild`. Confirm XAML and code-behind compile, no missing handlers.
 
 ---
 
-## Phase 3 — Credentials Management UI
+## Phase 3 — Login button gating (UX-2)
 
-### Task 3.1 — Create `CredentialManagerView` (XAML + code-behind) for managing credential pairs
-- **Files:** `odm/odm.ui.views/views/CredentialManagerView.xaml` (new), `odm/odm.ui.views/views/CredentialManagerView.xaml.cs` (new)
-- **Change:** Create a WPF UserControl with:
-  - A **DataGrid** displaying all credential pairs — editable Username column (TextBox) and masked Password column (PasswordBox in a `DataGridTemplateColumn`). DataGrid chosen over ListBox because it provides inline editing natively without custom item templates.
-  - **Add credential flow:** Inline DataGrid row via `DataGrid.CanUserAddRows = true` — no separate dialog. User types directly into the new-row placeholder.
-  - "Edit" — inline editing via DataGrid's built-in cell editing
-  - "Remove" button → removes selected credential with confirmation
-  - "Move Up" / "Move Down" buttons to reorder priority
-  - All changes save immediately via `CredentialStore`
-  - After save, publish `Refresh` event so devices re-authenticate
-- **Done:** User can add, edit, remove, and reorder credentials through the UI; changes persist across restart
-- **Blocker:** Need to decide where to host this view — likely as a dialog/popup accessible from the toolbar area near AuthView
-- **Tier:** standard
-
-### Task 3.2 — Integrate `CredentialManagerView` into the application
-- **Files:** `odm/odm.ui.views/views/AuthView.xaml`, `odm/odm.ui.views/views/AuthView.xaml.cs`, possibly `odm/odm.ui.views/views/ToolBarView.xaml`
-- **Change:**
-  - **Keep** the existing username/password quick-login fields in `AuthView`. Add a "Manage Credentials" button that opens `CredentialManagerView` as a **child window** (not a popup).
-  - Quick-login "Login" button behavior: add the credential to the store if not already present (match on **username, case-insensitive**). If username matches an existing entry, offer to **update the password** rather than adding a duplicate. Then set as `CurrentAccount` and trigger device refresh.
-  - **Deduplication rule:** Match on username using case-insensitive comparison. If username matches, prompt to update the stored password — never create a duplicate username entry.
-  - The "Remember me" checkbox controls whether the entire credential store persists (or just the current session)
-- **Done:** "Manage Credentials" button appears in toolbar, opens credential management UI, credentials are saved and loaded on restart
-- **Blocker:** None
+### Task 3.1 — Enable Login when store has entries, even if fields empty
+- **File:** `odm/odm.ui.views/views/AuthView.xaml.cs`
+- **Change to `btLogin_Click()`:**
+  1. If both `username.Text` and `password.Password` non-empty → existing behavior: try that credential, trigger Refresh. Additionally, if "Remember" is checked and credential is NOT already in the store, show MessageBox "Save this credential?" — if Yes, add to store.
+  2. If fields are empty but `CredentialStore.Instance.GetAll().Count > 0` → skip the manual credential, just trigger Refresh (devices will iterate stored credentials via `FullCredentialIteration`).
+  3. If fields empty AND store empty → show info message, do nothing.
+- **Change to `Init()` or add helper:** Update Login button `IsEnabled` — either replace `DelegateCommand` with `DelegateCommand` that has a `canExecute` delegate checking `(fields non-empty) || (store non-empty)`, OR add a simple check at the top of `btLogin_Click` and disable the button via binding. The `DelegateCommand.CanExecute` approach is cleanest.
+- **Done:** Login button enabled when store has entries. Empty-field login goes straight to store iteration.
 - **Tier:** standard
 
 ### Task 3.V — Verify Phase 3
-- **Type:** verify
-- **Steps:** Build, launch app, add 3 credentials via UI, close and reopen app — verify all 3 are loaded. Remove one, verify it's gone on restart. Edit one, verify change persists.
-- **Done:** Full CRUD lifecycle works end-to-end with persistence
+- Build with `msbuild`. Confirm `btLogin_Click` logic covers all 3 scenarios.
 
 ---
 
-## Phase 4 — Password Visibility Toggle (REQ-1)
+## Phase 4 — Verify TogglePasswordBox in DataGrid (UX-3)
 
-### Task 4.1 — Add password visibility toggle to all password fields
-- **Files:** `odm/odm.ui.views/controls/TogglePasswordBox.xaml` (new), `odm/odm.ui.views/controls/TogglePasswordBox.xaml.cs` (new), `odm/odm.ui.views/views/AuthView.xaml`, `odm/odm.ui.views/views/CredentialManagerView.xaml`
-- **Change:**
-  - Create a reusable `TogglePasswordBox` UserControl that contains:
-    - A `PasswordBox` (default, visible) and a `TextBox` (hidden, for plaintext view) — toggle visibility between them
-    - An eye icon `ToggleButton` that switches between show/hide states
-    - A `Password` dependency property that syncs between both controls using `PasswordBoxAssistant`
-  - Replace bare `PasswordBox` in `AuthView.xaml` with `TogglePasswordBox`
-  - Use `TogglePasswordBox` in `CredentialManagerView.xaml` for all password fields
-- **Done:** Eye icon appears next to every password field; clicking toggles between masked and plaintext; works for all credential entries
-- **Blocker:** WPF `PasswordBox` doesn't support binding natively — existing `PasswordBoxAssistant` pattern handles this, reuse it
-- **Tier:** standard
+### Task 4.1 — Verify TogglePasswordBox binding in CredentialManagerView
+- **File:** `odm/odm.ui.views/views/CredentialManagerView.xaml`
+- **Status:** Sprint 1 already replaced inline show/hide with `<l:TogglePasswordBox>` in CellEditingTemplate (line 48). Display template shows bullets. This is consistent with AuthView.
+- **Action:** Verify two-way binding works inside DataGrid editing template. If `Password` DP doesn't propagate edits back to `CredentialItem.Password` (e.g., DataGrid commits edit before TogglePasswordBox updates binding), add `UpdateSourceTrigger=LostFocus` or handle `CellEditEnding` to force sync.
+- **Done:** Password column uses TogglePasswordBox, eye icon matches AuthView, edits propagate correctly.
+- **Tier:** cheap
 
 ### Task 4.V — Verify Phase 4
-- **Type:** verify
-- **Steps:** Build, launch app, verify eye icon on login password field and all credential manager password fields. Click to show, click to hide. Enter new credential — verify toggle works on fresh fields.
-- **Done:** All password fields have working visibility toggle
-
----
-
-## Summary
-
-| Task | Description | Tier | Est. Complexity |
-|------|-------------|------|-----------------|
-| 1.1 | CredentialStore with DPAPI encryption | standard | New class, DPAPI integration |
-| 1.2 | Update AccountManager for multi-credential | standard | Modify singleton, add methods |
-| 1.V | Verify Phase 1 | verify | Build check |
-| 2.1 | Credential iteration in DeviceListViewModel | premium | Modify async connection flow |
-| 2.2 | Per-device credential cache (in-memory) | standard | Add cache field, eviction logic |
-| 2.V | Verify Phase 2 | verify | Manual test |
-| 3.1 | CredentialManagerView UI | standard | New XAML + code-behind |
-| 3.2 | Integrate into app (toolbar/AuthView) | standard | Wire up navigation |
-| 3.V | Verify Phase 3 | verify | CRUD lifecycle test |
-| 4.1 | TogglePasswordBox control + integration | standard | New control, replace PasswordBox |
-| 4.V | Verify Phase 4 | verify | Visual + functional test |
+- Build with `msbuild`. Full build clean, 0 errors. All 5 items addressed.
 
 ---
 
 ## Risk Register
 
-| # | Risk | Likelihood | Impact | Mitigation |
-|---|------|-----------|--------|------------|
-| R1 | **DPAPI portability** — credentials encrypted with `DataProtectionScope.CurrentUser` cannot be decrypted on another machine or by another Windows user | Low | Medium — credentials are machine/user-bound | Document this limitation in the UI (tooltip or help text on the credential manager). Cross-machine sync is out of scope. |
-| R2 | **Error discrimination** — auth failures indistinguishable from network errors in ONVIF SOAP faults | Medium | High — iteration logic cannot reliably skip auth failures vs. transient errors | Resolved by Task 1.0 spike: treat all failures as "try next credential." If all fail, fall back to anonymous. |
-| R3 | **Iteration latency** — trying N credentials against M slow/unreachable devices multiplies connection timeout × N | Medium | Medium — poor UX on connect | Preserve existing timeout values; add cancellation support if already present in the connection flow. Do not introduce new timeout constants. |
-| R4 | **Migration data loss** — if `account.def.xml` migration fails, the user's existing credential is silently dropped | Low | Medium — user loses saved credential | Migration must be transactional: write new `credentials.dat` first, only delete old `account.def.xml` after successful write and verification of the new store. |
-| R5 | **Toggle UX** — plaintext password visible while typing if toggle is on | Low | Low — minor UX concern | Accepted behaviour, no mitigation needed. This is standard password-toggle UX (user explicitly opted to show). |
-| R6 | **Credential cache invalidation** — If a camera's password changes while the app is running, the cached credential will fail. Mitigation: on any auth failure for a cached device, evict the cache entry and re-iterate all credentials. Accepted trade-off: one extra failed attempt before recovery. | Medium | Low — one extra failed attempt before recovery | Evict cache entry on auth failure, then re-iterate. |
+| # | Risk | Mitigation |
+|---|------|------------|
+| 1 | `Account.Equals` change may break code relying on name-only equality | Grep all `==`/`!=`/`Equals` on Account. The only callers are `IsAnonymous`, `CurrentAccount` setter, and `SetCurrentAccount` — all benefit from the fix. |
+| 2 | DataGrid row editing + TogglePasswordBox binding timing | CellEditingTemplate with `UpdateSourceTrigger=PropertyChanged` should work. Fallback: force sync in `RowEditEnding`. |
+| 3 | Empty-field login with store iteration — UX confusion | Clear visual indication (tooltip or label) that stored credentials will be tried automatically. |

@@ -1,111 +1,81 @@
-# Requirements — ODM
+# ODM Sprint 2 — Credentials UX Fixes
 
-## Base Branch
-`development`
+## Context
 
----
+Sprint 1 delivered the credentials subsystem (CredentialStore, multi-credential iteration, CredentialManagerView, TogglePasswordBox). Post-merge testing revealed 2 functional bugs and 3 UX issues that block usability. All fixes are in existing files on `feat/credentials-ui`.
 
-## REQ-1 — Password Visibility Toggle
-**Depends on:** REQ-2 (implement after)
-
-### Goal
-Users have no way to view the password they've entered. Add an eye icon next to each password field so users can toggle plaintext visibility.
-
-### Scope
-- Add show/hide eye icon button to each password field in the credentials UI
-- Toggle input type between `password` and `text` on click
-
-### Out of Scope
-- Any changes to how passwords are stored or validated
-
-### Acceptance Criteria
-- [ ] Eye icon is visible next to every password input field
-- [ ] Clicking the icon reveals the password in plaintext; clicking again hides it
-- [ ] Works for all credential entries (new and existing)
+**Branch:** `feat/credentials-ui` (continue on same branch — PR #5 is open)
+**Base branch:** `development`
 
 ---
 
-## REQ-2 — Multiple Credential Pairs
+## BUG-1: Username deduplication blocks legitimate entries
 
-### Goal
-Support multiple username/password pairs. Each pair must be saved securely and loaded on system startup. On connect, all pairs are tried in sequence until one works.
+**File:** `odm/odm.ui.views/views/CredentialManagerView.xaml.cs`
 
-### Scope
-- UI to add, edit, and remove multiple username/password credential entries
-- Secure persistent storage (loaded automatically on startup)
-- Connection logic: iterate through all stored pairs per camera until authentication succeeds
+`CredentialManagerView` deduplicates entries by username only (case-insensitive OrdinalIgnoreCase). This blocks adding `admin / password1` and `admin / password2` as separate entries — the second silently overwrites the first. This is the most common camera scenario (same default username, multiple firmware passwords).
 
-### Out of Scope
-- Per-camera credential assignment — credentials are tried globally against every camera
-
-### Constraints
-- Credentials must be stored securely (e.g. Windows Credential Manager or encrypted local store) — plaintext storage is not acceptable
-
-### Acceptance Criteria
-- [ ] User can add, edit, and delete multiple username/password pairs
-- [ ] Credentials persist across application restarts
-- [ ] On camera connect, each stored credential pair is attempted in order until one succeeds
-- [ ] Failed pairs are skipped silently; success proceeds as normal
-- [ ] Credentials are not stored in plaintext
+**Fix:** Remove username-only dedup. The deduplication key must be the full `(username, password)` pair. If an exact `(username, password)` pair already exists, skip the duplicate silently. Otherwise always add.
 
 ---
 
-## REQ-3 — Release Executable Signing
+## BUG-2: Credentials from Manage Credentials are not used during camera connection
 
-### Goal
-The build pipeline must support signing the release executable with the Apra Labs certificate (already acquired via Azure Artifact Signing Service). Signing must only run on release builds, not regular CI builds.
+**Files:** `odm/odm.ui.views/viewmodels/DeviceListViewModel.cs`, `odm/odm.ui.views/core/CredentialStore.cs`, `odm/odm.ui.views/core/AccountManager.cs`
 
-### Scope
-- Add a signing step to the GitHub Actions workflow, gated to release triggers only
-- Integrate with the existing Azure Artifact Signing Service certificate
-- Regular CI builds (push, PR) must remain unsigned and unaffected
+Credentials saved via `CredentialManagerView` are not being applied when connecting to a camera. The credential iteration loop in `DeviceListViewModel.TrySessionWithCredentials()` is not reaching the stored credentials, or the store is not returning them at connect time.
 
-### Out of Scope
-- Certificate acquisition — already done
-- Signing of non-release artifacts (installers, packages) unless already part of the release build
+**Investigation required:** Trace the call path from camera connect through `TrySessionWithCredentials()` → `CredentialStore.GetAllCredentials()`. Identify where the chain breaks. Fix so that all credentials in the store are tried in order before failing.
 
-### Constraints
-- Azure Artifact Signing Service credentials must be stored as GitHub Actions secrets
-- Must not add signing overhead to regular CI build times
-
-### Acceptance Criteria
-- [ ] Release builds produce a signed executable
-- [ ] Signature is verifiable with the Apra Labs certificate
-- [ ] Regular CI builds (non-release) are not signed and complete without signing-related steps
-- [ ] Signing failure causes the release workflow to fail (not silently skip)
+This is the highest-priority bug — without it, the entire credentials feature is non-functional.
 
 ---
 
-## REQ-4 — Investigate Video Playback Failure in GitHub-Built Executables
+## UX-1: Manage Credentials list UX redesign
 
-### Goal
-Field reports indicate executables built via GitHub Actions never play video, while executables built locally on the developer machine work correctly. Root cause must be identified and fixed.
+**Files:** `odm/odm.ui.views/views/CredentialManagerView.xaml`, `odm/odm.ui.views/views/CredentialManagerView.xaml.cs`
 
-### Scope
-- Diff the GitHub Actions build environment against the local build environment
-- Identify missing dependencies, codecs, runtime libraries, or build flags causing the regression
-- Fix the GitHub Actions workflow so CI-built executables play video correctly
+Current UX problems:
+- Adding a new row requires clicking the implicit blank row at the bottom of the DataGrid (`CanUserAddRows=true`) — this affordance is non-obvious to users.
+- Removing a row requires selecting it and clicking a "Remove" button at the bottom of the window.
 
-### Out of Scope
-- Feature changes to the video playback component itself
-
-### Constraints
-- Fix must not break local builds
-
-### Acceptance Criteria
-- [ ] Root cause of the playback failure in CI-built executables is documented
-- [ ] CI-built executable plays video correctly on a clean test machine
-- [ ] No regression in local builds
+**Required redesign:**
+1. Remove the bottom "Remove" button entirely.
+2. Add an **×** button as a `DataGridTemplateColumn` — the last column in each row. Clicking it removes that row immediately.
+3. Handle the **Delete key**: when a row is selected and Delete is pressed, remove it (KeyDown handler on the DataGrid).
+4. Add an explicit **"+ Add"** button below the grid (or in a toolbar) that appends a new blank row and sets focus to the username cell of the new row.
+5. Set `CanUserAddRows=false` on the DataGrid — the implicit blank row is gone; the Add button is the only add affordance.
 
 ---
 
-## Implementation Order
+## UX-2: Login button blocked when Name/Password empty even if CredentialStore has entries
 
-| Order | REQ | Dependency |
-|-------|-----|------------|
-| 1 | REQ-2 — Multiple credential pairs | none |
-| 2 | REQ-1 — Password visibility toggle | after REQ-2 |
-| 3 | REQ-3 — Release signing | none |
-| 4 | REQ-4 — Video playback investigation | none |
+**Files:** `odm/odm.ui.views/views/AuthView.xaml`, `odm/odm.ui.views/views/AuthView.xaml.cs` (or relevant ViewModel)
 
-REQ-3 and REQ-4 are independent and can be sprinted in parallel with REQ-1/REQ-2 if capacity allows.
+Currently the Login/Connect button is only enabled when the Name and Password fields are non-empty. This blocks connecting when the user has credentials stored in `CredentialStore` but left the fields blank (expecting the store to be used).
+
+**Required behaviour:**
+- Login button is enabled if **either**: (a) both Name and Password are non-empty, **or** (b) `CredentialStore.GetAllCredentials()` returns at least one entry.
+- When both Name and Password are filled and Login is clicked: treat this as a "quick try" — attempt that credential, and if successful, optionally offer to save it to the store (a simple MessageBox "Save this credential?" is acceptable).
+- When Name/Password are empty and Login is clicked: skip the Name/Password credential entirely, go straight to iterating the store.
+- If both Name/Password are empty and CredentialStore is empty: keep the existing block.
+
+---
+
+## UX-3: Inconsistent eye icon — two password show/hide implementations
+
+**Files:** `odm/odm.ui.views/views/CredentialManagerView.xaml`, `odm/odm.ui.views/views/CredentialManagerView.xaml.cs`
+
+`AuthView` uses `TogglePasswordBox` (the custom UserControl from Sprint 1 with a proper eye-icon toggle button). `CredentialManagerView` has its own inline show/hide implementation (separate PasswordBox + TextBox, custom toggle logic).
+
+**Fix:** Replace the inline implementation in `CredentialManagerView` with `TogglePasswordBox`. The DataGrid password column must use `TogglePasswordBox` so the eye icon, toggle behaviour, and styling match `AuthView` exactly.
+
+Note: `TogglePasswordBox` may need minor adjustments to work inside a DataGrid cell — ensure the `Password` dependency property two-way binds correctly within a `DataGridTemplateColumn`.
+
+---
+
+## Out of scope
+
+- IEFrame → WebView2 migration (separate issue #6, different subsystem)
+- NAT edge case in credential cache (low risk, document if it surfaces)
+- Persistence of per-device credential cache (intentionally in-memory only)

@@ -4,31 +4,22 @@
   "base_branch": "development",
   "tasks": [
     {
-      "id": "1.0",
-      "phase": 1,
-      "title": "Spike: Identify auth-failure exception types in ONVIF session layer",
-      "type": "spike",
-      "tier": "cheap",
-      "status": "completed",
-      "notes": "Auth failures produce generic FaultException (SOAP) or CommunicationException (network) — indistinguishable. No MessageSecurityException. SessionProcess catches all errors generically. Iteration in Task 2.1 must treat all failures as 'try next credential'. Finding documented in PLAN.md."
-    },
-    {
       "id": "1.1",
       "phase": 1,
-      "title": "Create CredentialStore with DPAPI-encrypted persistence",
+      "title": "Fix Account.Equals to compare (Name, Password)",
       "type": "work",
-      "tier": "standard",
-      "status": "completed",
-      "notes": "Created odm/odm.ui.views/core/CredentialStore.cs with DPAPI ProtectedData.Protect (CurrentUser scope). Added System.Security reference to csproj. Atomic write via temp file (R4 mitigation). Migrates legacy account.def.xml on first load."
+      "tier": "cheap",
+      "status": "pending",
+      "notes": "Account.Equals only compares Name — root cause of BUG-1 and BUG-2. Fix to compare both Name and Password. Update GetHashCode."
     },
     {
       "id": "1.2",
       "phase": 1,
-      "title": "Update AccountManager to use CredentialStore and support multi-credential iteration",
+      "title": "Fix SetCurrentAccount and AuthView dedup logic",
       "type": "work",
       "tier": "standard",
-      "status": "completed",
-      "notes": "Removed old plain-XML Load/Save. Constructor now reads first credential from CredentialStore. Added GetAllCredentials() delegating to CredentialStore. Added SetCredentials(List<Account>) for bulk update. SetCurrentAccount now stores to CredentialStore when remember=true, with case-insensitive deduplication by username."
+      "status": "pending",
+      "notes": "SetCurrentAccount overwrites by name. AuthView btLogin_Click has name-only dedup prompt. Change both to (name, password) pair matching."
     },
     {
       "id": "1.V",
@@ -36,26 +27,17 @@
       "title": "Verify Phase 1",
       "type": "verify",
       "tier": null,
-      "status": "completed",
-      "notes": "Build passed: msbuild odm.sln completed with 0 errors, 49 warnings (pre-existing). Fixed .NET 4.0 compatibility: changed IReadOnlyList<Account> to IList<Account>, added 'using utils;' to CredentialStore.cs for dbg class access."
+      "status": "pending",
+      "notes": ""
     },
     {
       "id": "2.1",
       "phase": 2,
-      "title": "Implement credential iteration in DeviceListViewModel",
-      "type": "work",
-      "tier": "premium",
-      "status": "completed",
-      "notes": "Replaced single-credential SessionProcess with TrySessionWithCredentials/TryNextCredential that iterates all stored credentials (from AccountManager.GetAllCredentials) plus anonymous fallback. Added _deviceFactories dictionary to track per-device NvtSessionFactory for correct credential propagation when device is selected. Updated ManualSessionProcess with same iteration pattern. Updated OnSelectedDeviceChanged and DeviceSelectedPublish to use per-device factory."
-    },
-    {
-      "id": "2.2",
-      "phase": 2,
-      "title": "Per-device credential cache (in-memory)",
+      "title": "Add × delete column, Delete key, explicit Add button (UX-1)",
       "type": "work",
       "tier": "standard",
-      "status": "completed",
-      "notes": "Added _credentialCache Dictionary<string, Account> keyed on device host (case-insensitive). Cache is consulted before full credential iteration — on hit, cached credential is tried first. On cache hit failure, entry is evicted and full iteration runs. Cache populated on every successful credential match. Cache survives Refresh (not cleared) for app-lifetime persistence; _deviceFactories cleared on Refresh since DeviceDescriptionHolder objects are recreated. Both discovered and manual devices use cache."
+      "status": "pending",
+      "notes": "Redesign CredentialManagerView: CanUserAddRows=False, × column per row, Delete key handler, + Add button, remove bottom Remove button."
     },
     {
       "id": "2.V",
@@ -63,26 +45,17 @@
       "title": "Verify Phase 2",
       "type": "verify",
       "tier": null,
-      "status": "completed",
-      "notes": "Full rebuild (msbuild odm.sln -t:Rebuild) passed: 0 errors, only pre-existing warnings (49 F# indentation + 1 vdproj unsupported). Credential iteration and cache logic compiles clean."
+      "status": "pending",
+      "notes": ""
     },
     {
       "id": "3.1",
       "phase": 3,
-      "title": "Create CredentialManagerView (XAML + code-behind)",
+      "title": "Enable Login when store has entries (UX-2)",
       "type": "work",
       "tier": "standard",
-      "status": "completed",
-      "notes": "Created views/CredentialManagerView.xaml (Window) and .cs. DataGrid with Username (TextColumn) + Password (DataGridTemplateColumn: bullet TextBlock in view, PasswordBox via PasswordBoxAssistant in edit template). CanUserAddRows=true for inline add. Remove with MessageBox confirmation. Move Up/Down buttons. RowEditEnding deferred save to CredentialStore + Refresh publish. CredentialItem wrapper class (INotifyPropertyChanged). csproj updated with Compile + Page entries."
-    },
-    {
-      "id": "3.2",
-      "phase": 3,
-      "title": "Integrate CredentialManagerView into the application",
-      "type": "work",
-      "tier": "standard",
-      "status": "completed",
-      "notes": "Added 'Manage Credentials' button to AuthView panelEdit. BtManageCredentials_Click opens CredentialManagerView as child Window (ShowDialog, Owner=current window). Updated btLogin_Click: when remember=true, checks for existing username with OrdinalIgnoreCase; if password differs, prompts 'Update stored password?' — No sets current account without persisting."
+      "status": "pending",
+      "notes": "Login button enabled when fields non-empty OR store non-empty. Empty-field login iterates store. Prompt to save new credentials."
     },
     {
       "id": "3.V",
@@ -90,17 +63,17 @@
       "title": "Verify Phase 3",
       "type": "verify",
       "tier": null,
-      "status": "completed",
-      "notes": "Full build (MSBuild Release): 0 errors, 262 warnings (all pre-existing). New CredentialManagerView compiles clean with PasswordBoxAssistant binding. AuthView changes compile clean."
+      "status": "pending",
+      "notes": ""
     },
     {
       "id": "4.1",
       "phase": 4,
-      "title": "Add password visibility toggle to all password fields",
+      "title": "Verify TogglePasswordBox in DataGrid (UX-3)",
       "type": "work",
-      "tier": "standard",
-      "status": "completed",
-      "notes": "Created TogglePasswordBox UserControl (controls/TogglePasswordBox.xaml + .cs). Password DP syncs PasswordBox and TextBox via re-entrancy guard. Show/Hide ToggleButton switches visibility. Replaced PasswordBox in AuthView.xaml with TogglePasswordBox. Used TogglePasswordBox in CredentialManagerView.xaml CellEditingTemplate. Fixed BtMoveUp_Click guard: idx <= 0 || idx >= _items.Count. Added Compile + Page entries to csproj."
+      "tier": "cheap",
+      "status": "pending",
+      "notes": "Sprint 1 already uses TogglePasswordBox in CellEditingTemplate. Verify binding works correctly; fix if needed."
     },
     {
       "id": "4.V",
@@ -108,8 +81,8 @@
       "title": "Verify Phase 4",
       "type": "verify",
       "tier": null,
-      "status": "completed",
-      "notes": "Full MSBuild Release: 0 errors, warnings are all pre-existing. TogglePasswordBox compiles clean. AuthView and CredentialManagerView compile clean with new control."
+      "status": "pending",
+      "notes": ""
     }
   ]
 }
