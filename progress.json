@@ -9,8 +9,8 @@
       "title": "Fix Account.Equals to compare (Name, Password)",
       "type": "work",
       "tier": "cheap",
-      "status": "pending",
-      "notes": "Account.Equals only compares Name — root cause of BUG-1 and BUG-2. Fix to compare both Name and Password. Update GetHashCode."
+      "status": "completed",
+      "notes": "Account.Equals now compares both Name and Password. GetHashCode combines both fields via XOR. Commit: 80dac2b."
     },
     {
       "id": "1.2",
@@ -18,8 +18,8 @@
       "title": "Fix SetCurrentAccount and AuthView dedup logic",
       "type": "work",
       "tier": "standard",
-      "status": "pending",
-      "notes": "SetCurrentAccount overwrites by name. AuthView btLogin_Click has name-only dedup prompt. Change both to (name, password) pair matching."
+      "status": "completed",
+      "notes": "SetCurrentAccount now checks exact (name, password) pair — same name with different password adds a new entry instead of overwriting. btLogin_Click simplified: name-only dedup prompt removed entirely. Commit: 31bee48."
     },
     {
       "id": "1.V",
@@ -27,8 +27,8 @@
       "title": "Verify Phase 1",
       "type": "verify",
       "tier": null,
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "msbuild odm.sln /p:Configuration=Debug — 0 errors, warnings only (pre-existing). All four output assemblies built: odm.ui.views.dll, odm.ui.activities.dll, odm.extensibility.dll, odm.exe. End-to-end manual test required: add credential in CredentialManagerView → connect → verify credential is tried."
     },
     {
       "id": "2.1",
