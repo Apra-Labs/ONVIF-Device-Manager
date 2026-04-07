@@ -82,6 +82,13 @@ feat/credentials-ui (base: development)
 - **Blocker:** Resolved by Task 1.0 spike — auth failures are indistinguishable from network errors (both surface as `FaultException` or `CommunicationException`). Iteration must treat all failures as "try next credential" rather than discriminating error types.
 - **Tier:** premium
 
+### Task 2.2 — Per-device credential cache (in-memory)
+- **Files:** `odm/odm.ui.views/viewmodels/DeviceListViewModel.cs`
+- **Change:** Add a `Dictionary<string, Account> _credentialCache` field (keyed on device URI / host) to `DeviceListViewModel`. Populate it in `TrySessionWithCredentials` whenever a credential succeeds. On subsequent calls for the same device URI, check cache first — if hit, try cached credential directly before falling back to full iteration. On any auth failure with a cached credential, evict the entry and fall back to full iteration, updating cache on the new successful credential. Cache lives only for the application lifetime — not persisted.
+- **Done:** On second and subsequent refresh/SOAP calls for a device whose working credential is already known, the cache is consulted first and iteration is skipped. On camera password change mid-session, the cache entry is evicted and re-iterated correctly.
+- **Blocker:** None — additive to Task 2.1 helper.
+- **Tier:** standard
+
 ### Task 2.V — Verify Phase 2
 - **Type:** verify
 - **Steps:** Build solution, manually test with a device using correct credentials in position 2 of the list — verify it connects after skipping credential 1
@@ -153,6 +160,7 @@ feat/credentials-ui (base: development)
 | 1.2 | Update AccountManager for multi-credential | standard | Modify singleton, add methods |
 | 1.V | Verify Phase 1 | verify | Build check |
 | 2.1 | Credential iteration in DeviceListViewModel | premium | Modify async connection flow |
+| 2.2 | Per-device credential cache (in-memory) | standard | Add cache field, eviction logic |
 | 2.V | Verify Phase 2 | verify | Manual test |
 | 3.1 | CredentialManagerView UI | standard | New XAML + code-behind |
 | 3.2 | Integrate into app (toolbar/AuthView) | standard | Wire up navigation |
@@ -171,3 +179,4 @@ feat/credentials-ui (base: development)
 | R3 | **Iteration latency** — trying N credentials against M slow/unreachable devices multiplies connection timeout × N | Medium | Medium — poor UX on connect | Preserve existing timeout values; add cancellation support if already present in the connection flow. Do not introduce new timeout constants. |
 | R4 | **Migration data loss** — if `account.def.xml` migration fails, the user's existing credential is silently dropped | Low | Medium — user loses saved credential | Migration must be transactional: write new `credentials.dat` first, only delete old `account.def.xml` after successful write and verification of the new store. |
 | R5 | **Toggle UX** — plaintext password visible while typing if toggle is on | Low | Low — minor UX concern | Accepted behaviour, no mitigation needed. This is standard password-toggle UX (user explicitly opted to show). |
+| R6 | **Credential cache invalidation** — If a camera's password changes while the app is running, the cached credential will fail. Mitigation: on any auth failure for a cached device, evict the cache entry and re-iterate all credentials. Accepted trade-off: one extra failed attempt before recovery. | Medium | Low — one extra failed attempt before recovery | Evict cache entry on auth failure, then re-iterate. |
