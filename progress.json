@@ -72,8 +72,8 @@
       "title": "Verify TogglePasswordBox in DataGrid (UX-3)",
       "type": "work",
       "tier": "cheap",
-      "status": "pending",
-      "notes": "Sprint 1 already uses TogglePasswordBox in CellEditingTemplate. Verify binding works correctly; fix if needed."
+      "status": "completed",
+      "notes": "TogglePasswordBox confirmed in CellEditingTemplate with two-way binding (Mode=TwoWay, UpdateSourceTrigger=PropertyChanged). Binding is correct: Password={Binding Password, ...}. No code change needed."
     },
     {
       "id": "4.V",
