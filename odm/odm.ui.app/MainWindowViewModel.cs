@@ -22,7 +22,7 @@ namespace odm.ui {
 			var ver = System.Reflection.Assembly.GetEntryAssembly().GetName().Version;
 			this.CreateBinding(TitleProperty, odm.ui.controls.CommonApplicationStrings.instance, x => {
 				return
-					String.Format("{0} v{1}.{2}.{3}", x.applicationName, ver.Major, ver.Minor, ver.Build);
+					String.Format("{0} v{1}.{2}.{3}.{4}", x.applicationName, ver.Major, ver.Minor, ver.Build, ver.Revision);
 			});
 		}
 		public string Title {
