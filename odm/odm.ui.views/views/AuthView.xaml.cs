@@ -116,36 +116,6 @@ namespace odm.ui.views
                 var pwd  = password.Password;
                 var doRemember = remember.IsChecked == true;
 
-                // When remembering, check for an existing entry with the same username
-                // (case-insensitive). If found and password differs, ask before overwriting.
-                if (doRemember && !string.IsNullOrEmpty(name))
-                {
-                    var all = CredentialStore.Instance.GetAll();
-                    for (int i = 0; i < all.Count; i++)
-                    {
-                        if (string.Equals(all[i].Name, name, StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (all[i].Password != pwd)
-                            {
-                                var result = MessageBox.Show(
-                                    string.Format("A credential for '{0}' already exists. Update the stored password?", name),
-                                    "Update Credential",
-                                    MessageBoxButton.YesNo,
-                                    MessageBoxImage.Question);
-                                if (result == MessageBoxResult.No)
-                                {
-                                    // Set as current account without persisting the new password.
-                                    AccountManager.Instance.SetCurrentAccount(
-                                        new Account { Name = name, Password = pwd }, false);
-                                    eventAggregator.GetEvent<Refresh>().Publish(true);
-                                    return;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-
                 AccountManager.Instance.SetCurrentAccount(
                     new Account { Name = name, Password = pwd }, doRemember);
                 eventAggregator.GetEvent<Refresh>().Publish(true);

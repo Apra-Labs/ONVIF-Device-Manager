@@ -111,19 +111,19 @@ namespace odm.ui.core
             if (remember && !account.IsAnonymous)
             {
                 var all = CredentialStore.Instance.GetAll();
-                // Check for existing entry by username (case-insensitive)
-                int existing = -1;
+                // Only skip if exact (name, password) pair already stored.
+                // Same name with different password → add as new entry (BUG-1 fix).
+                bool exactMatch = false;
                 for (int i = 0; i < all.Count; i++)
                 {
-                    if (string.Equals(all[i].Name, account.Name, StringComparison.OrdinalIgnoreCase))
+                    if (string.Equals(all[i].Name, account.Name, StringComparison.OrdinalIgnoreCase)
+                        && all[i].Password == account.Password)
                     {
-                        existing = i;
+                        exactMatch = true;
                         break;
                     }
                 }
-                if (existing >= 0)
-                    CredentialStore.Instance.Update(existing, account);
-                else
+                if (!exactMatch)
                     CredentialStore.Instance.Add(account);
             }
         }
