@@ -72,6 +72,7 @@ namespace odm.ui.views
         {
             btLogin.Command = new DelegateCommand(new Action(btLogin_Click));
             btLogout.Command = new DelegateCommand(new Action(btLogout_Click));
+            btManageCredentials.Click += BtManageCredentials_Click;
             username.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             password.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             this.Loaded += AuthView_Loaded;
@@ -93,11 +94,60 @@ namespace odm.ui.views
             Update();
         }
 
+        void BtManageCredentials_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var win = new CredentialManagerView(eventAggregator);
+                win.Owner = Window.GetWindow(this);
+                win.ShowDialog();
+            }
+            catch (Exception err)
+            {
+                dbg.Error(err);
+            }
+        }
+
         void btLogin_Click()
         {
             try
             {
-                AccountManager.Instance.SetCurrentAccount(new Account() { Name=username.Text, Password=password.Password }, remember.IsChecked == true);
+                var name = username.Text;
+                var pwd  = password.Password;
+                var doRemember = remember.IsChecked == true;
+
+                // When remembering, check for an existing entry with the same username
+                // (case-insensitive). If found and password differs, ask before overwriting.
+                if (doRemember && !string.IsNullOrEmpty(name))
+                {
+                    var all = CredentialStore.Instance.GetAll();
+                    for (int i = 0; i < all.Count; i++)
+                    {
+                        if (string.Equals(all[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (all[i].Password != pwd)
+                            {
+                                var result = MessageBox.Show(
+                                    string.Format("A credential for '{0}' already exists. Update the stored password?", name),
+                                    "Update Credential",
+                                    MessageBoxButton.YesNo,
+                                    MessageBoxImage.Question);
+                                if (result == MessageBoxResult.No)
+                                {
+                                    // Set as current account without persisting the new password.
+                                    AccountManager.Instance.SetCurrentAccount(
+                                        new Account { Name = name, Password = pwd }, false);
+                                    eventAggregator.GetEvent<Refresh>().Publish(true);
+                                    return;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                AccountManager.Instance.SetCurrentAccount(
+                    new Account { Name = name, Password = pwd }, doRemember);
                 eventAggregator.GetEvent<Refresh>().Publish(true);
             }
             catch (Exception err)

@@ -95,6 +95,7 @@
                     <TextBlock Text="{Binding remember, Source={StaticResource Strings}}" Foreground="WhiteSmoke"/>
                 </CheckBox.Content>
             </CheckBox>
+            <Button x:Name="btManageCredentials" Content="Manage Credentials" Margin="3" VerticalAlignment="Center" KeyboardNavigation.TabIndex="4"/>
         </StackPanel>
 
         <!-- Autorized mode -->
