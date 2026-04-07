@@ -79,24 +79,17 @@ namespace odm.ui.views
 
         void Init()
         {
-            _loginCommand = new DelegateCommand(btLogin_Click, CanLogin);
+            _loginCommand = new DelegateCommand(btLogin_Click);
             btLogin.Command = _loginCommand;
             btLogout.Command = new DelegateCommand(new Action(btLogout_Click));
             btManageCredentials.Click += BtManageCredentials_Click;
-
-            username.TextChanged += (s, e) => _loginCommand.RaiseCanExecuteChanged();
-
-            // TogglePasswordBox exposes Password as a DependencyProperty; use
-            // DependencyPropertyDescriptor to get change notifications.
-            var pwdDescriptor = DependencyPropertyDescriptor.FromProperty(
-                TogglePasswordBox.PasswordProperty, typeof(TogglePasswordBox));
-            pwdDescriptor.AddValueChanged(password, (s, e) => _loginCommand.RaiseCanExecuteChanged());
 
             username.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             password.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             this.Loaded += AuthView_Loaded;
 
             AccountManager.Instance.CurrentAccountChanged += delegate { Update(); };
+            AuthLog("AuthView.Init: startup — version timestamp " + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
         }
 
         void Update()
@@ -120,8 +113,6 @@ namespace odm.ui.views
                 var win = new CredentialManagerView(eventAggregator);
                 win.Owner = Window.GetWindow(this);
                 win.ShowDialog();
-                // Credentials may have been added or removed — re-evaluate button state.
-                _loginCommand.RaiseCanExecuteChanged();
             }
             catch (Exception err)
             {
