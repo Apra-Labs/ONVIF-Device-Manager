@@ -1,0 +1,115 @@
+{
+  "project": "odm",
+  "branch": "feat/credentials-ui",
+  "base_branch": "development",
+  "tasks": [
+    {
+      "id": "1.0",
+      "phase": 1,
+      "title": "Spike: Identify auth-failure exception types in ONVIF session layer",
+      "type": "spike",
+      "tier": "cheap",
+      "status": "completed",
+      "notes": "Auth failures produce generic FaultException (SOAP) or CommunicationException (network) — indistinguishable. No MessageSecurityException. SessionProcess catches all errors generically. Iteration in Task 2.1 must treat all failures as 'try next credential'. Finding documented in PLAN.md."
+    },
+    {
+      "id": "1.1",
+      "phase": 1,
+      "title": "Create CredentialStore with DPAPI-encrypted persistence",
+      "type": "work",
+      "tier": "standard",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "1.2",
+      "phase": 1,
+      "title": "Update AccountManager to use CredentialStore and support multi-credential iteration",
+      "type": "work",
+      "tier": "standard",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "1.V",
+      "phase": 1,
+      "title": "Verify Phase 1",
+      "type": "verify",
+      "tier": null,
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "2.1",
+      "phase": 2,
+      "title": "Implement credential iteration in DeviceListViewModel",
+      "type": "work",
+      "tier": "premium",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "2.2",
+      "phase": 2,
+      "title": "Per-device credential cache (in-memory)",
+      "type": "work",
+      "tier": "standard",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "2.V",
+      "phase": 2,
+      "title": "Verify Phase 2",
+      "type": "verify",
+      "tier": null,
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "3.1",
+      "phase": 3,
+      "title": "Create CredentialManagerView (XAML + code-behind)",
+      "type": "work",
+      "tier": "standard",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "3.2",
+      "phase": 3,
+      "title": "Integrate CredentialManagerView into the application",
+      "type": "work",
+      "tier": "standard",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "3.V",
+      "phase": 3,
+      "title": "Verify Phase 3",
+      "type": "verify",
+      "tier": null,
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "4.1",
+      "phase": 4,
+      "title": "Add password visibility toggle to all password fields",
+      "type": "work",
+      "tier": "standard",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "4.V",
+      "phase": 4,
+      "title": "Verify Phase 4",
+      "type": "verify",
+      "tier": null,
+      "status": "pending",
+      "notes": ""
+    }
+  ]
+}
