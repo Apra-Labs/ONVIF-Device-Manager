@@ -1186,6 +1186,18 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="images\Delete16.png" />
+    <Resource Include="..\odm.ui.app\Resources\Images\eye.png">
+      <Link>images\eye.png</Link>
+    </Resource>
+    <Resource Include="..\odm.ui.app\Resources\Images\eye-off.png">
+      <Link>images\eye-off.png</Link>
+    </Resource>
+    <Resource Include="..\odm.ui.app\Resources\Images\square-arrow-up.png">
+      <Link>images\square-arrow-up.png</Link>
+    </Resource>
+    <Resource Include="..\odm.ui.app\Resources\Images\square-arrow-down.png">
+      <Link>images\square-arrow-down.png</Link>
+    </Resource>
   </ItemGroup>
   <ItemGroup>
     <Resource Include="images\warning-icon-th.png" />
