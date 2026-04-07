@@ -63,6 +63,7 @@
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.ServiceModel" />
     <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Security" />
     <Reference Include="Microsoft.Expression.Interactions">
       <HintPath>..\..\packages\Prism.4.1.0.0\lib\NET40\Microsoft.Expression.Interactions.dll</HintPath>
     </Reference>
@@ -254,6 +255,7 @@
       <DependentUpon>XmlViewer.xaml</DependentUpon>
     </Compile>
     <Compile Include="core\AccountManager.cs" />
+    <Compile Include="core\CredentialStore.cs" />
     <Compile Include="core\CustomCommands.cs" />
     <Compile Include="core\DataProcessInfo.cs" />
     <Compile Include="core\DeviceDescriptionHolder.cs" />

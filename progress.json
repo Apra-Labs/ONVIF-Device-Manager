@@ -18,8 +18,8 @@
       "title": "Create CredentialStore with DPAPI-encrypted persistence",
       "type": "work",
       "tier": "standard",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Created odm/odm.ui.views/core/CredentialStore.cs with DPAPI ProtectedData.Protect (CurrentUser scope). Added System.Security reference to csproj. Atomic write via temp file (R4 mitigation). Migrates legacy account.def.xml on first load."
     },
     {
       "id": "1.2",
