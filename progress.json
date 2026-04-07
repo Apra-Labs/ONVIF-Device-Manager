@@ -54,8 +54,8 @@
       "title": "Per-device credential cache (in-memory)",
       "type": "work",
       "tier": "standard",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Added _credentialCache Dictionary<string, Account> keyed on device host (case-insensitive). Cache is consulted before full credential iteration — on hit, cached credential is tried first. On cache hit failure, entry is evicted and full iteration runs. Cache populated on every successful credential match. Cache survives Refresh (not cleared) for app-lifetime persistence; _deviceFactories cleared on Refresh since DeviceDescriptionHolder objects are recreated. Both discovered and manual devices use cache."
     },
     {
       "id": "2.V",

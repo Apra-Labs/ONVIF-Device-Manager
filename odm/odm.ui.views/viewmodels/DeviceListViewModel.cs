@@ -132,6 +132,10 @@ namespace odm.ui.viewModels {
         SubscriptionToken BatchRestoreSubscribtion;
 		// Per-device session factory tracking — each device may authenticate with a different credential
 		private Dictionary<DeviceDescriptionHolder, NvtSessionFactory> _deviceFactories = new Dictionary<DeviceDescriptionHolder, NvtSessionFactory>();
+		// Per-device credential cache — keyed on device host string, value is the last successful Account.
+		// Consulted before full credential iteration to avoid re-trying all credentials on every refresh.
+		// Evicted on auth failure so that password changes are handled after one extra failed attempt.
+		private readonly Dictionary<string, Account> _credentialCache = new Dictionary<string, Account>(StringComparer.OrdinalIgnoreCase);
 
 
 		public DeviceListViewModel(IUnityContainer container) {//IDeviceManager deviceManager, IEventAggregator eventAggregator) {
@@ -212,6 +216,30 @@ namespace odm.ui.viewModels {
 			SaveManualList();
 		}
 		void ManualSessionProcess(DeviceDescriptionHolder devHolder) {
+			var cacheKey = GetDeviceCacheKey(devHolder);
+			Account cachedAccount;
+			if (cacheKey != null && _credentialCache.TryGetValue(cacheKey, out cachedAccount)) {
+				var cachedCred = cachedAccount.IsAnonymous
+					? null
+					: new System.Net.NetworkCredential() { UserName = cachedAccount.Name, Password = cachedAccount.Password };
+				var cachedFactory = new NvtSessionFactory(cachedCred);
+				IdentitySubscriptions.Add(cachedFactory.CreateSession(devHolder.Uris)
+					.ObserveOnCurrentDispatcher()
+					.Subscribe(session => {
+						devHolder.Account = cachedCred;
+						_deviceFactories[devHolder] = cachedFactory;
+						ManualInitDeviceHolder(session, devHolder);
+					}, err => {
+						_credentialCache.Remove(cacheKey);
+						FullCredentialIterationManual(devHolder);
+					}));
+				return;
+			}
+
+			FullCredentialIterationManual(devHolder);
+		}
+
+		void FullCredentialIterationManual(DeviceDescriptionHolder devHolder) {
 			var allCreds = AccountManager.Instance.GetAllCredentials();
 			var attempts = new List<System.Net.NetworkCredential>();
 
@@ -231,6 +259,7 @@ namespace odm.ui.viewModels {
 				var fallbackFactory = new NvtSessionFactory(null);
 				_deviceFactories[devHolder] = fallbackFactory;
 				devHolder.Account = null;
+				CacheCredential(devHolder, Account.Anonymous);
 				IdentitySubscriptions.Add(fallbackFactory.CreateSession(devHolder.Uris)
 					.ObserveOnCurrentDispatcher()
 					.Subscribe(session => {
@@ -248,6 +277,7 @@ namespace odm.ui.viewModels {
 				.Subscribe(session => {
 					devHolder.Account = cred;
 					_deviceFactories[devHolder] = factory;
+					CacheCredential(devHolder, new Account() { Name = cred.UserName, Password = cred.Password });
 					ManualInitDeviceHolder(session, devHolder);
 				}, err => {
 					TryNextCredentialManual(devHolder, credentials, index + 1);
@@ -445,11 +475,50 @@ namespace odm.ui.viewModels {
 		}
 
 		/// <summary>
+		/// Returns a cache key for the device — the host portion of its first URI.
+		/// Returns null if no URIs are available.
+		/// </summary>
+		static string GetDeviceCacheKey(DeviceDescriptionHolder devHolder) {
+			if (devHolder.Uris == null || devHolder.Uris.Count() == 0)
+				return null;
+			return devHolder.Uris[0].DnsSafeHost;
+		}
+
+		/// <summary>
 		/// Iterates through all stored credentials to find one that authenticates with the device.
-		/// On success, stores the working credential on devHolder and the factory in _deviceFactories.
-		/// If all credentials fail, falls back to anonymous with the last URI (preserving original behavior).
+		/// Checks the credential cache first — if a cached credential exists for this device host,
+		/// it is tried before falling back to full iteration. On any cache miss or failure the
+		/// cache entry is evicted and all credentials are tried in order.
 		/// </summary>
 		void TrySessionWithCredentials(DeviceDescriptionHolder devHolder, bool publishEvent) {
+			var cacheKey = GetDeviceCacheKey(devHolder);
+			Account cachedAccount;
+			if (cacheKey != null && _credentialCache.TryGetValue(cacheKey, out cachedAccount)) {
+				// Cache hit — try cached credential first
+				var cachedCred = cachedAccount.IsAnonymous
+					? null
+					: new System.Net.NetworkCredential() { UserName = cachedAccount.Name, Password = cachedAccount.Password };
+				var cachedFactory = new NvtSessionFactory(cachedCred);
+				IdentitySubscriptions.Add(cachedFactory.CreateSession(devHolder.Uris)
+					.ObserveOnCurrentDispatcher()
+					.Subscribe(session => {
+						// Cached credential still works
+						devHolder.Account = cachedCred;
+						_deviceFactories[devHolder] = cachedFactory;
+						InitDeviceHolder(session, devHolder, publishEvent);
+					}, err => {
+						// Cached credential failed — evict and fall through to full iteration
+						_credentialCache.Remove(cacheKey);
+						FullCredentialIteration(devHolder, publishEvent);
+					}));
+				return;
+			}
+
+			// No cache entry — full iteration
+			FullCredentialIteration(devHolder, publishEvent);
+		}
+
+		void FullCredentialIteration(DeviceDescriptionHolder devHolder, bool publishEvent) {
 			var allCreds = AccountManager.Instance.GetAllCredentials();
 			var attempts = new List<System.Net.NetworkCredential>();
 
@@ -470,6 +539,7 @@ namespace odm.ui.viewModels {
 				var fallbackFactory = new NvtSessionFactory(null);
 				_deviceFactories[devHolder] = fallbackFactory;
 				devHolder.Account = null;
+				CacheCredential(devHolder, Account.Anonymous);
 				InitDeviceHolder(fallbackFactory.CreateSession(devHolder.Uris[devHolder.Uris.Count() - 1]), devHolder, publishEvent);
 				return;
 			}
@@ -479,14 +549,22 @@ namespace odm.ui.viewModels {
 			IdentitySubscriptions.Add(factory.CreateSession(devHolder.Uris)
 				.ObserveOnCurrentDispatcher()
 				.Subscribe(session => {
-					// Success — store working credential and factory for this device
+					// Success — store working credential and factory for this device, update cache
 					devHolder.Account = cred;
 					_deviceFactories[devHolder] = factory;
+					CacheCredential(devHolder, new Account() { Name = cred.UserName, Password = cred.Password });
 					InitDeviceHolder(session, devHolder, publishEvent);
 				}, err => {
 					// This credential failed — try next one
 					TryNextCredential(devHolder, credentials, index + 1, publishEvent);
 				}));
+		}
+
+		void CacheCredential(DeviceDescriptionHolder devHolder, Account account) {
+			var cacheKey = GetDeviceCacheKey(devHolder);
+			if (cacheKey != null) {
+				_credentialCache[cacheKey] = account;
+			}
 		}
 
 		void InitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder, bool publish) {
