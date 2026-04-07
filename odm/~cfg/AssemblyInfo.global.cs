@@ -22,6 +22,6 @@ using System.Runtime.InteropServices;
 // Dev builds: increment the 4th part manually (e.g. 2.2.252.2 → 2.2.252.2).
 // CI builds: override Revision via /p:Revision=<commit_count> and set
 //   AssemblyInformationalVersion to "2.2.252-<short_git_hash>".
-[assembly: AssemblyVersion("2.2.252.2")]
-[assembly: AssemblyFileVersion("2.2.252.2")]
-[assembly: System.Reflection.AssemblyInformationalVersion("2.2.252.2-dev")]
+[assembly: AssemblyVersion("2.2.252.3")]
+[assembly: AssemblyFileVersion("2.2.252.3")]
+[assembly: System.Reflection.AssemblyInformationalVersion("2.2.252.3-dev")]
