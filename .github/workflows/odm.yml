@@ -1,10 +1,8 @@
 name: ODM
 
 on:
-  push:
-    branches: [ "ak/rejuvinate" ]
   pull_request:
-    branches: [ "ak/rejuvinate" ]
+    branches: [ "development" ]
 
 jobs:
 
@@ -13,7 +11,7 @@ jobs:
     runs-on: windows-2019
 
     env:
-      Solution_Name: odm.sln                         # Replace with your solution name, i.e. MyWpfApp.sln.
+      Solution_Name: odm.sln
 
     steps:
     - name: Checkout
@@ -22,16 +20,25 @@ jobs:
         fetch-depth: 0
 
     - name: Setup VS Dev Environment
-      uses: seanmiddleditch/gha-setup-vsdevenv@v4      
+      uses: seanmiddleditch/gha-setup-vsdevenv@v4
 
-    - name: build application
+    - name: Build application
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
-    
-    - name: collect artifacts
+
+    - name: Build tests
+      run: msbuild odm\odm.tests\odm.tests.csproj /p:Configuration=Debug /p:Platform="Any CPU" /v:minimal
+
+    - name: Run tests
+      run: |
+        $vstest = "${{ env.DevEnvDir }}CommonExtensions\Microsoft\TestWindow\vstest.console.exe"
+        & $vstest "odm\odm.tests\bin\Debug\net48\odm.tests.dll" /logger:trx
+      shell: pwsh
+
+    - name: Collect artifacts
       run: .\package.bat
       shell: cmd
-    
-    - name: upload artifacts 
+
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: odm-build-zip
@@ -42,13 +49,12 @@ jobs:
       run: .\DisableOutOfProcBuild.exe
       continue-on-error: true
 
-    - name: build installer
+    - name: Build installer
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
       shell: cmd
 
-    - name: upload installer 
+    - name: Upload installer
       uses: actions/upload-artifact@v4
       with:
-          name: odm-installer
-          path: odm.setup/Release/odm.setup.msi
-  
+        name: odm-installer
+        path: odm.setup/Release/odm.setup.msi
