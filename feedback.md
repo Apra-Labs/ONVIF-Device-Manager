@@ -1,111 +1,98 @@
-# ODM Sprint 2 — Plan Review
+# ODM Credentials UI — Phase 1 Code Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-07 00:00:00+00:00
+**Date:** 2026-04-07 15:30:00+00:00
 **Verdict:** APPROVED
 
----
-
-## 1. Done Criteria
-
-Every task has concrete, testable done criteria. Task 1.1 specifies the exact equality semantic ("two accounts with same name but different password are NOT equal"). Task 1.2 specifies observable behavior ("multiple credentials with same username coexist"). Task 2.1 lists four discrete UI elements that must be present. Task 3.1 specifies three login scenarios with expected outcomes. Task 4.1 specifies binding propagation behavior. **PASS.**
+> See the recent git history of this file to understand the context of this review.
 
 ---
 
-## 2. Cohesion and Coupling
+## 1. Account.Equals and GetHashCode (Task 1.1, commit 80dac2b)
 
-Phase 1 is internally cohesive — both tasks address the same root cause (name-only equality) and its consequences. Phase 2 (UX redesign) and Phase 3 (login gating) are independent concerns. Phase 4 is verification-only.
+`Account.Equals` now compares both `Name` and `Password` (`AccountManager.cs:29`):
 
-**NOTE:** Task 1.2 modifies `AuthView.btLogin_Click` (removing the "Update the stored password?" prompt), and Task 3.1 also modifies `btLogin_Click` (adding "Save this credential?" prompt and three-way gating logic). Both tasks edit the same method for related but distinct reasons. This is acceptable because they execute sequentially and the removals in 1.2 simplify the method before 3.1 restructures it — but an implementer should be aware that Task 3.1 effectively rebuilds the method that Task 1.2 partially gutted. **PASS with NOTE.**
+```csharp
+return this.Name == another.Name && this.Password == another.Password;
+```
 
----
+This directly fixes the root cause shared by BUG-1 and BUG-2. Previously, setting `CurrentAccount` to `admin/newpass` when the current was `admin/oldpass` short-circuited — the setter's `if (_currentAccount == value) return` treated them as equal, so `CurrentAccountChanged` never fired and devices never refreshed.
 
-## 3. Key Abstractions First
+`GetHashCode` (`AccountManager.cs:43-46`) correctly combines both fields using the standard `unchecked { (Name.GetHashCode() * 397) ^ Password.GetHashCode() }` pattern. Both `Name` and `Password` properties null-coalesce to `string.Empty`, so there is no `NullReferenceException` risk in the hash computation.
 
-The foundational fix — `Account.Equals` comparing both Name and Password — is correctly placed in Task 1.1, the very first work item. Everything downstream (dedup logic in 1.2, login gating in 3.1) depends on this semantic change. **PASS.**
+`IsAnonymous` (`AccountManager.cs:21`) checks `Anonymous.Equals(this)` where `Anonymous` has empty Name and empty Password. With the new equality both fields must match, so `IsAnonymous` remains correct — no regression.
 
----
+The `==` and `!=` operators delegate to `Equals`, so all equality paths are covered.
 
-## 4. Riskiest Assumption Validated Early
-
-The root cause hypothesis — that `Account.Equals` name-only comparison is the single root cause of both BUG-1 and BUG-2 — is the riskiest assumption in the plan. Task 1.1 validates it immediately, and Phase 1.V verifies before proceeding. The plan identifies the specific callers (line numbers in AccountManager.cs) and explains the causal chain from `Equals` → `CurrentAccount` setter → missing event → no device refresh. This is credible and well-evidenced. **PASS.**
-
----
-
-## 5. DRY and Reuse
-
-The corrected `Account.Equals` from Task 1.1 is reused by all downstream equality checks. Task 1.2's dedup logic and Task 3.1's store-aware gating both rely on the fixed equality semantic rather than reimplementing comparison. **PASS.**
+**Done criteria check:** "Two accounts with same name but different password are NOT equal. `CurrentAccount` setter fires change events when password changes." Both satisfied. **PASS.**
 
 ---
 
-## 6. Phase Structure (2–3 tasks + verify)
+## 2. SetCurrentAccount dedup logic (Task 1.2, commit 31bee48)
 
-Phase 1 has 2 work tasks + verify. Phases 2, 3, and 4 each have 1 work task + verify. The single-task phases are appropriate given the scope of each fix — there is no artificial splitting or combining. **PASS.**
+`SetCurrentAccount` (`AccountManager.cs:108-129`) was rewritten from name-only lookup-and-overwrite to exact (name, password) pair matching:
 
----
+- Old behavior: found existing entry by name → overwrote its password. This collapsed `admin/pass1` and `admin/pass2` into a single entry.
+- New behavior: scans for exact `(name, password)` match. If found (`exactMatch = true`), skips the add. If not found — even if the same name exists with a different password — adds as a new entry.
 
-## 7. Session Completability
+The name comparison uses `StringComparison.OrdinalIgnoreCase` while `Account.Equals` uses case-sensitive `==`. This asymmetry is intentional and correct: store-level dedup is case-insensitive for usability (a user typing "Admin" shouldn't create a duplicate of "admin/pass1"), while identity comparison (`Account.Equals`) is exact for correctness in the `CurrentAccount` setter's change detection.
 
-All tasks are marked "cheap" or "standard" tier. File counts are small (1–2 files per task). No task requires cross-cutting refactoring or multi-project coordination. Each is completable in one session. **PASS.**
+**NOTE:** Password comparison in the dedup loop uses exact `==`, matching `Account.Equals` behavior. This is correct — passwords are case-sensitive.
 
----
-
-## 8. Dependency Order
-
-Phase 1 (equality fix) → Phase 2 (UX redesign, independent) → Phase 3 (login gating, depends on working credential store from Phase 1) → Phase 4 (verification). Dependencies are satisfied in order. Phase 2 could technically run in parallel with Phase 3, but sequential execution is simpler and the plan doesn't claim parallelism. **PASS.**
+**Done criteria check:** "Multiple credentials with same username coexist. Login with remember adds new pairs without overwriting." Satisfied. **PASS.**
 
 ---
 
-## 9. Ambiguity Check
+## 3. AuthView.btLogin_Click simplification (Task 1.2, commit 31bee48)
 
-Task 3.1 offers two implementation approaches: `DelegateCommand` with `canExecute` delegate vs. a simple check at the top of `btLogin_Click` with manual disable. The plan recommends `DelegateCommand` as "cleanest" but leaves the door open. This is minor — the recommended approach is clear, the alternative is a fallback. No task is so vague that two developers would produce incompatible results. **PASS.**
+The 30-line block in `btLogin_Click` (`AuthView.xaml.cs:118-147` old) that prompted "Update the stored password?" has been completely removed. The method now simply calls `SetCurrentAccount` and publishes a `Refresh` event (`AuthView.xaml.cs:119-121`).
 
----
+This removal is correct because:
+1. The "overwrite" prompt was the UI-facing manifestation of name-only dedup — with (name, password) pair matching, there is no overwrite scenario to prompt for.
+2. The dedup responsibility is now centralized in `SetCurrentAccount`, eliminating the duplicated store-scanning logic that existed in both `SetCurrentAccount` and `btLogin_Click`.
+3. The plan explicitly called for this removal, and the plan review (§2) noted that Task 3.1 will later rebuild `btLogin_Click` with new gating logic — so keeping it minimal now is the right call.
 
-## 10. Hidden Dependencies
-
-The `btLogin_Click` overlap between Task 1.2 and Task 3.1 (discussed in §2) is the only notable cross-task dependency. It is partially implicit — the plan does not explicitly state "Task 3.1 assumes the prompt removal from 1.2 is already done." However, since they are in sequential phases and 1.V verifies before Phase 3 begins, this is manageable. No other hidden dependencies detected. **PASS with NOTE.**
-
----
-
-## 11. Risk Register
-
-The risk register identifies three risks with mitigations:
-
-1. **Account.Equals change impact** — mitigated by grepping all callers. Concrete and verifiable.
-2. **DataGrid + TogglePasswordBox binding timing** — mitigated with `UpdateSourceTrigger` and a fallback (`RowEditEnding`).
-3. **Empty-field login UX confusion** — mitigated with visual indication.
-
-**NOTE:** One risk is missing from the register: **BUG-2 root cause confidence.** The plan assumes `Account.Equals` is the *sole* root cause of BUG-2. The requirements describe a broader investigation scope ("trace the call path from camera connect through `TrySessionWithCredentials()` → `CredentialStore.GetAllCredentials()`"). If there is a second break in the chain beyond `Account.Equals` — e.g., `CredentialStore.GetAllCredentials()` not returning entries, or `TrySessionWithCredentials` not iterating the store — it would not be caught until Phase 1.V testing. The root cause analysis is credible and includes specific line numbers, but this should be acknowledged as a risk.
-
-**Suggested addition to risk register:**
-
-| 4 | BUG-2 has a second root cause beyond Account.Equals (e.g., CredentialStore not returning entries, TrySessionWithCredentials not iterating store) | Phase 1.V must test end-to-end: add credential in CredentialManagerView → close → connect to camera → verify credential is tried. If iteration still fails, trace DeviceListViewModel.TrySessionWithCredentials path. |
-
-**PASS with NOTE.**
+**Done criteria check:** Prompt removed; dedup is centralized. **PASS.**
 
 ---
 
-## 12. Requirements Alignment
+## 4. Build verification (Task 1.V, commit 100fa9d)
 
-| Item | Requirements Intent | Plan Coverage | Verdict |
-|------|-------------------|---------------|---------|
-| BUG-1 | Dedup key must be (username, password) pair | Task 1.2 changes dedup to match on both fields | **PASS** |
-| BUG-2 | Stored credentials must be tried during camera connect | Task 1.1 fixes Account.Equals so CurrentAccount setter fires events; root cause analysis is specific and credible | **PASS** |
-| UX-1 | 5 specific UI changes (× button, Delete key, Add button, remove Remove button, CanUserAddRows=false) | Task 2.1 addresses all 5 with specific XAML and code-behind changes | **PASS** |
-| UX-2 | 4 behaviors (enable when store non-empty, quick-try with save prompt, empty-field store iteration, both-empty block) | Task 3.1 addresses all 4 scenarios explicitly | **PASS** |
-| UX-3 | Replace inline show/hide with TogglePasswordBox | Plan correctly identifies Sprint 1 already did this; Task 4.1 is verification + binding fix if needed | **PASS** |
+`msbuild odm.sln -p:Configuration=Debug` produces 0 errors. All four output assemblies built successfully:
+- `odm.ui.views.dll`
+- `odm.ui.activities.dll`
+- `odm.extensibility.dll`
+- `odm.exe`
 
-The plan solves the right problems. The UX-3 verification-only approach is honest — the plan doesn't invent work where none exists. **PASS.**
+Warnings are all pre-existing (CS0108 hides-member, CS0105 duplicate-using, CS0169 unused-field, MSB3270 arch-mismatch, etc.). No new warnings introduced by Phase 1 changes. **PASS.**
+
+---
+
+## 5. Requirements alignment
+
+| Requirement | Phase 1 Coverage | Verdict |
+|-------------|-----------------|---------|
+| **BUG-1:** Dedup key must be (username, password) pair | `SetCurrentAccount` matches on both fields; prompt removal eliminates the UI-level name-only check | **PASS** |
+| **BUG-2:** Stored credentials must be tried during camera connect | `Account.Equals` fix unblocks `CurrentAccount` setter → `CurrentAccountChanged` fires → device refresh propagates | **PASS** |
+
+**Plan review note follow-up:** The plan review (§11) flagged that BUG-2 may have a second root cause beyond `Account.Equals`. The 1.V commit notes acknowledge that "end-to-end manual test required: add credential in CredentialManagerView -> connect -> verify credential is tried." This is the correct response — Phase 1 fixes the identified root cause and defers end-to-end validation to manual testing before Phase 2 begins.
+
+---
+
+## 6. Regression check
+
+No previously approved phases exist in Sprint 2 (this is the first code phase). Sprint 1 code was not modified — all changes are confined to `AccountManager.cs` and `AuthView.xaml.cs`. The `CredentialStore`, `CredentialManagerView`, `TogglePasswordBox`, and `DeviceListViewModel` are untouched. **PASS.**
+
+---
+
+## 7. progress.json
+
+Tasks 1.1, 1.2, and 1.V are all marked `"completed"` with accurate notes and commit SHAs. Remaining tasks (2.1 through 4.V) remain `"pending"`. **PASS.**
 
 ---
 
 ## Summary
 
-**All 12 checklist items pass.** The plan is well-structured, correctly identifies `Account.Equals` as the shared root cause of BUG-1 and BUG-2, sequences the riskiest fix first, and maps cleanly to all five requirements items.
+Phase 1 is clean and correct. The `Account.Equals` fix is the minimal, precise change needed to unblock both BUG-1 and BUG-2. `GetHashCode` is consistent with `Equals`. The `SetCurrentAccount` rewrite correctly transitions from name-only overwrite to (name, password) pair dedup. The `btLogin_Click` prompt removal eliminates duplicated logic and leaves the method in a clean state for Phase 3's rebuild. Build passes with 0 errors and no new warnings.
 
-**Two notes to carry forward (non-blocking):**
-1. **btLogin_Click overlap:** Tasks 1.2 and 3.1 both modify `AuthView.btLogin_Click`. The implementer should treat Task 3.1 as a rebuild of the method, not a patch on top of 1.2's changes. The plan should make the dependency explicit.
-2. **BUG-2 root cause confidence:** Add Risk #4 to the register — if `Account.Equals` is not the sole root cause, Phase 1.V testing must trace `TrySessionWithCredentials` end-to-end before proceeding to Phase 2.
-
-**No changes required. Plan is approved for implementation.**
+**No changes required. Phase 1 is approved for implementation of Phase 2.**
