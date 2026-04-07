@@ -72,8 +72,8 @@
       "title": "Create CredentialManagerView (XAML + code-behind)",
       "type": "work",
       "tier": "standard",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Created views/CredentialManagerView.xaml (Window) and .cs. DataGrid with Username (TextColumn) + Password (DataGridTemplateColumn: bullet TextBlock in view, PasswordBox via PasswordBoxAssistant in edit template). CanUserAddRows=true for inline add. Remove with MessageBox confirmation. Move Up/Down buttons. RowEditEnding deferred save to CredentialStore + Refresh publish. CredentialItem wrapper class (INotifyPropertyChanged). csproj updated with Compile + Page entries."
     },
     {
       "id": "3.2",
@@ -81,8 +81,8 @@
       "title": "Integrate CredentialManagerView into the application",
       "type": "work",
       "tier": "standard",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Added 'Manage Credentials' button to AuthView panelEdit. BtManageCredentials_Click opens CredentialManagerView as child Window (ShowDialog, Owner=current window). Updated btLogin_Click: when remember=true, checks for existing username with OrdinalIgnoreCase; if password differs, prompts 'Update stored password?' — No sets current account without persisting."
     },
     {
       "id": "3.V",
@@ -90,8 +90,8 @@
       "title": "Verify Phase 3",
       "type": "verify",
       "tier": null,
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Full build (MSBuild Release): 0 errors, 262 warnings (all pre-existing). New CredentialManagerView compiles clean with PasswordBoxAssistant binding. AuthView changes compile clean."
     },
     {
       "id": "4.1",
