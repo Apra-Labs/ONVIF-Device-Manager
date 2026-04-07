@@ -84,7 +84,7 @@ namespace odm.ui.core
         /// <summary>
         /// Returns all stored credentials from CredentialStore.
         /// </summary>
-        public IReadOnlyList<Account> GetAllCredentials()
+        public IList<Account> GetAllCredentials()
         {
             return CredentialStore.Instance.GetAll();
         }

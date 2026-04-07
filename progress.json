@@ -36,8 +36,8 @@
       "title": "Verify Phase 1",
       "type": "verify",
       "tier": null,
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Build passed: msbuild odm.sln completed with 0 errors, 49 warnings (pre-existing). Fixed .NET 4.0 compatibility: changed IReadOnlyList<Account> to IList<Account>, added 'using utils;' to CredentialStore.cs for dbg class access."
     },
     {
       "id": "2.1",

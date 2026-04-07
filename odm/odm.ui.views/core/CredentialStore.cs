@@ -4,6 +4,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml.Serialization;
+using utils;
 
 namespace odm.ui.core
 {
@@ -28,7 +29,7 @@ namespace odm.ui.core
         }
 
         /// <summary>Returns a copy of all stored credentials.</summary>
-        public IReadOnlyList<Account> GetAll()
+        public IList<Account> GetAll()
         {
             return _credentials.AsReadOnly();
         }
