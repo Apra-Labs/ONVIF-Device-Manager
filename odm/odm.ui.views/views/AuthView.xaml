@@ -10,10 +10,6 @@
              x:Name="root"
              >
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-        </Grid.RowDefinitions>
 
         <Grid.Resources>
             <ObjectDataProvider x:Key="Strings" MethodName="GetInstance" ObjectType="{x:Type uiloc:LocalAccount}"/>
@@ -40,7 +36,7 @@
         </Grid.Resources>
 
         <!--Anonymous mode-->
-        <StackPanel x:Name="panelEdit" Grid.Row="0" Orientation="Horizontal" KeyboardNavigation.TabNavigation="Local">
+        <StackPanel x:Name="panelEdit" Orientation="Horizontal" KeyboardNavigation.TabNavigation="Local">
             <Border Background="White" BorderThickness="0" CornerRadius="2" Margin="3" VerticalAlignment="Center" >
                 <TextBox x:Name="username"  MinWidth="100" MaxWidth="300"  KeyboardNavigation.TabIndex="0">
                     <TextBox.Style>
@@ -78,19 +74,19 @@
                     <TextBlock Text="{Binding remember, Source={StaticResource Strings}}" Foreground="WhiteSmoke"/>
                 </CheckBox.Content>
             </CheckBox>
+            <TextBlock Margin="6,0,3,0" VerticalAlignment="Center">
+                <Hyperlink x:Name="lnkManageCredentials">
+                    <Run Text="Manage Credentials" Foreground="LightGray"/>
+                </Hyperlink>
+            </TextBlock>
         </StackPanel>
 
         <!-- Autorized mode -->
-        <StackPanel x:Name="panelView" Grid.Row="0" Orientation="Horizontal" Visibility="Collapsed">
+        <StackPanel x:Name="panelView" Orientation="Horizontal" Visibility="Collapsed">
             <TextBlock Text="{Binding loggedAs, Source={StaticResource Strings}}" Margin="3" Foreground="WhiteSmoke" VerticalAlignment="Center" />
             <TextBlock x:Name="loggedUsername" Margin="3"  Foreground="WhiteSmoke" FontWeight="Bold" VerticalAlignment="Center" />
             <Button x:Name="btLogout" Content="{Binding logoutButton, Source={StaticResource Strings}}" Margin="3" VerticalAlignment="Center" />
         </StackPanel>
 
-        <TextBlock Grid.Row="1" HorizontalAlignment="Right" Margin="3,0,3,0">
-            <Hyperlink x:Name="lnkManageCredentials">
-                <Run Text="Manage Credentials"/>
-            </Hyperlink>
-        </TextBlock>
     </Grid>
 </UserControl>

@@ -55,6 +55,7 @@ namespace odm.ui.views
     {
         readonly IEventAggregator _eventAggregator;
         ObservableCollection<CredentialItem> _items;
+        bool _credentialsModified = false;
 
         public CredentialManagerView(IEventAggregator eventAggregator)
         {
@@ -78,7 +79,7 @@ namespace odm.ui.views
             credGrid.ItemsSource = _items;
         }
 
-        void SaveAndRefresh()
+        void SaveCredentials()
         {
             var list = new List<Account>();
             foreach (var item in _items)
@@ -87,6 +88,12 @@ namespace odm.ui.views
                     list.Add(item.ToAccount());
             }
             AccountManager.Instance.SetCredentials(list);
+        }
+
+        void SaveAndRefresh()
+        {
+            SaveCredentials();
+            _credentialsModified = true;
             _eventAggregator.GetEvent<Refresh>().Publish(true);
         }
 
@@ -141,7 +148,7 @@ namespace odm.ui.views
             if (idx <= 0 || idx >= _items.Count) return;
             _items.Move(idx, idx - 1);
             credGrid.SelectedIndex = idx - 1;
-            SaveAndRefresh();
+            SaveCredentials();
         }
 
         void BtMoveDown_Click(object sender, RoutedEventArgs e)
@@ -150,7 +157,7 @@ namespace odm.ui.views
             if (idx < 0 || idx >= _items.Count - 1) return;
             _items.Move(idx, idx + 1);
             credGrid.SelectedIndex = idx + 1;
-            SaveAndRefresh();
+            SaveCredentials();
         }
 
         void CredGrid_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -246,10 +253,13 @@ namespace odm.ui.views
         protected override void OnClosing(CancelEventArgs e)
         {
             base.OnClosing(e);
-            var storeCount = CredentialStore.Instance.GetAll().Count;
-            AccountManager.Instance.LoggedOutExplicitly = (storeCount == 0);
-            AccountManager.Instance.SetCurrentAccount(Account.Anonymous, remember: false);
-            _eventAggregator.GetEvent<Refresh>().Publish(true);
+            if (_credentialsModified)
+            {
+                var storeCount = CredentialStore.Instance.GetAll().Count;
+                AccountManager.Instance.LoggedOutExplicitly = (storeCount == 0);
+                AccountManager.Instance.SetCurrentAccount(Account.Anonymous, remember: false);
+                _eventAggregator.GetEvent<Refresh>().Publish(true);
+            }
         }
     }
 }
