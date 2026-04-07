@@ -317,11 +317,12 @@ namespace odm.ui.viewModels {
 		System.Net.NetworkCredential currentAccount = null;
 		System.Net.NetworkCredential LoadCurrentAccount() {
 			var acc = AccountManager.Instance.CurrentAccount;
-			System.Net.NetworkCredential account = null;
-			if (!acc.IsAnonymous)
-                account = new System.Net.NetworkCredential() { UserName = acc.Name, Password = acc.Password };
-			
-			return account;
+			if (acc.IsAnonymous) {
+				var all = AccountManager.Instance.GetAllCredentials();
+				if (all.Count > 0) acc = all[0];
+			}
+			if (acc.IsAnonymous) return null;
+			return new System.Net.NetworkCredential() { UserName = acc.Name, Password = acc.Password };
 		}
 		System.Net.NetworkCredential GetCurrentAccount() {
 			return currentAccount;
