@@ -1,129 +1,211 @@
-# ODM Credentials UI — Phase 1 Code Review
+# ODM Credentials UI — Phase 2 Cumulative Code Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-07 04:55:00+00:00
+**Date:** 2026-04-07
+**Scope:** Tasks 2.1 (credential iteration), 2.2 (per-device credential cache), 2.V (verify build)
+**Commits reviewed:** 0c4f295, 004abad, 1529e39
 **Verdict:** APPROVED
 
-> See the recent git history of this file to understand the context of this review.
+---
+
+## 1. TrySessionWithCredentials — Iteration Order and Anonymous Fallback
+
+**PASS.** The iteration order is correct:
+
+1. **Cache check first** — `_credentialCache.TryGetValue(cacheKey, ...)` is consulted before any network call
+2. **All stored credentials in order** — `FullCredentialIteration` iterates `AccountManager.Instance.GetAllCredentials()`, filtering out anonymous entries, building a `List<NetworkCredential>`
+3. **Anonymous (null) appended last** — `attempts.Add(null)` after the loop ensures anonymous is the final fallback
+
+When all credentials in the list are exhausted (`index >= credentials.Count`), `TryNextCredential` enters the exhaustion branch which creates a `NvtSessionFactory(null)` and falls back to the last URI only — preserving the original pre-Phase-2 error behavior where a failed discovered device was retried on its last URI with anonymous credentials. This backward compatibility is correct.
+
+**Manual devices follow the same pattern.** `ManualSessionProcess` → `FullCredentialIterationManual` → `TryNextCredentialManual` mirrors the discovered-device flow. The only difference is that the manual exhaustion branch creates a full anonymous session (all URIs) instead of last-URI-only, which matches the original `ManualSessionProcess` behavior. Correct.
 
 ---
 
-## 1. CredentialStore — DPAPI Encryption and Persistence
+## 2. Error Handling — All Failures as "Try Next"
 
-**PASS.** DPAPI usage is correct. `ProtectedData.Protect` and `Unprotect` are called with `DataProtectionScope.CurrentUser` and no additional entropy (`null`), which is the standard pattern for user-scoped encryption. The `System.Security` assembly reference was added to `odm.ui.views.csproj`. Credentials are serialized via `XmlSerializer` into XML, then encrypted as a byte blob to `credentials.dat` — at no point are credentials written to disk in plaintext.
+**PASS.** Consistent with the Task 1.0 spike finding that auth failures are indistinguishable from network errors:
 
-**Atomic write (R4 mitigation): PASS.** `SaveInternal` writes to `_storePath + ".tmp"`, then deletes the existing file and moves the temp file into place. This prevents a crash mid-write from corrupting the store. There is a tiny window between `File.Delete` and `File.Move` where the file doesn't exist, but this is standard practice on Windows and acceptable — `File.Replace` would be marginally more atomic but has its own quirks on .NET 4.0. No data loss path exists under normal operation.
+- Every `Subscribe(..., err => { ... })` in the iteration chain calls `TryNextCredential(devHolder, credentials, index + 1, publishEvent)` — no exception type inspection, no early abort
+- Cache hit failures call `_credentialCache.Remove(cacheKey)` then `FullCredentialIteration(...)` — evict and retry the full list
+- The exhaustion branch in `TryNextCredential` (`index >= credentials.Count`) does **not** silently swallow the error — it passes the anonymous session result to `InitDeviceHolder`, which is the existing behavior for unreachable/unauthenticable devices
 
-**Migration from `account.def.xml` (R4): PASS.** The migration path in `Load()` is correctly sequenced: deserialize legacy XML, build the migrated list, call `SaveInternal` to write the encrypted store, and only then `File.Delete` the legacy file. If `SaveInternal` throws, the catch block prevents the delete — the old file survives and migration retries on next launch. If the app crashes after `SaveInternal` but before `File.Delete`, the old file persists and migration re-runs, harmlessly overwriting the already-migrated encrypted store with identical content.
-
-**Fallthrough behavior: NOTE.** If `credentials.dat` exists but is corrupt (decryption fails), the code falls through to attempt legacy migration. If no legacy file exists either, the result is an empty credential list. This is acceptable given the atomic write pattern makes corruption very unlikely, and silently returning empty is better than crashing. The `dbg.Error` call ensures the exception is logged.
-
----
-
-## 2. CredentialStore — API Design and Singleton Pattern
-
-**PASS.** The singleton pattern (`static readonly _instance`, private constructor) matches the existing `AccountManager` pattern exactly. The public API — `GetAll()`, `Add()`, `Remove(int)`, `Update(int, Account)`, `SetAll()` — matches the plan specification. Index-based `Remove` and `Update` sidestep the `Account.Equals` case-sensitivity trap (noted in prior plan reviews).
-
-`GetAll()` returns `_credentials.AsReadOnly()`, which provides a read-only wrapper. The return type was changed from `IReadOnlyList<Account>` to `IList<Account>` in the verify commit (3474e8b) for .NET 4.0 compatibility — `IReadOnlyList<T>` was introduced in .NET 4.5. The `ReadOnlyCollection<T>` returned by `AsReadOnly()` still prevents mutation; the `IList<Account>` return type is a compile-time concession, not a runtime one.
-
-**Thread safety: PASS (consistent with codebase).** `_credentials` is mutated without locking. The original `AccountManager` had no thread safety either. The WPF app is single-threaded (UI thread), so this is consistent with existing conventions. No change needed.
-
-**Nested `CredentialList` class: PASS.** The `CredentialList` wrapper class is `public` — required by `XmlSerializer` in .NET 4.0 which cannot serialize non-public types. It serves only as a serialization container and is appropriately scoped inside `CredentialStore`.
+**No exception filtering: CORRECT.** Given the spike finding, any attempt to distinguish `FaultException` from `CommunicationException` would be unreliable. The "try next on any error" approach is the right design.
 
 ---
 
-## 3. AccountManager — Backward Compatibility
+## 3. Credential Cache (`_credentialCache`)
 
-**PASS.** The `CurrentAccount` property, `CurrentAccountChanged` event, `Autorized` property (note: pre-existing typo, not introduced here), and `SetCurrentAccount(Account, bool)` method signature are all preserved. Existing callers in `ToolBarViewModel.cs:62` and `ToolBarView.xaml.cs:111` that compare `CurrentAccount == anonymous` continue to work unchanged.
+### 3a. Cache Key
 
-The constructor now reads from `CredentialStore.Instance.GetAll()` instead of the old `Load()` method, selecting `all[0]` as `CurrentAccount` or falling back to `Account.Anonymous`. This preserves the original behavior: on startup, the app loads the saved credential (now the first in the encrypted list) as the active account.
+**PASS.** `GetDeviceCacheKey` uses `devHolder.Uris[0].DnsSafeHost` — the host portion of the first URI. This is the correct granularity:
 
-**Behavioral change in `SetCurrentAccount` with `remember=false`: NOTE.** The original code called `Save(Account.Anonymous)` when `remember=false`, which cleared the stored credential file. The new code does nothing to the store when `remember=false` — it only sets the in-memory `CurrentAccount`. This means unchecking "Remember me" no longer wipes previously stored credentials. This is the correct behavior for a multi-credential store (a single login action should not destroy the entire credential list), but it is a semantic change from the original. In practice this is harmless: the "Remember me" checkbox controlled a single credential; now it controls whether this particular credential is added/updated in the store. Existing users who relied on uncheck-to-forget will find their previously saved credentials still present, which is reasonable.
+- Multiple ONVIF services on the same device share the same host
+- Different devices on different hosts get separate cache entries
+- The cache dictionary uses `StringComparer.OrdinalIgnoreCase` (line 138) — hostnames/IPs are case-insensitive per RFC, correct
 
----
+**Edge case — multiple devices behind NAT with same external IP:** These would share a cache key. This is acceptable: devices behind the same NAT typically share credentials, and if they don't, the cache hit will fail and full iteration runs. Documented in R6.
 
-## 4. AccountManager — New Methods
+### 3b. Cache Eviction
 
-**`GetAllCredentials()`: PASS.** Thin delegate to `CredentialStore.Instance.GetAll()`. Returns the same read-only view. Clean passthrough — no logic, no transformation.
+**PASS.** Eviction happens in two places:
 
-**`SetCredentials(List<Account>)`: PASS.** Thin delegate to `CredentialStore.Instance.SetAll()`. Will be consumed by the credential management UI in Phase 3.
+1. `TrySessionWithCredentials` line 511: `_credentialCache.Remove(cacheKey)` when the cached credential fails — then falls through to `FullCredentialIteration`
+2. `ManualSessionProcess` line 233: same pattern for manual devices
 
-**`SetCurrentAccount` upsert logic: PASS.** When `remember=true` and the account is not anonymous, the method searches for an existing credential by username using `string.Equals` with `StringComparison.OrdinalIgnoreCase`, then either updates or adds. This matches the plan's deduplication rule ("case-insensitive comparison ... never create a duplicate username entry"). The `for` loop with index tracking is .NET 4.0 compatible (no LINQ `FindIndex`).
+After eviction, the full iteration re-populates the cache on success (`CacheCredential` is called in every success handler). This correctly handles the camera-password-changed-mid-session scenario described in R6.
 
-**Account.Equals case sensitivity mismatch: NOTE.** `Account.Equals` compares `Name` with `==` (case-sensitive, ordinal), but `SetCurrentAccount` deduplicates with `OrdinalIgnoreCase`. This means `Account.Equals("Admin") != Account.Equals("admin")` but the store treats them as the same user. This is actually correct — the store-level deduplication should be case-insensitive (usernames are typically case-insensitive), while `Account.Equals` is used for change detection in `CurrentAccount.set` (where exact match is fine). However, Phase 3 implementers should be aware that `Account` equality and store deduplication use different case rules. Not a bug, but worth tracking.
+### 3c. Not Persisted
 
----
+**PASS.** `_credentialCache` is a plain `Dictionary<string, Account>` instance field. It is not serialized, written to disk, or referenced from any persistence code. It lives only for the application lifetime. On `Refresh()`, `_deviceFactories` is cleared (line 364) but `_credentialCache` is intentionally **not** cleared — this is correct per the plan: "Cache survives Refresh ... for app-lifetime persistence."
 
-## 5. Code Style and Conventions
+### 3d. Cache Population
 
-**PASS.** The new code follows existing codebase patterns:
-- Singleton via `static readonly` + private constructor (matches `AccountManager`)
-- `dbg.Error(err)` for exception logging (matches `AccountManager.Load/Save`)
-- `XmlSerializer` usage for serialization (matches original `AccountManager`)
-- `AppDefaults.ConfigFolderPath` for file paths (matches original `settingsPath`)
-- No LINQ usage in `CredentialStore.cs` (the file doesn't import `System.Linq`; LINQ is available in the codebase but the new code uses explicit loops, which is consistent with the simpler helpers)
-- `using utils;` for `dbg` class access (added in verify commit, consistent with other files in `core/`)
+**PASS.** `CacheCredential` is called in every success path:
 
-**Whitespace changes: PASS.** The BOM was removed from `AccountManager.cs` and trailing whitespace was cleaned up in a few places. These are minor formatting normalizations that don't affect behavior.
-
-**No hardcoded secrets: PASS.** Searched all changed files — no credentials, keys, tokens, or sensitive values are hardcoded anywhere.
+- `TryNextCredential` success handler (line 555) — caches the working named credential
+- `TryNextCredential` exhaustion branch (line 542) — caches `Account.Anonymous`
+- `TryNextCredentialManual` follows the same pattern
+- Cache hit success handlers do **not** re-cache (not needed — the entry is already present)
 
 ---
 
-## 6. Plan Alignment
+## 4. Username Matching — Case Sensitivity
 
-**Task 1.0 (spike): PASS.** Spike findings are documented in PLAN.md with the specific exception types (`FaultException`, `CommunicationException`) and the implication for Task 2.1. No code was written — correct for a read-only spike. Progress.json notes capture the key finding.
+**PASS.** This check point is about Phase 1's `AccountManager.SetCurrentAccount`, which uses `StringComparison.OrdinalIgnoreCase` (line 115 of `AccountManager.cs`). Phase 2 does not introduce any new username comparison — credential iteration works on `NetworkCredential` objects and matches by authentication success/failure against the device, not by string comparison. The Phase 1 note about `Account.Equals` being case-sensitive while store dedup is case-insensitive remains accurate and unchanged.
 
-**Task 1.1 (CredentialStore): PASS.** All plan requirements met:
-- `List<Account>` storage with `Account` struct reuse
-- DPAPI encryption with `CurrentUser` scope to `credentials.dat`
-- `Load()`, `Save()`, `Add()`, `Remove(int)`, `Update(int, Account)`, `GetAll()` methods present
-- Singleton pattern
-- Legacy migration from `account.def.xml`
-- `System.Security.dll` reference added to csproj
-
-**Task 1.2 (AccountManager update): PASS.** All plan requirements met:
-- `GetAllCredentials()` delegates to `CredentialStore.Instance.GetAll()`
-- `CurrentAccount` and `SetCurrentAccount` preserved for backward compat
-- `SetCredentials(List<Account>)` added for bulk update
-- Old `Save()`/`Load()` methods and `settingsPath` field removed
-- Plan said `IReadOnlyList<Account>` but implementation uses `IList<Account>` — this was a necessary .NET 4.0 fix caught in Task 1.V. Acceptable deviation.
-
-**Task 1.V (verify): PASS.** Build confirmed clean. Two .NET 4.0 compatibility fixes applied in the verify commit: `IReadOnlyList` → `IList`, and `using utils;` added. Both are correct fixes for legitimate build failures.
+The cache key uses `StringComparer.OrdinalIgnoreCase` for host matching, which is correct for hostnames but unrelated to username matching.
 
 ---
 
-## 7. Build Verification
+## 5. Single-Credential Backward Compatibility
 
-**PASS.** `msbuild odm.sln -p:Configuration=Release` completes with 0 errors. Warning count is consistent with pre-existing warnings (all in unrelated files: `SynesisAnalyticsConfigView`, `TimeSettingsView`, `ToolBarView`, etc.). No new warnings introduced by the Phase 1 changes.
+**PASS.** When only one credential is stored:
+
+1. `GetAllCredentials()` returns a list with one entry
+2. `FullCredentialIteration` builds `attempts` = `[NetworkCredential(name, pass), null]`
+3. `TryNextCredential(index=0)` tries the single credential
+4. On success → session created, same behavior as before Phase 2
+5. On failure → `TryNextCredential(index=1)` tries null (anonymous) → exhaustion branch falls back to last URI with anonymous — same as original `SessionProcess` error handler
+
+The original `SessionProcess` was:
+```csharp
+sessionFactory.CreateSession(devHolder.Uris)
+    .Subscribe(session => InitDeviceHolder(...),
+               err => InitDeviceHolder(sessionFactory.CreateSession(devHolder.Uris.Last()), ...));
+```
+
+The new exhaustion branch replicates this exactly:
+```csharp
+var fallbackFactory = new NvtSessionFactory(null);
+InitDeviceHolder(fallbackFactory.CreateSession(devHolder.Uris[devHolder.Uris.Count() - 1]), devHolder, publishEvent);
+```
+
+The only difference: the fallback factory is now explicitly `NvtSessionFactory(null)` instead of the class-level `sessionFactory` (which was also constructed with `currentAccount`, possibly null). When a single credential is stored and it fails, the fallback is anonymous — same effective behavior.
 
 ---
 
-## 8. Requirements Alignment
+## 6. Thread Safety and Async Flow
 
-**PASS.** Phase 1 delivers the storage foundation for REQ-2:
-- **"Credentials must be stored securely"** — DPAPI encryption, not plaintext. Met.
-- **"Credentials persist across application restarts"** — `credentials.dat` written to disk, loaded on startup. Met.
-- **"Credentials are not stored in plaintext"** — enforced by `ProtectedData.Protect`. Met.
+**PASS (consistent with codebase).** All credential iteration happens on the UI dispatcher thread via `.ObserveOnCurrentDispatcher()`. The recursive-style `TryNextCredential` → subscribe → error → `TryNextCredential(index+1)` chain executes serially because each `Subscribe` callback runs on the dispatcher. There are no concurrent mutations to `_credentialCache` or `_deviceFactories`.
 
-The remaining REQ-2 acceptance criteria (UI for add/edit/delete, iteration on connect) are correctly deferred to Phases 2-3.
+**Potential concern — multiple devices iterating concurrently:** During `LoadDevices`, `SessionProcess` is called for each discovered device in the `OnNodeLoaded` callback. Multiple devices may have in-flight credential attempts simultaneously. This is safe because:
+
+- Each call chain operates on its own `DeviceDescriptionHolder` and its own `index` / `credentials` list (captured by closure)
+- `_credentialCache` mutations are all on the dispatcher thread (single-threaded)
+- `_deviceFactories` uses `DeviceDescriptionHolder` as key — different devices, different keys
+
+**No deadlock risk.** The Rx `ObserveOnCurrentDispatcher` pattern posts to the WPF dispatcher queue. Recursive calls to `TryNextCredential` from error handlers are dispatched as new work items, not synchronous re-entrant calls. Stack overflow from deep recursion is not possible because the chain is async.
+
+---
+
+## 7. Code Duplication — Discovered vs. Manual Paths
+
+**NOTE (non-blocking).** The discovered-device path (`TrySessionWithCredentials` → `FullCredentialIteration` → `TryNextCredential`) and the manual-device path (`ManualSessionProcess` → `FullCredentialIterationManual` → `TryNextCredentialManual`) are structurally identical with minor differences:
+
+| Aspect | Discovered | Manual |
+|--------|-----------|--------|
+| Success handler | `InitDeviceHolder(session, devHolder, publishEvent)` | `ManualInitDeviceHolder(session, devHolder)` |
+| Exhaustion fallback | Last URI only | All URIs |
+| Extra parameter | `bool publishEvent` | (none) |
+
+This duplication is acceptable for Phase 2 — the two paths have different success handlers and exhaustion semantics that justify separate methods. If Phase 3 or 4 adds more iteration complexity, consider extracting a shared iteration core that accepts a success/failure callback pair. Not blocking.
+
+---
+
+## 8. `_deviceFactories` Dictionary — Lifecycle
+
+**PASS.** `_deviceFactories` maps `DeviceDescriptionHolder` → `NvtSessionFactory` so that when a device is later selected, the correct per-device factory (with the working credential) is published in `DeviceSelectedEvent`.
+
+- **Population:** Set in every credential success handler (both discovered and manual paths)
+- **Consumption:** `DeviceSelectedPublish` (line 591) and `OnSelectedDeviceChanged` (line 652) both look up the device's factory, falling back to the class-level `sessionFactory` if not found
+- **Clearing:** `_deviceFactories.Clear()` in `Refresh()` (line 364) — correct, since `Refresh` recreates all `DeviceDescriptionHolder` objects, invalidating the old keys
+- **Not cleared on cache eviction:** Correct — factory invalidation is tied to device recreation (Refresh), not credential cache eviction
+
+**Object equality for dictionary keys:** `DeviceDescriptionHolder` does not override `Equals`/`GetHashCode`, so the dictionary uses reference equality. This is correct because the same holder instance is used throughout a device's lifecycle within a single Refresh cycle.
+
+---
+
+## 9. Build Verification
+
+**PASS.** Task 2.V (commit 1529e39) reports `msbuild odm.sln -t:Rebuild` completed with 0 errors. Only pre-existing warnings (49 F# indentation + 1 vdproj unsupported). No new warnings introduced by Phase 2 changes.
+
+---
+
+## 10. Phase 1 Regression Check
+
+**PASS.** Phase 2 commits made no changes to:
+
+- `CredentialStore.cs` — unchanged since Task 1.1 (commit d788cd2)
+- `AccountManager.cs` — unchanged since Task 1.2 (commit 4bf054b)
+- `odm.ui.views.csproj` — unchanged since Task 1.1
+
+All Phase 1 review findings remain valid:
+- DPAPI encryption intact
+- Atomic write pattern intact
+- Legacy migration intact
+- `SetCurrentAccount` upsert with `OrdinalIgnoreCase` intact
+- Backward compatibility for `CurrentAccount` consumers intact
+
+---
+
+## 11. Plan Alignment
+
+**Task 2.1 (credential iteration): PASS.** All plan requirements met:
+- `Refresh()` / `LoadDevices()` flow modified to iterate credentials per device
+- `TrySessionWithCredentials` extracted as the entry point
+- Iteration order: each stored credential → anonymous fallback
+- `_deviceFactories` tracks per-device factory for correct credential propagation on device selection
+- `ManualSessionProcess` updated with same iteration pattern
+
+**Task 2.2 (credential cache): PASS.** All plan requirements met:
+- `Dictionary<string, Account> _credentialCache` keyed on device host (case-insensitive)
+- Cache consulted before full iteration
+- Cache evicted on failure, re-populated on success
+- Not persisted — instance field only
+- Cache survives Refresh; `_deviceFactories` cleared on Refresh
+
+**Task 2.V (verify): PASS.** Build clean, 0 errors.
 
 ---
 
 ## Summary
 
-**Phase 1 is approved.** All four commits (1.0 spike, 1.1 CredentialStore, 1.2 AccountManager, 1.V verify) are clean, well-structured, and aligned with the plan and requirements.
+**Phase 2 is approved.** All three commits (2.1 credential iteration, 2.2 credential cache, 2.V verify) are clean, correct, and aligned with the plan.
 
 **What passed:**
-- DPAPI encryption is correctly implemented with `CurrentUser` scope
-- Atomic write pattern prevents data corruption (R4 mitigation)
-- Legacy migration is safely sequenced (write-before-delete)
-- Backward compatibility preserved — existing callers of `AccountManager.CurrentAccount` and `SetCurrentAccount` are unaffected
-- No secrets hardcoded, no new warnings introduced
-- Code style consistent with existing .NET 4.0 / WPF / singleton patterns
+- Iteration order is correct: cache → stored credentials in order → anonymous fallback
+- Error handling correctly treats all failures as "try next" (per Task 1.0 spike)
+- Cache key uses `DnsSafeHost` with case-insensitive comparison — correct for hostname matching
+- Cache eviction on failure + re-population on success handles password-change scenario (R6)
+- Cache is not persisted — in-memory only, survives Refresh, dies with app
+- Single-credential behavior unchanged from pre-Phase-2
+- No thread safety issues — all mutations on dispatcher thread
+- `_deviceFactories` lifecycle is correct (populated on success, cleared on Refresh, consumed on device selection)
+- Phase 1 code untouched — no regression
 - Build is clean (0 errors)
 
 **Notes for future phases (not blocking):**
-1. `Account.Equals` is case-sensitive but store deduplication is case-insensitive — Phase 3 UI code should use explicit case-insensitive comparison for username matching, not rely on `Account.Equals`
-2. `SetCurrentAccount(account, remember=false)` no longer clears the stored credential — this is correct for multi-credential but is a behavioral change from the original single-credential flow
-3. The `IList<Account>` return type on `GetAll()`/`GetAllCredentials()` exposes mutating methods at compile time even though the runtime object is read-only — callers should treat it as read-only (enforced by `ReadOnlyCollection` at runtime)
+1. Discovered/manual credential iteration paths are structurally duplicated — consider extracting a shared core if Phase 3/4 adds more iteration complexity
+2. `Account.Equals` case-sensitivity note from Phase 1 review still applies — Phase 3 UI code must use explicit `OrdinalIgnoreCase` for username matching, not `Account.Equals`
+3. Multiple devices behind NAT sharing a cache key is an accepted edge case — if this causes issues in practice, the cache key could be extended to include port
