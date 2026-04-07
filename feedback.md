@@ -1,262 +1,111 @@
-# ODM Credentials UI — Final Cumulative Code Review (All Phases)
+# ODM Sprint 2 — Plan Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-07
-**Scope:** Phase 4 (Task 4.1 + 4.V) review + cumulative final review of all 4 phases before PR
-**Branch:** feat/credentials-ui
-**Commits reviewed (Phase 4):** 7b45221
-**All commits in sprint:** d788cd2, 4bf054b, 3474e8b, 0c4f295, 004abad, 1529e39, 084f5c0, a9120d7, 09ce16a, 7b45221
-**Verdict:** APPROVED — all 4 phases pass, no blocking findings
-
----
-
-## Phase 4 Review — TogglePasswordBox + Integration
-
-### 4.1 TogglePasswordBox.xaml — Control Layout
-
-**PASS.** Clean UserControl layout:
-
-- `PasswordBox` and `TextBox` occupy the same grid cell (Column 0). `TextBox` starts `Visibility="Collapsed"` — only one is visible at a time. Correct.
-- `ToggleButton` in Column 1 with `Width="40"`, `Focusable="False"` (prevents stealing focus from the input field), `ToolTip="Show/hide password"`.
-- Button content toggles via Style Trigger: `"Show"` when unchecked, `"Hide"` when `IsChecked=True`. Simple and correct.
-- No unnecessary namespace imports or resource references.
-
-### 4.2 TogglePasswordBox.xaml.cs — Password Dependency Property
-
-**PASS.** The `Password` DP is correctly defined:
-
-```csharp
-public static readonly DependencyProperty PasswordProperty =
-    DependencyProperty.Register("Password", typeof(string), typeof(TogglePasswordBox),
-        new FrameworkPropertyMetadata(string.Empty,
-            FrameworkPropertyMetadataOptions.BindsTwoWayByDefault,
-            OnPasswordPropertyChanged));
-```
-
-- `BindsTwoWayByDefault` — correct for a password field that external code binds to
-- Default value is `string.Empty` — not null, consistent with `Account.Password` null-coalescing
-- `OnPasswordPropertyChanged` callback syncs the DP value into both `passwordBox.Password` and `textBox.Text`
-
-### 4.3 Re-Entrancy Guard (`_updating` flag)
-
-**PASS.** The `_updating` boolean flag prevents circular sync between three sources:
-
-1. `passwordBox.PasswordChanged` → sets `Password` DP + `textBox.Text`
-2. `textBox.TextChanged` → sets `Password` DP + `passwordBox.Password`
-3. `OnPasswordPropertyChanged` (static callback) → sets `passwordBox.Password` + `textBox.Text`
-
-Each handler checks `if (_updating) return` before proceeding, then sets `_updating = true` before mutations and `false` after. This prevents:
-- `PasswordBox` change → DP change → callback → `PasswordBox` change (infinite loop)
-- `TextBox` change → DP change → callback → `TextBox` change (infinite loop)
-
-The guard is a simple boolean (not `try/finally`). If an exception were thrown mid-update, `_updating` would remain `true` and the control would stop syncing. In practice, setting `Password`, `Text`, or a DP value does not throw, so this is acceptable. The same pattern is widely used in WPF for circular dependency avoidance.
-
-### 4.4 Toggle Button — Show/Hide Password
-
-**PASS.** `toggleBtn.Checked` and `toggleBtn.Unchecked` handlers:
-
-- **Checked (show):** Copies `passwordBox.Password` → `textBox.Text`, collapses PasswordBox, shows TextBox, sets caret to end, focuses TextBox
-- **Unchecked (hide):** Copies `textBox.Text` → `passwordBox.Password`, collapses TextBox, shows PasswordBox, focuses PasswordBox
-
-The copies ensure the two controls stay in sync on toggle. The caret positioning (`textBox.CaretIndex = textBox.Text.Length`) is a good UX touch — user can continue typing from where they left off.
-
-No plaintext password leakage: `textBox` is only `Visible` when the user explicitly clicks "Show". In the default state, only `PasswordBox` (masked) is visible. Risk R5 in the plan explicitly accepts this behavior.
-
-### 4.5 AuthView.xaml — PasswordBox Replaced with TogglePasswordBox
-
-**PASS.** The diff replaces 21 lines of bare `PasswordBox` (with `PasswordBoxAssistant` bindings and watermark styles) with a single line:
-
-```xml
-<l:TogglePasswordBox x:Name="password" Height="{Binding Path=ActualHeight, ElementName=username}" MinWidth="100" MaxWidth="300" KeyboardNavigation.TabIndex="1"/>
-```
-
-- `x:Name="password"` preserved — code-behind references to `password.Password` still work
-- `Height` binding to `username.ActualHeight` preserved — visual consistency
-- `MinWidth`/`MaxWidth` preserved
-- `KeyboardNavigation.TabIndex="1"` preserved
-- `PasswordBoxAssistant` bindings removed — no longer needed since `TogglePasswordBox` exposes its own `Password` DP
-
-**AuthView.xaml.cs change (line 88):**
-```csharp
-password.Password = account.Password ?? string.Empty;
-```
-The `?? string.Empty` null guard is defensive — `Account.Password` already null-coalesces to `string.Empty`, but the guard is harmless and protects against edge cases.
-
-`password.Password` in `btLogin_Click()` (line 116) reads from the `TogglePasswordBox.Password` DP — this returns the synced value regardless of whether the PasswordBox or TextBox is currently visible. Correct.
-
-The `password.KeyDown` handler (line 77) still works — `TogglePasswordBox` inherits from `UserControl` which supports `KeyDown`. However, note that this fires on the UserControl itself. If the user is typing in the inner `PasswordBox` or `TextBox`, the `KeyDown` event will bubble up to the `TogglePasswordBox` UserControl. This is correct WPF event routing behavior — Enter key will trigger login from either the masked or plaintext view.
-
-### 4.6 CredentialManagerView.xaml — CellEditingTemplate Updated
-
-**PASS.** The `CellEditingTemplate` was updated from:
-
-```xml
-<PasswordBox l:PasswordBoxAssistant.BindPassword="True"
-             l:PasswordBoxAssistant.BoundPassword="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-```
-
-to:
-
-```xml
-<l:TogglePasswordBox Password="{Binding Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"/>
-```
-
-The binding is correct:
-- `Password` DP on `TogglePasswordBox` binds two-way to `CredentialItem.Password`
-- `UpdateSourceTrigger=PropertyChanged` ensures the `CredentialItem` is updated on each keystroke, not just on focus loss
-- The `BindsTwoWayByDefault` on the DP metadata doesn't conflict with the explicit `Mode=TwoWay` — explicit mode takes precedence (they agree anyway)
-
-The `CellTemplate` (non-editing view) still shows bullet characters — passwords are masked when not actively being edited. Correct.
-
-### 4.7 BtMoveUp_Click Fix (Phase 3 Finding F1)
-
-**PASS.** The guard was updated from:
-
-```csharp
-if (idx <= 0) return;
-```
-
-to:
-
-```csharp
-if (idx <= 0 || idx >= _items.Count) return;
-```
-
-This addresses the Phase 3 review finding F1: when `CanUserAddRows=True`, the DataGrid's new-item placeholder row has `SelectedIndex == _items.Count`. Without the upper-bound check, `_items.Move(_items.Count, _items.Count - 1)` would throw `ArgumentOutOfRangeException`. Now it returns early. Fix is correct and minimal.
-
-### 4.8 csproj — Compile and Page Entries
-
-**PASS.** Two additions to `odm.ui.views.csproj`:
-
-```xml
-<Compile Include="controls\TogglePasswordBox.xaml.cs">
-  <DependentUpon>TogglePasswordBox.xaml</DependentUpon>
-</Compile>
-```
-
-```xml
-<Page Include="controls\TogglePasswordBox.xaml">
-  <SubType>Designer</SubType>
-  <Generator>MSBuild:Compile</Generator>
-</Page>
-```
-
-Both entries follow the exact pattern of existing controls (e.g., `DateTimeControl.xaml`). `DependentUpon` correctly groups `.xaml.cs` under `.xaml` in Solution Explorer. No existing entries were modified.
-
-### 4.9 Build Verification
-
-**PASS.** MSBuild Release build completed with 0 errors. All warnings are pre-existing (CS0108, CS0168, CS0219, CS0169, CS0067, CS0649, CS0252, FS0040, vdproj unsupported). No new warnings introduced by Phase 4.
-
----
-
-## Cumulative Final Review — All 4 Phases
-
-### REQ-1: Password Visibility Toggle
-
-**FULLY SATISFIED.**
-
-- `TogglePasswordBox` control provides Show/Hide toggle for every password field
-- AuthView login password field: `TogglePasswordBox` replaces bare `PasswordBox`
-- CredentialManagerView editing template: `TogglePasswordBox` replaces bare `PasswordBox`
-- Toggle state is explicit user action (click "Show") — passwords are masked by default
-- Both masked and plaintext views stay in sync via re-entrancy-guarded `Password` DP
-- Risk R5 (plaintext visible when toggle on) documented as accepted behavior
-
-### REQ-2: Multiple Credential Pairs, Secure Storage, Connection Iteration, Credential Cache
-
-**FULLY SATISFIED.**
-
-- **Multiple credential pairs:** `CredentialStore` holds a `List<Account>`, managed via `CredentialManagerView` DataGrid with full CRUD (add inline, edit inline, remove with confirmation, reorder with Move Up/Down)
-- **Secure storage:** DPAPI encryption (`ProtectedData.Protect/Unprotect` with `DataProtectionScope.CurrentUser`) in `CredentialStore`. Atomic write via temp file + rename. Legacy `account.def.xml` migration with transactional safety (new store written before old file deleted).
-- **Connection iteration:** `TrySessionWithCredentials` in `DeviceListViewModel` iterates all credentials per device. On success, stops iteration. On all-fail, falls back to anonymous. Both auto-discovery and manual device paths covered (`FullCredentialIteration` + `FullCredentialIterationManual`).
-- **Credential cache:** `Dictionary<string, Account> _credentialCache` in `DeviceListViewModel` keyed on device host. Cache hit → try cached credential first. On failure → evict + full iteration. Cache is in-memory only (not persisted). Addresses Risk R6.
-
-### Security Review — All Phases
-
-**NO BLOCKING SECURITY ISSUES.**
-
-1. **Passwords at rest:** DPAPI-encrypted in `credentials.dat`. Not stored in plaintext after migration from `account.def.xml` (old file deleted after successful encrypted write). Risk R4 mitigated.
-2. **Passwords in memory:** Exist as `System.String` for the application lifetime — same as pre-sprint behavior with the original single `Account`. `SecureString` would be security theater without end-to-end support (WPF `PasswordBox.Password` returns `string`, WCF `NetworkCredential` takes `string`, `XmlSerializer` operates on `string`). Acceptable.
-3. **Passwords in UI:** Masked by default (bullet chars in DataGrid CellTemplate, PasswordBox in TogglePasswordBox). Plaintext only shown on explicit user toggle action. No passwords written to logs, no passwords in XAML bindings that could be observed via data binding debugging.
-4. **Credential deduplication:** Case-insensitive username matching prevents duplicate entries. Password update prompts the user — no silent overwrites.
-5. **DPAPI scope:** `DataProtectionScope.CurrentUser` means credentials are bound to the current Windows user and machine. Documented as a known limitation (Risk R1).
-6. **No command injection or XSS vectors** — this is a WPF desktop app with no web surface. User input flows through WPF controls → `Account` struct → `CredentialStore` → DPAPI. No string interpolation into shell commands or markup.
-
-### Architecture and Code Quality — All Phases
-
-**CLEAN.** The sprint followed a sound layered approach:
-
-- **Phase 1 (storage):** `CredentialStore` singleton with DPAPI + `AccountManager` delegation. Clean separation — `CredentialStore` handles persistence, `AccountManager` handles session state.
-- **Phase 2 (iteration):** Credential iteration in `DeviceListViewModel` with per-device cache. Helper methods (`TrySessionWithCredentials`, `FullCredentialIteration`, `TryNextCredential`, `CacheCredential`) keep the logic organized. Both auto and manual device paths are covered.
-- **Phase 3 (UI):** `CredentialManagerView` as a modal child window with DataGrid CRUD. `CredentialItem` wrapper for `INotifyPropertyChanged`. Refresh event integration for live re-authentication.
-- **Phase 4 (toggle):** `TogglePasswordBox` reusable control with DP binding. Clean replacement of bare PasswordBox in both views. F1 bugfix included.
-
-No unnecessary abstractions, no over-engineering, no orphaned code. Each phase built cleanly on the previous one.
-
-### Regression Check
-
-**NO REGRESSIONS DETECTED.**
-
-- Phase 4 did not modify `CredentialStore.cs`, `AccountManager.cs`, or `DeviceListViewModel.cs`
-- The only behavioral change in existing code is the `AuthView.xaml.cs` null guard (`?? string.Empty`) which is additive and safe
-- Build clean at every phase verify checkpoint (1.V, 2.V, 3.V, 4.V)
-
----
-
-## Findings Summary
-
-| # | Severity | Phase | Type | Description | Status |
-|---|----------|-------|------|-------------|--------|
-| F1 | Low | 3 | Bug | BtMoveUp_Click missing upper-bound guard for DataGrid placeholder row | **Fixed in 7b45221** |
-
-No open findings.
-
----
-
-## Verdict
-
-**ALL 4 PHASES APPROVED. Ready for PR to development.**
-
-The ODM Credentials UI sprint is complete. REQ-1 (password visibility toggle) and REQ-2 (multiple credential pairs, secure storage, connection iteration, credential cache) are fully satisfied. No blocking findings, no security issues, no regressions. Build is clean across all phases.
-
-### Phase Summary
-
-| Phase | Tasks | Verdict |
-|-------|-------|---------|
-| Phase 1 — Credential Storage Foundation | 1.1, 1.2, 1.V | APPROVED (review commit 2348934) |
-| Phase 2 — Multi-Credential Connection Logic | 2.1, 2.2, 2.V | APPROVED (review commit 439b906) |
-| Phase 3 — Credentials Management UI | 3.1, 3.2, 3.V | APPROVED (review commit b1e74b2) |
-| Phase 4 — Password Visibility Toggle | 4.1, 4.V | APPROVED (this review) |
-
----
-
-## Documentation Harvest Review
-**Date:** 2026-04-07
+**Date:** 2026-04-07 00:00:00+00:00
 **Verdict:** APPROVED
 
-### Scope
-Reviewed `docs/credentials.md` for durability, accuracy, completeness, and absence of transient content.
+---
 
-### Durability
-The document is well-structured for a developer encountering this subsystem months from now. It covers the four key components (CredentialStore, DeviceListViewModel iteration, CredentialManagerView, TogglePasswordBox) in a logical order — storage → connection logic → UI → reusable control. Each section explains *why* the design is the way it is (e.g., why iteration is in C# not F#, why two controls instead of one for TogglePasswordBox). The Known Limitations table at the end is valuable.
+## 1. Done Criteria
 
-### Transient Content Check
-**Clean.** No commit SHAs, no task IDs, no line numbers, no sprint step references. The only requirement identifiers ("REQ-1, REQ-2") in the intro sentence are acceptable for traceability — they name *what* was built, not *how* the sprint was tracked.
+Every task has concrete, testable done criteria. Task 1.1 specifies the exact equality semantic ("two accounts with same name but different password are NOT equal"). Task 1.2 specifies observable behavior ("multiple credentials with same username coexist"). Task 2.1 lists four discrete UI elements that must be present. Task 3.1 specifies three login scenarios with expected outcomes. Task 4.1 specifies binding propagation behavior. **PASS.**
 
-### Factual Accuracy — Cross-Checked Against Source
-All major claims verified against the actual source files:
+---
 
-- **CredentialStore:** DPAPI scope, atomic write (temp+rename), migration from `account.def.xml`, anonymous skip — all accurate.
-- **DeviceListViewModel:** `TrySessionWithCredentials`, `FullCredentialIteration`, `_credentialCache` with `StringComparer.OrdinalIgnoreCase`, anonymous fallback — all accurate.
-- **CredentialManagerView:** `CanUserAddRows`, `SaveAndRefresh`, Move Up/Down, Remove with `MessageBox` — all accurate.
-- **TogglePasswordBox:** `Password` DP with `BindsTwoWayByDefault`, `_updating` guard, toggle copy behavior — all accurate.
-- **CredentialItem:** `INotifyPropertyChanged`, `ToAccount()`, `ObservableCollection<CredentialItem>` — all accurate.
+## 2. Cohesion and Coupling
 
-### Minor Observation (Non-Blocking)
-The deduplication subsection states: *"If the username exists, the stored password is updated rather than creating a duplicate entry."* The actual `AuthView.btLogin_Click` behavior is slightly richer: when the username matches but the password differs, a `MessageBox` asks the user whether to update the stored password. If the user declines, the credential is used for the current session but not persisted. This confirmation step is omitted from the doc. It does not affect architectural understanding — the key point (no duplicates) is correct — but a future developer debugging the confirmation dialog might not find it documented here. Consider adding a one-line note: *"If the password differs, the user is prompted before overwriting."*
+Phase 1 is internally cohesive — both tasks address the same root cause (name-only equality) and its consequences. Phase 2 (UX redesign) and Phase 3 (login gating) are independent concerns. Phase 4 is verification-only.
 
-### Completeness
-The document covers all components a future developer would need. `AccountManager` (the thin delegation layer between `CredentialStore` and consumers) is not given its own section, but its role is clear from context — it delegates to `CredentialStore` for persistence and manages `CurrentAccount` session state. A dedicated section is not necessary.
+**NOTE:** Task 1.2 modifies `AuthView.btLogin_Click` (removing the "Update the stored password?" prompt), and Task 3.1 also modifies `btLogin_Click` (adding "Save this credential?" prompt and three-way gating logic). Both tasks edit the same method for related but distinct reasons. This is acceptable because they execute sequentially and the removals in 1.2 simplify the method before 3.1 restructures it — but an implementer should be aware that Task 3.1 effectively rebuilds the method that Task 1.2 partially gutted. **PASS with NOTE.**
 
-### Summary
-The document is accurate, durable, and complete. One minor simplification in the deduplication description noted above — non-blocking.
+---
+
+## 3. Key Abstractions First
+
+The foundational fix — `Account.Equals` comparing both Name and Password — is correctly placed in Task 1.1, the very first work item. Everything downstream (dedup logic in 1.2, login gating in 3.1) depends on this semantic change. **PASS.**
+
+---
+
+## 4. Riskiest Assumption Validated Early
+
+The root cause hypothesis — that `Account.Equals` name-only comparison is the single root cause of both BUG-1 and BUG-2 — is the riskiest assumption in the plan. Task 1.1 validates it immediately, and Phase 1.V verifies before proceeding. The plan identifies the specific callers (line numbers in AccountManager.cs) and explains the causal chain from `Equals` → `CurrentAccount` setter → missing event → no device refresh. This is credible and well-evidenced. **PASS.**
+
+---
+
+## 5. DRY and Reuse
+
+The corrected `Account.Equals` from Task 1.1 is reused by all downstream equality checks. Task 1.2's dedup logic and Task 3.1's store-aware gating both rely on the fixed equality semantic rather than reimplementing comparison. **PASS.**
+
+---
+
+## 6. Phase Structure (2–3 tasks + verify)
+
+Phase 1 has 2 work tasks + verify. Phases 2, 3, and 4 each have 1 work task + verify. The single-task phases are appropriate given the scope of each fix — there is no artificial splitting or combining. **PASS.**
+
+---
+
+## 7. Session Completability
+
+All tasks are marked "cheap" or "standard" tier. File counts are small (1–2 files per task). No task requires cross-cutting refactoring or multi-project coordination. Each is completable in one session. **PASS.**
+
+---
+
+## 8. Dependency Order
+
+Phase 1 (equality fix) → Phase 2 (UX redesign, independent) → Phase 3 (login gating, depends on working credential store from Phase 1) → Phase 4 (verification). Dependencies are satisfied in order. Phase 2 could technically run in parallel with Phase 3, but sequential execution is simpler and the plan doesn't claim parallelism. **PASS.**
+
+---
+
+## 9. Ambiguity Check
+
+Task 3.1 offers two implementation approaches: `DelegateCommand` with `canExecute` delegate vs. a simple check at the top of `btLogin_Click` with manual disable. The plan recommends `DelegateCommand` as "cleanest" but leaves the door open. This is minor — the recommended approach is clear, the alternative is a fallback. No task is so vague that two developers would produce incompatible results. **PASS.**
+
+---
+
+## 10. Hidden Dependencies
+
+The `btLogin_Click` overlap between Task 1.2 and Task 3.1 (discussed in §2) is the only notable cross-task dependency. It is partially implicit — the plan does not explicitly state "Task 3.1 assumes the prompt removal from 1.2 is already done." However, since they are in sequential phases and 1.V verifies before Phase 3 begins, this is manageable. No other hidden dependencies detected. **PASS with NOTE.**
+
+---
+
+## 11. Risk Register
+
+The risk register identifies three risks with mitigations:
+
+1. **Account.Equals change impact** — mitigated by grepping all callers. Concrete and verifiable.
+2. **DataGrid + TogglePasswordBox binding timing** — mitigated with `UpdateSourceTrigger` and a fallback (`RowEditEnding`).
+3. **Empty-field login UX confusion** — mitigated with visual indication.
+
+**NOTE:** One risk is missing from the register: **BUG-2 root cause confidence.** The plan assumes `Account.Equals` is the *sole* root cause of BUG-2. The requirements describe a broader investigation scope ("trace the call path from camera connect through `TrySessionWithCredentials()` → `CredentialStore.GetAllCredentials()`"). If there is a second break in the chain beyond `Account.Equals` — e.g., `CredentialStore.GetAllCredentials()` not returning entries, or `TrySessionWithCredentials` not iterating the store — it would not be caught until Phase 1.V testing. The root cause analysis is credible and includes specific line numbers, but this should be acknowledged as a risk.
+
+**Suggested addition to risk register:**
+
+| 4 | BUG-2 has a second root cause beyond Account.Equals (e.g., CredentialStore not returning entries, TrySessionWithCredentials not iterating store) | Phase 1.V must test end-to-end: add credential in CredentialManagerView → close → connect to camera → verify credential is tried. If iteration still fails, trace DeviceListViewModel.TrySessionWithCredentials path. |
+
+**PASS with NOTE.**
+
+---
+
+## 12. Requirements Alignment
+
+| Item | Requirements Intent | Plan Coverage | Verdict |
+|------|-------------------|---------------|---------|
+| BUG-1 | Dedup key must be (username, password) pair | Task 1.2 changes dedup to match on both fields | **PASS** |
+| BUG-2 | Stored credentials must be tried during camera connect | Task 1.1 fixes Account.Equals so CurrentAccount setter fires events; root cause analysis is specific and credible | **PASS** |
+| UX-1 | 5 specific UI changes (× button, Delete key, Add button, remove Remove button, CanUserAddRows=false) | Task 2.1 addresses all 5 with specific XAML and code-behind changes | **PASS** |
+| UX-2 | 4 behaviors (enable when store non-empty, quick-try with save prompt, empty-field store iteration, both-empty block) | Task 3.1 addresses all 4 scenarios explicitly | **PASS** |
+| UX-3 | Replace inline show/hide with TogglePasswordBox | Plan correctly identifies Sprint 1 already did this; Task 4.1 is verification + binding fix if needed | **PASS** |
+
+The plan solves the right problems. The UX-3 verification-only approach is honest — the plan doesn't invent work where none exists. **PASS.**
+
+---
+
+## Summary
+
+**All 12 checklist items pass.** The plan is well-structured, correctly identifies `Account.Equals` as the shared root cause of BUG-1 and BUG-2, sequences the riskiest fix first, and maps cleanly to all five requirements items.
+
+**Two notes to carry forward (non-blocking):**
+1. **btLogin_Click overlap:** Tasks 1.2 and 3.1 both modify `AuthView.btLogin_Click`. The implementer should treat Task 3.1 as a rebuild of the method, not a patch on top of 1.2's changes. The plan should make the dependency explicit.
+2. **BUG-2 root cause confidence:** Add Risk #4 to the register — if `Account.Equals` is not the sole root cause, Phase 1.V testing must trace `TrySessionWithCredentials` end-to-end before proceeding to Phase 2.
+
+**No changes required. Plan is approved for implementation.**
