@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="odm.ui.views.AuthView"
+<UserControl x:Class="odm.ui.views.AuthView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -7,38 +7,32 @@
              xmlns:uiloc="clr-namespace:odm.ui;assembly=odm.localization"
              mc:Ignorable="d"
              d:DesignHeight="300" d:DesignWidth="300"
-             x:Name="root"
-             >
+             x:Name="root">
     <Grid>
-
         <Grid.Resources>
             <ObjectDataProvider x:Key="Strings" MethodName="GetInstance" ObjectType="{x:Type uiloc:LocalAccount}"/>
             <VisualBrush x:Key="NameWatermarkBrush" TileMode="None" Stretch="None" AlignmentX="Left" AlignmentY="Center" Viewbox="-5,7,0,0" ViewboxUnits="Absolute">
                 <VisualBrush.Visual>
-                    <TextBlock  Text="{Binding loginCaption, Source={StaticResource Strings}}" Foreground="Gray"  />
+                    <TextBlock Text="{Binding loginCaption, Source={StaticResource Strings}}" Foreground="Gray"/>
                 </VisualBrush.Visual>
             </VisualBrush>
             <VisualBrush x:Key="PasswordWatermarkBrush" TileMode="None" Stretch="None" AlignmentX="Left" AlignmentY="Center" Viewbox="-5,7,0,0" ViewboxUnits="Absolute">
                 <VisualBrush.Visual>
-                    <TextBlock  Text="{Binding passwordCaption, Source={StaticResource Strings}}" Foreground="Gray"  />
+                    <TextBlock Text="{Binding passwordCaption, Source={StaticResource Strings}}" Foreground="Gray"/>
                 </VisualBrush.Visual>
             </VisualBrush>
-            <ControlTemplate x:Key="LabelTextBoxTemplate" TargetType="{x:Type TextBox}">
-                <ControlTemplate.Resources>
-
-                </ControlTemplate.Resources>
-                <Border BorderThickness="0" BorderBrush="{TemplateBinding Background}">
-                    <TextBox Text="{TemplateBinding Text}"/>
-                </Border>
-            </ControlTemplate>
-
-
         </Grid.Resources>
 
-        <!--Anonymous mode-->
-        <StackPanel x:Name="panelEdit" Orientation="Horizontal" KeyboardNavigation.TabNavigation="Local">
-            <Border Background="White" BorderThickness="0" CornerRadius="2" Margin="3" VerticalAlignment="Center" >
-                <TextBox x:Name="username"  MinWidth="100" MaxWidth="300"  KeyboardNavigation.TabIndex="0">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- Col 0: login panel (anonymous) or logged-in panel — mutually exclusive -->
+        <StackPanel x:Name="panelEdit" Grid.Column="0" Orientation="Horizontal"
+                    KeyboardNavigation.TabNavigation="Local">
+            <Border Background="White" BorderThickness="0" CornerRadius="2" Margin="3" VerticalAlignment="Center">
+                <TextBox x:Name="username" MinWidth="100" MaxWidth="300" KeyboardNavigation.TabIndex="0">
                     <TextBox.Style>
                         <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
                             <Style.Triggers>
@@ -63,30 +57,39 @@
             </Border>
 
             <Border Background="White" BorderThickness="0" CornerRadius="2" Margin="3" VerticalAlignment="Center">
-                <l:TogglePasswordBox x:Name="password" Height="{Binding Path=ActualHeight, ElementName=username}" MinWidth="100" MaxWidth="300" KeyboardNavigation.TabIndex="1"/>
+                <!-- TabIndex=1 covers the PasswordBox inside; TabIndex=2 covers the eye toggle inside -->
+                <l:TogglePasswordBox x:Name="password"
+                                     Height="{Binding Path=ActualHeight, ElementName=username}"
+                                     MinWidth="100" MaxWidth="300"
+                                     KeyboardNavigation.TabIndex="1"/>
             </Border>
 
+            <Button x:Name="btLogin" Content="{Binding loginButton, Source={StaticResource Strings}}"
+                    Margin="3" VerticalAlignment="Center" KeyboardNavigation.TabIndex="3"/>
 
-
-            <Button x:Name="btLogin" Content="{Binding loginButton, Source={StaticResource Strings}}" Margin="3" VerticalAlignment="Center" KeyboardNavigation.TabIndex="2"/>
-            <CheckBox x:Name="remember" IsChecked="True" Margin="3" VerticalAlignment="Center" KeyboardNavigation.TabIndex="3">
+            <CheckBox x:Name="remember" IsChecked="True" Margin="3" VerticalAlignment="Center"
+                      KeyboardNavigation.TabIndex="4">
                 <CheckBox.Content>
                     <TextBlock Text="{Binding remember, Source={StaticResource Strings}}" Foreground="WhiteSmoke"/>
                 </CheckBox.Content>
             </CheckBox>
-            <TextBlock Margin="6,0,3,0" VerticalAlignment="Center">
-                <Hyperlink x:Name="lnkManageCredentials">
-                    <Run Text="Manage Credentials" Foreground="LightGray"/>
-                </Hyperlink>
-            </TextBlock>
         </StackPanel>
 
-        <!-- Autorized mode -->
-        <StackPanel x:Name="panelView" Orientation="Horizontal" Visibility="Collapsed">
-            <TextBlock Text="{Binding loggedAs, Source={StaticResource Strings}}" Margin="3" Foreground="WhiteSmoke" VerticalAlignment="Center" />
-            <TextBlock x:Name="loggedUsername" Margin="3"  Foreground="WhiteSmoke" FontWeight="Bold" VerticalAlignment="Center" />
-            <Button x:Name="btLogout" Content="{Binding logoutButton, Source={StaticResource Strings}}" Margin="3" VerticalAlignment="Center" />
+        <StackPanel x:Name="panelView" Grid.Column="0" Orientation="Horizontal" Visibility="Collapsed">
+            <TextBlock Text="{Binding loggedAs, Source={StaticResource Strings}}"
+                       Margin="3" Foreground="WhiteSmoke" VerticalAlignment="Center"/>
+            <TextBlock x:Name="loggedUsername" Margin="3" Foreground="WhiteSmoke"
+                       FontWeight="Bold" VerticalAlignment="Center"/>
+            <Button x:Name="btLogout" Content="{Binding logoutButton, Source={StaticResource Strings}}"
+                    Margin="3" VerticalAlignment="Center"/>
         </StackPanel>
 
+        <!-- Col 1: Manage Credentials — always visible -->
+        <TextBlock Grid.Column="1" Margin="6,0,3,0" VerticalAlignment="Center"
+                   KeyboardNavigation.TabIndex="5">
+            <Hyperlink x:Name="lnkManageCredentials">
+                <Run Text="Manage Credentials" Foreground="LightGray"/>
+            </Hyperlink>
+        </TextBlock>
     </Grid>
 </UserControl>

@@ -1198,6 +1198,9 @@
     <Resource Include="..\odm.ui.app\Resources\Images\square-arrow-down.png">
       <Link>images\square-arrow-down.png</Link>
     </Resource>
+    <Resource Include="..\odm.ui.app\Resources\Images\square-plus.png">
+      <Link>images\square-plus.png</Link>
+    </Resource>
   </ItemGroup>
   <ItemGroup>
     <Resource Include="images\warning-icon-th.png" />

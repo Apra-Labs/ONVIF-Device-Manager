@@ -220,28 +220,22 @@ namespace odm.ui.viewModels {
 			IdentitySubscriptions.Add(factory.CreateSession(devHolder.Uris)
 				.ObserveOnCurrentDispatcher()
 				.Subscribe(isession => {
-					ManualInitDeviceHolder(isession, devHolder, factory);
+					var odmSession = new OdmSession(isession);
+					var model = new IdentificationModel();
+					IdentitySubscriptions.Add(
+						odmSession.GetIdentity(() => model)
+							.ObserveOnCurrentDispatcher()
+							.Subscribe(mod => {
+								devHolder.session = isession;
+								facade = odmSession;
+								_deviceFactories[devHolder] = factory;
+								devHolder.Init(mod);
+							}, err => {
+								TryManualSessionWithCredentials(devHolder, creds, index + 1);
+							}));
 				}, err => {
 					TryManualSessionWithCredentials(devHolder, creds, index + 1);
 				}));
-		}
-
-		void ManualInitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder, NvtSessionFactory factory = null) {
-			devHolder.session = session;
-			if (factory != null) _deviceFactories[devHolder] = factory;
-
-			facade = new OdmSession(session);
-			var model = new IdentificationModel();
-			IdentitySubscriptions.Add(
-					  facade.GetIdentity(() => model)
-							.ObserveOnCurrentDispatcher()
-							.Subscribe(mod => {
-								devHolder.Init(mod);
-							}, err => {
-								//dbg.Error(err);
-								//MessageBox.Show(err.Message);
-							})
-				 );
 		}
 		void ManualAdd() {
 			ManualUri manUri = new ManualUri(LocalTitles.instance.manualAdd, ManualUri.ManualType.ADD, "");
@@ -446,31 +440,27 @@ namespace odm.ui.viewModels {
 			IdentitySubscriptions.Add(factory.CreateSession(devHolder.Uris)
 				.ObserveOnCurrentDispatcher()
 				.Subscribe(isession => {
-					InitDeviceHolder(isession, devHolder, publishEvent, factory);
-				}, err => {
-					TrySessionWithCredentials(devHolder, publishEvent, creds, index + 1);
-				}));
-		}
-
-		void InitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder, bool publish, NvtSessionFactory factory = null) {
-			devHolder.session = session;
-			if (factory != null) _deviceFactories[devHolder] = factory;
-			facade = new OdmSession(session);
-			var model = new IdentificationModel();
-			IdentitySubscriptions.Add(
-					  facade.GetIdentity(() => model)
+					var odmSession = new OdmSession(isession);
+					var model = new IdentificationModel();
+					IdentitySubscriptions.Add(
+						odmSession.GetIdentity(() => model)
 							.ObserveOnCurrentDispatcher()
 							.Subscribe(mod => {
+								devHolder.session = isession;
+								facade = odmSession;
+								_deviceFactories[devHolder] = factory;
 								devHolder.Init(mod);
-								if (publish) {
-									NvtSessionFactory f;
-									DeviceSelectedPublish(devHolder, _deviceFactories.TryGetValue(devHolder, out f) ? f : sessionFactory);
+								if (publishEvent) {
+									DeviceSelectedPublish(devHolder, factory);
 								}
 							}, err => {
-								//dbg.Error(err);
-								//MessageBox.Show(err.Message);
-							})
-				 );
+								// Auth failed — try next credential
+								TrySessionWithCredentials(devHolder, publishEvent, creds, index + 1);
+							}));
+				}, err => {
+					// Connection failed — try next credential
+					TrySessionWithCredentials(devHolder, publishEvent, creds, index + 1);
+				}));
 		}
 
 		void DeviceSelectedPublish(DeviceDescriptionHolder dev, NvtSessionFactory sessionFactory) {

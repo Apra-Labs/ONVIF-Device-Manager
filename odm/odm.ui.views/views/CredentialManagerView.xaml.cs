@@ -48,14 +48,15 @@ namespace odm.ui.views
 
     /// <summary>
     /// Child window for managing stored credential pairs.
-    /// Supports add (+ Add button), edit, remove (× column or Delete key), and reorder.
-    /// All changes are saved immediately to CredentialStore and a Refresh is published.
+    ///
+    /// All edits (add, delete, reorder, edit) are in-memory only.
+    /// Nothing is persisted and no camera reconnect happens until the user clicks Apply.
+    /// Cancel and the window X button discard all changes silently.
     /// </summary>
     public partial class CredentialManagerView : Window
     {
         readonly IEventAggregator _eventAggregator;
         ObservableCollection<CredentialItem> _items;
-        bool _credentialsModified = false;
 
         public CredentialManagerView(IEventAggregator eventAggregator)
         {
@@ -64,49 +65,35 @@ namespace odm.ui.views
             LoadCredentials();
 
             credGrid.RowEditEnding += CredGrid_RowEditEnding;
+            btAdd.Click      += BtAdd_Click;
             btMoveUp.Click   += BtMoveUp_Click;
             btMoveDown.Click += BtMoveDown_Click;
-            btClose.Click    += (s, e) => Close();
         }
+
+        // ------------------------------------------------------------------
+        // Load — snapshot of the store at open time; edits stay in _items
+        // ------------------------------------------------------------------
 
         void LoadCredentials()
         {
             _items = new ObservableCollection<CredentialItem>();
             foreach (var account in CredentialStore.Instance.GetAll())
-            {
                 _items.Add(new CredentialItem { Name = account.Name, Password = account.Password });
-            }
             credGrid.ItemsSource = _items;
         }
 
-        void SaveCredentials()
-        {
-            var list = new List<Account>();
-            foreach (var item in _items)
-            {
-                if (!string.IsNullOrEmpty(item.Name))
-                    list.Add(item.ToAccount());
-            }
-            AccountManager.Instance.SetCredentials(list);
-        }
-
-        void SaveAndRefresh()
-        {
-            SaveCredentials();
-            _credentialsModified = true;
-            _eventAggregator.GetEvent<Refresh>().Publish(true);
-        }
+        // ------------------------------------------------------------------
+        // Grid editing — commit cell/row bindings only; never touch the store
+        // ------------------------------------------------------------------
 
         void CredGrid_RowEditEnding(object sender, DataGridRowEditEndingEventArgs e)
         {
-            if (e.EditAction == DataGridEditAction.Commit)
-            {
-                // Defer until after the DataGrid has committed the edit to the binding source.
-                Dispatcher.BeginInvoke(
-                    new Action(SaveAndRefresh),
-                    System.Windows.Threading.DispatcherPriority.Background);
-            }
+            // Intentionally empty: changes stay in _items until Apply.
         }
+
+        // ------------------------------------------------------------------
+        // Toolbar — Add / Delete / Move (in-memory only)
+        // ------------------------------------------------------------------
 
         void BtAdd_Click(object sender, RoutedEventArgs e)
         {
@@ -123,9 +110,7 @@ namespace odm.ui.views
             var btn = sender as Button;
             if (btn == null) return;
             var item = btn.DataContext as CredentialItem;
-            if (item == null) return;
-            _items.Remove(item);
-            SaveAndRefresh();
+            if (item != null) _items.Remove(item);
         }
 
         void CredGrid_KeyDown(object sender, KeyEventArgs e)
@@ -133,12 +118,7 @@ namespace odm.ui.views
             if (e.Key == Key.Delete)
             {
                 var item = credGrid.SelectedItem as CredentialItem;
-                if (item != null)
-                {
-                    _items.Remove(item);
-                    SaveAndRefresh();
-                    e.Handled = true;
-                }
+                if (item != null) { _items.Remove(item); e.Handled = true; }
             }
         }
 
@@ -148,7 +128,6 @@ namespace odm.ui.views
             if (idx <= 0 || idx >= _items.Count) return;
             _items.Move(idx, idx - 1);
             credGrid.SelectedIndex = idx - 1;
-            SaveCredentials();
         }
 
         void BtMoveDown_Click(object sender, RoutedEventArgs e)
@@ -157,8 +136,43 @@ namespace odm.ui.views
             if (idx < 0 || idx >= _items.Count - 1) return;
             _items.Move(idx, idx + 1);
             credGrid.SelectedIndex = idx + 1;
-            SaveCredentials();
         }
+
+        // ------------------------------------------------------------------
+        // Apply — the ONLY place that persists changes and reconnects cameras
+        // ------------------------------------------------------------------
+
+        void BtApply_Click(object sender, RoutedEventArgs e)
+        {
+            credGrid.CommitEdit(DataGridEditingUnit.Row, true);
+
+            var list = new List<Account>();
+            foreach (var item in _items)
+                if (!string.IsNullOrEmpty(item.Name))
+                    list.Add(item.ToAccount());
+
+            AccountManager.Instance.SetCredentials(list);
+            AccountManager.Instance.LoggedOutExplicitly = (list.Count == 0);
+            AccountManager.Instance.SetCurrentAccount(Account.Anonymous, remember: false);
+            _eventAggregator.GetEvent<Refresh>().Publish(true);
+
+            Close();
+        }
+
+        // ------------------------------------------------------------------
+        // Cancel / X — discard all changes, no side effects
+        // ------------------------------------------------------------------
+
+        void BtCancel_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
+        }
+
+        // OnClosing is NOT overridden — window close (X) is identical to Cancel.
+
+        // ------------------------------------------------------------------
+        // Keyboard navigation inside the grid
+        // ------------------------------------------------------------------
 
         void CredGrid_PreviewKeyDown(object sender, KeyEventArgs e)
         {
@@ -175,7 +189,6 @@ namespace odm.ui.views
 
             if (colIdx == 0)
             {
-                // Username → Password: commit, begin edit on password column, select all
                 credGrid.CommitEdit(DataGridEditingUnit.Cell, true);
                 credGrid.CurrentCell = new DataGridCellInfo(_items[rowIdx], credGrid.Columns[1]);
                 credGrid.SelectedItem = _items[rowIdx];
@@ -188,7 +201,6 @@ namespace odm.ui.views
             }
             else if (colIdx == 1)
             {
-                // Password → Delete button of same row
                 credGrid.CommitEdit(DataGridEditingUnit.Cell, true);
                 credGrid.CurrentCell = new DataGridCellInfo(_items[rowIdx], credGrid.Columns[2]);
                 credGrid.SelectedItem = _items[rowIdx];
@@ -200,7 +212,6 @@ namespace odm.ui.views
             }
             else if (colIdx == 2)
             {
-                // Delete → Username of next row, or btAdd if no more rows
                 int nextRow = rowIdx + 1;
                 if (nextRow < _items.Count)
                 {
@@ -248,18 +259,6 @@ namespace odm.ui.views
                 if (result != null) return result;
             }
             return null;
-        }
-
-        protected override void OnClosing(CancelEventArgs e)
-        {
-            base.OnClosing(e);
-            if (_credentialsModified)
-            {
-                var storeCount = CredentialStore.Instance.GetAll().Count;
-                AccountManager.Instance.LoggedOutExplicitly = (storeCount == 0);
-                AccountManager.Instance.SetCurrentAccount(Account.Anonymous, remember: false);
-                _eventAggregator.GetEvent<Refresh>().Publish(true);
-            }
         }
     }
 }
