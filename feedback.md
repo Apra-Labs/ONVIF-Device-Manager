@@ -227,3 +227,36 @@ The ODM Credentials UI sprint is complete. REQ-1 (password visibility toggle) an
 | Phase 2 — Multi-Credential Connection Logic | 2.1, 2.2, 2.V | APPROVED (review commit 439b906) |
 | Phase 3 — Credentials Management UI | 3.1, 3.2, 3.V | APPROVED (review commit b1e74b2) |
 | Phase 4 — Password Visibility Toggle | 4.1, 4.V | APPROVED (this review) |
+
+---
+
+## Documentation Harvest Review
+**Date:** 2026-04-07
+**Verdict:** APPROVED
+
+### Scope
+Reviewed `docs/credentials.md` for durability, accuracy, completeness, and absence of transient content.
+
+### Durability
+The document is well-structured for a developer encountering this subsystem months from now. It covers the four key components (CredentialStore, DeviceListViewModel iteration, CredentialManagerView, TogglePasswordBox) in a logical order — storage → connection logic → UI → reusable control. Each section explains *why* the design is the way it is (e.g., why iteration is in C# not F#, why two controls instead of one for TogglePasswordBox). The Known Limitations table at the end is valuable.
+
+### Transient Content Check
+**Clean.** No commit SHAs, no task IDs, no line numbers, no sprint step references. The only requirement identifiers ("REQ-1, REQ-2") in the intro sentence are acceptable for traceability — they name *what* was built, not *how* the sprint was tracked.
+
+### Factual Accuracy — Cross-Checked Against Source
+All major claims verified against the actual source files:
+
+- **CredentialStore:** DPAPI scope, atomic write (temp+rename), migration from `account.def.xml`, anonymous skip — all accurate.
+- **DeviceListViewModel:** `TrySessionWithCredentials`, `FullCredentialIteration`, `_credentialCache` with `StringComparer.OrdinalIgnoreCase`, anonymous fallback — all accurate.
+- **CredentialManagerView:** `CanUserAddRows`, `SaveAndRefresh`, Move Up/Down, Remove with `MessageBox` — all accurate.
+- **TogglePasswordBox:** `Password` DP with `BindsTwoWayByDefault`, `_updating` guard, toggle copy behavior — all accurate.
+- **CredentialItem:** `INotifyPropertyChanged`, `ToAccount()`, `ObservableCollection<CredentialItem>` — all accurate.
+
+### Minor Observation (Non-Blocking)
+The deduplication subsection states: *"If the username exists, the stored password is updated rather than creating a duplicate entry."* The actual `AuthView.btLogin_Click` behavior is slightly richer: when the username matches but the password differs, a `MessageBox` asks the user whether to update the stored password. If the user declines, the credential is used for the current session but not persisted. This confirmation step is omitted from the doc. It does not affect architectural understanding — the key point (no duplicates) is correct — but a future developer debugging the confirmation dialog might not find it documented here. Consider adding a one-line note: *"If the password differs, the user is prompted before overwriting."*
+
+### Completeness
+The document covers all components a future developer would need. `AccountManager` (the thin delegation layer between `CredentialStore` and consumers) is not given its own section, but its role is clear from context — it delegates to `CredentialStore` for persistence and manages `CurrentAccount` session state. A dedicated section is not necessary.
+
+### Summary
+The document is accurate, durable, and complete. One minor simplification in the deduplication description noted above — non-blocking.
