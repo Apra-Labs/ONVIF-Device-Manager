@@ -36,8 +36,8 @@
       "title": "Add × delete column, Delete key, explicit Add button (UX-1)",
       "type": "work",
       "tier": "standard",
-      "status": "pending",
-      "notes": "Redesign CredentialManagerView: CanUserAddRows=False, × column per row, Delete key handler, + Add button, remove bottom Remove button."
+      "status": "completed",
+      "notes": "CanUserAddRows=False; bottom Remove button removed; × DataGridTemplateColumn added (immediate row delete, no confirmation); Delete key handler on credGrid removes selected row; + Add button appends blank CredentialItem and focuses username cell. Commit: cb0b66e."
     },
     {
       "id": "2.V",
@@ -45,8 +45,8 @@
       "title": "Verify Phase 2",
       "type": "verify",
       "tier": null,
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "msbuild odm.sln /p:Configuration=Debug — 0 errors, warnings only (pre-existing). All four output assemblies built: odm.ui.views.dll, odm.ui.activities.dll, odm.extensibility.dll, odm.exe."
     },
     {
       "id": "3.1",
