@@ -120,7 +120,7 @@ namespace odm.ui.viewModels {
 		public LocalDeviceList Strings { get { return LocalDeviceList.instance; } }
 		public LocalButtons BtnStrings { get { return LocalButtons.instance; } }
 		public LocalTitles Titles { get { return LocalTitles.instance; } }
-		
+
 		private INvtManager deviceManager;
 		private readonly IEventAggregator eventAggregator;
 		private readonly IUnityContainer container;
@@ -130,6 +130,8 @@ namespace odm.ui.viewModels {
 		SubscriptionToken RefreshSubscribtion;
         SubscriptionToken BatchUpgradeSubscribtion;
         SubscriptionToken BatchRestoreSubscribtion;
+		// Per-device session factory tracking — each device may authenticate with a different credential
+		private Dictionary<DeviceDescriptionHolder, NvtSessionFactory> _deviceFactories = new Dictionary<DeviceDescriptionHolder, NvtSessionFactory>();
 
 
 		public DeviceListViewModel(IUnityContainer container) {//IDeviceManager deviceManager, IEventAggregator eventAggregator) {
@@ -210,13 +212,46 @@ namespace odm.ui.viewModels {
 			SaveManualList();
 		}
 		void ManualSessionProcess(DeviceDescriptionHolder devHolder) {
-			IdentitySubscriptions.Add(sessionFactory.CreateSession(devHolder.Uris)
-					  .ObserveOnCurrentDispatcher()
-					  .Subscribe(isession => {
-						  ManualInitDeviceHolder(isession, devHolder);
-					  }, err => {
-						  dbg.Error(err);
-					  }));
+			var allCreds = AccountManager.Instance.GetAllCredentials();
+			var attempts = new List<System.Net.NetworkCredential>();
+
+			foreach (var cred in allCreds) {
+				if (!cred.IsAnonymous) {
+					attempts.Add(new System.Net.NetworkCredential() { UserName = cred.Name, Password = cred.Password });
+				}
+			}
+			attempts.Add(null); // anonymous fallback
+
+			TryNextCredentialManual(devHolder, attempts, 0);
+		}
+
+		void TryNextCredentialManual(DeviceDescriptionHolder devHolder, List<System.Net.NetworkCredential> credentials, int index) {
+			if (index >= credentials.Count) {
+				// All credentials exhausted — anonymous last resort
+				var fallbackFactory = new NvtSessionFactory(null);
+				_deviceFactories[devHolder] = fallbackFactory;
+				devHolder.Account = null;
+				IdentitySubscriptions.Add(fallbackFactory.CreateSession(devHolder.Uris)
+					.ObserveOnCurrentDispatcher()
+					.Subscribe(session => {
+						ManualInitDeviceHolder(session, devHolder);
+					}, err => {
+						dbg.Error(err);
+					}));
+				return;
+			}
+
+			var cred = credentials[index];
+			var factory = new NvtSessionFactory(cred);
+			IdentitySubscriptions.Add(factory.CreateSession(devHolder.Uris)
+				.ObserveOnCurrentDispatcher()
+				.Subscribe(session => {
+					devHolder.Account = cred;
+					_deviceFactories[devHolder] = factory;
+					ManualInitDeviceHolder(session, devHolder);
+				}, err => {
+					TryNextCredentialManual(devHolder, credentials, index + 1);
+				}));
 		}
 
 		void ManualInitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder) {
@@ -296,6 +331,7 @@ namespace odm.ui.viewModels {
 			ReleaseDeviceSubscription();
 
 			currentAccount = LoadCurrentAccount();
+			_deviceFactories.Clear();
 
 			var mandev = Devices.Where(d => d.IsManual);
 			var uris = new List<string>();
@@ -405,14 +441,52 @@ namespace odm.ui.viewModels {
 			}
 		}
 		void SessionProcess(DeviceDescriptionHolder devHolder, bool publishEvent) {
-			IdentitySubscriptions.Add(sessionFactory.CreateSession(devHolder.Uris)
-					  .ObserveOnCurrentDispatcher()
-					  .Subscribe(isession => {
-						  InitDeviceHolder(isession, devHolder, publishEvent);
-					  }, err => {
-						  //dbg.Error(err);
-						  InitDeviceHolder(sessionFactory.CreateSession(devHolder.Uris[devHolder.Uris.Count() - 1]), devHolder, publishEvent);
-					  }));
+			TrySessionWithCredentials(devHolder, publishEvent);
+		}
+
+		/// <summary>
+		/// Iterates through all stored credentials to find one that authenticates with the device.
+		/// On success, stores the working credential on devHolder and the factory in _deviceFactories.
+		/// If all credentials fail, falls back to anonymous with the last URI (preserving original behavior).
+		/// </summary>
+		void TrySessionWithCredentials(DeviceDescriptionHolder devHolder, bool publishEvent) {
+			var allCreds = AccountManager.Instance.GetAllCredentials();
+			var attempts = new List<System.Net.NetworkCredential>();
+
+			foreach (var cred in allCreds) {
+				if (!cred.IsAnonymous) {
+					attempts.Add(new System.Net.NetworkCredential() { UserName = cred.Name, Password = cred.Password });
+				}
+			}
+			// Anonymous (null credential) as final fallback
+			attempts.Add(null);
+
+			TryNextCredential(devHolder, attempts, 0, publishEvent);
+		}
+
+		void TryNextCredential(DeviceDescriptionHolder devHolder, List<System.Net.NetworkCredential> credentials, int index, bool publishEvent) {
+			if (index >= credentials.Count) {
+				// All credentials exhausted — last-resort fallback: anonymous on the last URI only
+				var fallbackFactory = new NvtSessionFactory(null);
+				_deviceFactories[devHolder] = fallbackFactory;
+				devHolder.Account = null;
+				InitDeviceHolder(fallbackFactory.CreateSession(devHolder.Uris[devHolder.Uris.Count() - 1]), devHolder, publishEvent);
+				return;
+			}
+
+			var cred = credentials[index];
+			var factory = new NvtSessionFactory(cred);
+			IdentitySubscriptions.Add(factory.CreateSession(devHolder.Uris)
+				.ObserveOnCurrentDispatcher()
+				.Subscribe(session => {
+					// Success — store working credential and factory for this device
+					devHolder.Account = cred;
+					_deviceFactories[devHolder] = factory;
+					InitDeviceHolder(session, devHolder, publishEvent);
+				}, err => {
+					// This credential failed — try next one
+					TryNextCredential(devHolder, credentials, index + 1, publishEvent);
+				}));
 		}
 
 		void InitDeviceHolder(INvtSession session, DeviceDescriptionHolder devHolder, bool publish) {
@@ -433,9 +507,10 @@ namespace odm.ui.viewModels {
 				 );
 		}
 
-		void DeviceSelectedPublish(DeviceDescriptionHolder dev, NvtSessionFactory sessionFactory) {
+		void DeviceSelectedPublish(DeviceDescriptionHolder dev, NvtSessionFactory factory) {
 			var evargs = new DeviceSelectedEventArgs();
-			evargs.sessionFactory = sessionFactory;
+			NvtSessionFactory devFactory;
+			evargs.sessionFactory = _deviceFactories.TryGetValue(dev, out devFactory) ? devFactory : factory;
 			evargs.devHolder = dev;
 			eventAggregator.GetEvent<DeviceSelectedEvent>().Publish(evargs);
 		}
@@ -495,7 +570,8 @@ namespace odm.ui.viewModels {
 
 			DeviceSelectedEventArgs evargs = new DeviceSelectedEventArgs();
 			evargs.devHolder = dev;
-			evargs.sessionFactory = sessionFactory;
+			NvtSessionFactory devFactory;
+			evargs.sessionFactory = _deviceFactories.TryGetValue(dev, out devFactory) ? devFactory : sessionFactory;
 			eventAggregator.GetEvent<DeviceSelectedEvent>().Publish(evargs);
 		}
 

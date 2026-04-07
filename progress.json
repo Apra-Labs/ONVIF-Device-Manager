@@ -45,8 +45,8 @@
       "title": "Implement credential iteration in DeviceListViewModel",
       "type": "work",
       "tier": "premium",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Replaced single-credential SessionProcess with TrySessionWithCredentials/TryNextCredential that iterates all stored credentials (from AccountManager.GetAllCredentials) plus anonymous fallback. Added _deviceFactories dictionary to track per-device NvtSessionFactory for correct credential propagation when device is selected. Updated ManualSessionProcess with same iteration pattern. Updated OnSelectedDeviceChanged and DeviceSelectedPublish to use per-device factory."
     },
     {
       "id": "2.2",
