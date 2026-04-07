@@ -1,98 +1,144 @@
-# ODM Credentials UI — Phase 1 Code Review
+# ODM Credentials UI — Phase 2 Code Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-07 15:30:00+00:00
+**Date:** 2026-04-07 18:00:00+00:00
 **Verdict:** APPROVED
 
 > See the recent git history of this file to understand the context of this review.
 
 ---
 
-## 1. Account.Equals and GetHashCode (Task 1.1, commit 80dac2b)
+## 1. CanUserAddRows=False (Task 2.1, commit cb0b66e)
 
-`Account.Equals` now compares both `Name` and `Password` (`AccountManager.cs:29`):
+`CredentialManagerView.xaml:19` now sets `CanUserAddRows="False"` on the DataGrid. The implicit blank row at the bottom of the grid is gone. The only add affordance is the explicit "+ Add" button (see section 4). This directly addresses UX-1 requirement #5. **PASS.**
 
+---
+
+## 2. x delete column (Task 2.1, commit cb0b66e)
+
+A new `DataGridTemplateColumn` (`CredentialManagerView.xaml:53-62`) is appended as the last column with `Width="30"` and empty `Header=""`. Each row renders a `Button` with `Content="&#x00D7;"` (multiplication sign, renders as x), transparent background, no border. The button's `Click` handler is `BtDeleteRow_Click`.
+
+Code-behind (`CredentialManagerView.xaml.cs:112-119`):
 ```csharp
-return this.Name == another.Name && this.Password == another.Password;
+void BtDeleteRow_Click(object sender, RoutedEventArgs e)
+{
+    var btn = sender as Button;
+    if (btn == null) return;
+    var item = btn.DataContext as CredentialItem;
+    if (item == null) return;
+    _items.Remove(item);
+    SaveAndRefresh();
+}
 ```
 
-This directly fixes the root cause shared by BUG-1 and BUG-2. Previously, setting `CurrentAccount` to `admin/newpass` when the current was `admin/oldpass` short-circuited — the setter's `if (_currentAccount == value) return` treated them as equal, so `CurrentAccountChanged` never fired and devices never refreshed.
+The handler retrieves the `CredentialItem` from the button's `DataContext` — this is the correct WPF pattern for template-column buttons. It removes the *specific row item*, not a fixed index. Null guards on both `btn` and `item` prevent crashes if `DataContext` is somehow wrong. `SaveAndRefresh()` persists immediately.
 
-`GetHashCode` (`AccountManager.cs:43-46`) correctly combines both fields using the standard `unchecked { (Name.GetHashCode() * 397) ^ Password.GetHashCode() }` pattern. Both `Name` and `Password` properties null-coalesce to `string.Empty`, so there is no `NullReferenceException` risk in the hash computation.
-
-`IsAnonymous` (`AccountManager.cs:21`) checks `Anonymous.Equals(this)` where `Anonymous` has empty Name and empty Password. With the new equality both fields must match, so `IsAnonymous` remains correct — no regression.
-
-The `==` and `!=` operators delegate to `Equals`, so all equality paths are covered.
-
-**Done criteria check:** "Two accounts with same name but different password are NOT equal. `CurrentAccount` setter fires change events when password changes." Both satisfied. **PASS.**
+**Done criteria check:** "x per row" present. "Removes the correct row (not a fixed index)" — confirmed, uses `DataContext` binding. **PASS.**
 
 ---
 
-## 2. SetCurrentAccount dedup logic (Task 1.2, commit 31bee48)
+## 3. Delete key handler (Task 2.1, commit cb0b66e)
 
-`SetCurrentAccount` (`AccountManager.cs:108-129`) was rewritten from name-only lookup-and-overwrite to exact (name, password) pair matching:
+`CredentialManagerView.xaml:26` wires `KeyDown="CredGrid_KeyDown"` on the DataGrid.
 
-- Old behavior: found existing entry by name → overwrote its password. This collapsed `admin/pass1` and `admin/pass2` into a single entry.
-- New behavior: scans for exact `(name, password)` match. If found (`exactMatch = true`), skips the add. If not found — even if the same name exists with a different password — adds as a new entry.
+Code-behind (`CredentialManagerView.xaml.cs:122-133`):
+```csharp
+void CredGrid_KeyDown(object sender, KeyEventArgs e)
+{
+    if (e.Key == Key.Delete)
+    {
+        var item = credGrid.SelectedItem as CredentialItem;
+        if (item != null)
+        {
+            _items.Remove(item);
+            SaveAndRefresh();
+            e.Handled = true;
+        }
+    }
+}
+```
 
-The name comparison uses `StringComparison.OrdinalIgnoreCase` while `Account.Equals` uses case-sensitive `==`. This asymmetry is intentional and correct: store-level dedup is case-insensitive for usability (a user typing "Admin" shouldn't create a duplicate of "admin/pass1"), while identity comparison (`Account.Equals`) is exact for correctness in the `CurrentAccount` setter's change detection.
+Null selection is handled gracefully — `if (item != null)` guards the removal, so pressing Delete with no row selected does nothing. `e.Handled = true` prevents the DataGrid from processing the key further (which could interfere with edit mode). The `using System.Windows.Input` import was correctly added at line 7.
 
-**NOTE:** Password comparison in the dedup loop uses exact `==`, matching `Account.Equals` behavior. This is correct — passwords are case-sensitive.
-
-**Done criteria check:** "Multiple credentials with same username coexist. Login with remember adds new pairs without overwriting." Satisfied. **PASS.**
-
----
-
-## 3. AuthView.btLogin_Click simplification (Task 1.2, commit 31bee48)
-
-The 30-line block in `btLogin_Click` (`AuthView.xaml.cs:118-147` old) that prompted "Update the stored password?" has been completely removed. The method now simply calls `SetCurrentAccount` and publishes a `Refresh` event (`AuthView.xaml.cs:119-121`).
-
-This removal is correct because:
-1. The "overwrite" prompt was the UI-facing manifestation of name-only dedup — with (name, password) pair matching, there is no overwrite scenario to prompt for.
-2. The dedup responsibility is now centralized in `SetCurrentAccount`, eliminating the duplicated store-scanning logic that existed in both `SetCurrentAccount` and `btLogin_Click`.
-3. The plan explicitly called for this removal, and the plan review (§2) noted that Task 3.1 will later rebuild `btLogin_Click` with new gating logic — so keeping it minimal now is the right call.
-
-**Done criteria check:** Prompt removed; dedup is centralized. **PASS.**
-
----
-
-## 4. Build verification (Task 1.V, commit 100fa9d)
-
-`msbuild odm.sln -p:Configuration=Debug` produces 0 errors. All four output assemblies built successfully:
-- `odm.ui.views.dll`
-- `odm.ui.activities.dll`
-- `odm.extensibility.dll`
-- `odm.exe`
-
-Warnings are all pre-existing (CS0108 hides-member, CS0105 duplicate-using, CS0169 unused-field, MSB3270 arch-mismatch, etc.). No new warnings introduced by Phase 1 changes. **PASS.**
+**Done criteria check:** "Delete key handler removes selected row and handles null selection gracefully." Both confirmed. **PASS.**
 
 ---
 
-## 5. Requirements alignment
+## 4. Add button (Task 2.1, commit cb0b66e)
 
-| Requirement | Phase 1 Coverage | Verdict |
-|-------------|-----------------|---------|
-| **BUG-1:** Dedup key must be (username, password) pair | `SetCurrentAccount` matches on both fields; prompt removal eliminates the UI-level name-only check | **PASS** |
-| **BUG-2:** Stored credentials must be tried during camera connect | `Account.Equals` fix unblocks `CurrentAccount` setter → `CurrentAccountChanged` fires → device refresh propagates | **PASS** |
+The bottom button bar was restructured from a single `StackPanel` to a `Grid` (`CredentialManagerView.xaml:66-74`). The "+ Add" button is `HorizontalAlignment="Left"`, while Move Up / Move Down / Close are in a right-aligned `StackPanel`. This layout cleanly separates the add action from the reorder/close actions.
 
-**Plan review note follow-up:** The plan review (§11) flagged that BUG-2 may have a second root cause beyond `Account.Equals`. The 1.V commit notes acknowledge that "end-to-end manual test required: add credential in CredentialManagerView -> connect -> verify credential is tried." This is the correct response — Phase 1 fixes the identified root cause and defers end-to-end validation to manual testing before Phase 2 begins.
+Code-behind (`CredentialManagerView.xaml.cs:102-110`):
+```csharp
+void BtAdd_Click(object sender, RoutedEventArgs e)
+{
+    var newItem = new CredentialItem();
+    _items.Add(newItem);
+    credGrid.SelectedItem = newItem;
+    credGrid.ScrollIntoView(newItem);
+    credGrid.CurrentCell = new DataGridCellInfo(newItem, credGrid.Columns[0]);
+    credGrid.BeginEdit();
+}
+```
+
+Creates a blank `CredentialItem`, appends to `_items`, selects it, scrolls into view, sets the current cell to column 0 (Username), and begins edit mode. This matches the plan spec: "append new blank row and set focus to username cell."
+
+**NOTE:** `SaveAndRefresh()` is intentionally not called here — the new blank row has an empty `Name`, so `SaveAndRefresh` would skip it (see `SaveAndRefresh` line 84: `if (!string.IsNullOrEmpty(item.Name))`). The save happens when the user completes the row edit via `CredGrid_RowEditEnding`. This is correct behavior — no empty credentials are persisted to the store.
+
+**Done criteria check:** "Add button appends blank row and focuses username cell." Confirmed. **PASS.**
 
 ---
 
-## 6. Regression check
+## 5. Remove button eliminated (Task 2.1, commit cb0b66e)
 
-No previously approved phases exist in Sprint 2 (this is the first code phase). Sprint 1 code was not modified — all changes are confined to `AccountManager.cs` and `AuthView.xaml.cs`. The `CredentialStore`, `CredentialManagerView`, `TogglePasswordBox`, and `DeviceListViewModel` are untouched. **PASS.**
+The `btRemove` button was removed from XAML. The `BtRemove_Click` handler (which included a `MessageBox.Show` confirmation dialog) was removed from code-behind. The event wiring `btRemove.Click += BtRemove_Click` was removed from the constructor. No references to `btRemove` remain.
+
+The confirmation dialog was intentionally dropped — the x column provides per-row immediate deletion, and the plan did not call for a confirmation prompt. This is appropriate for a credential list where undo is adding the credential back (low cost).
+
+**PASS.**
 
 ---
 
-## 7. progress.json
+## 6. Build verification (Task 2.V, commit f5aadfe)
 
-Tasks 1.1, 1.2, and 1.V are all marked `"completed"` with accurate notes and commit SHAs. Remaining tasks (2.1 through 4.V) remain `"pending"`. **PASS.**
+The verify commit `f5aadfe` reports `msbuild odm.sln /p:Configuration=Debug` with 0 errors. I was unable to run msbuild independently due to sandbox restrictions on this review environment, but the verify commit's progress.json notes confirm: "0 errors, warnings only (pre-existing). All four output assemblies built."
+
+**NOTE:** Build verification is based on the doer's verify commit rather than independent execution. This is acceptable given the sandbox constraint, and the diff shows no syntax issues or missing references.
+
+**PASS (with caveat).**
+
+---
+
+## 7. Phase 1 regression check
+
+`git diff 68e43f6..f5aadfe` shows zero changes to Phase 1 files:
+- `AccountManager.cs` — untouched
+- `AuthView.xaml.cs` — untouched
+
+Phase 1's `Account.Equals` fix, `SetCurrentAccount` dedup logic, and `btLogin_Click` simplification are all intact. The only files modified in Phase 2 are `CredentialManagerView.xaml`, `CredentialManagerView.xaml.cs`, and `progress.json`. **PASS.**
+
+---
+
+## 8. Requirements alignment
+
+| UX-1 Requirement | Implementation | Verdict |
+|------------------|---------------|---------|
+| Remove bottom "Remove" button | `btRemove` and handler deleted | **PASS** |
+| Add x button as last DataGrid column | `DataGridTemplateColumn` with `BtDeleteRow_Click` via `DataContext` | **PASS** |
+| Handle Delete key for row removal | `CredGrid_KeyDown` with null guard | **PASS** |
+| Add explicit "+ Add" button | `btAdd` with `BtAdd_Click` — appends, selects, begins edit | **PASS** |
+| Set `CanUserAddRows=False` | Set on DataGrid, line 19 | **PASS** |
+
+---
+
+## 9. progress.json
+
+Tasks 2.1 and 2.V are marked `"completed"` with accurate notes and commit SHA `cb0b66e`. All Phase 1 tasks remain `"completed"`. Remaining tasks (3.1 through 4.V) are `"pending"`. **PASS.**
 
 ---
 
 ## Summary
 
-Phase 1 is clean and correct. The `Account.Equals` fix is the minimal, precise change needed to unblock both BUG-1 and BUG-2. `GetHashCode` is consistent with `Equals`. The `SetCurrentAccount` rewrite correctly transitions from name-only overwrite to (name, password) pair dedup. The `btLogin_Click` prompt removal eliminates duplicated logic and leaves the method in a clean state for Phase 3's rebuild. Build passes with 0 errors and no new warnings.
+Phase 2 is clean and correct. The CredentialManagerView UX redesign addresses all five UX-1 requirements: `CanUserAddRows=False` removes the non-obvious implicit blank row; the x column provides per-row immediate deletion using the correct `DataContext` pattern (not index-based); the Delete key handler gracefully handles null selection; the "+ Add" button appends a blank row and focuses the username cell for editing; and the old Remove button with its confirmation dialog is cleanly eliminated. No Phase 1 regressions. Build reported clean by the verify commit.
 
-**No changes required. Phase 1 is approved for implementation of Phase 2.**
+**No changes required. Phase 2 is approved for implementation of Phase 3.**
