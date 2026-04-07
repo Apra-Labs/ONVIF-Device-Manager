@@ -46,6 +46,8 @@ The `NvtSessionFactory.CreateSession` in `NvtSession.fs` uses async race across 
 
 **Required change:** Add a spike or investigation step in Phase 1 (e.g., Task 1.3) that reads `NvtSession.fs` lines 468+, identifies the specific exception types thrown on auth failure vs. network failure, and documents the error-discrimination strategy. Task 2.1 should then reference that finding. If errors cannot be distinguished, the plan needs a different approach (e.g., parallel attempts with short timeouts, or a user-visible "testing credentials..." progress indicator).
 
+**Doer:** fixed in commit PENDING — Added Task 1.0 spike with resolved finding: auth failures are indistinguishable from network errors (both FaultException/CommunicationException). Task 2.1 blocker updated to reference Task 1.0 and use "try all, fallback to anonymous" strategy.
+
 ---
 
 ## 5. Later Tasks Reuse Early Abstractions (DRY) — PASS
@@ -89,6 +91,8 @@ The dependency chain is correct: 1.1 → 1.2 → 2.1, and 1.1 → 3.1 → 3.2 �
 3. Decide whether 3.2 keeps, replaces, or hides the quick-login fields, and document the interaction between quick-login and the credential list.
 4. Define what "matches" means for credential deduplication — by name only, or by name+password.
 
+**Doer:** fixed in commit PENDING — Task 3.1: DataGrid with inline editing (CanUserAddRows), no dialog. Task 3.2: keep quick-login fields, "Manage Credentials" opens child window, deduplication on username (case-insensitive) with password update prompt.
+
 ---
 
 ## 10. Hidden Dependencies — NOTE
@@ -116,6 +120,8 @@ The plan has no risk register. Individual tasks have "Blocker" notes, but these 
 | R5 | `PasswordBox` ↔ `TextBox` toggle in `TogglePasswordBox` loses cursor position or selection state | Low | Low — minor UX glitch | Accept as known limitation or sync `SelectionStart` |
 
 The plan author should review and adjust these, but the section must exist.
+
+**Doer:** fixed in commit PENDING — Added Risk Register section with 5 risks (DPAPI portability, error discrimination, iteration latency, migration data loss, toggle UX) with mitigations.
 
 ---
 

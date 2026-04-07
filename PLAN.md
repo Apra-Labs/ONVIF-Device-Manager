@@ -24,6 +24,17 @@ feat/credentials-ui (base: development)
 
 ## Phase 1 — Credential Storage Foundation
 
+### Task 1.0 — Spike: Identify auth-failure exception types in ONVIF session layer
+- **Files:** Read-only: `onvif/onvif.session/NvtSession.fs`, `odm/odm.ui.views/viewmodels/DeviceListViewModel.cs`
+- **Type:** spike (code-reading only, no code written)
+- **Goal:** Determine whether auth failures produce a distinct exception type (e.g. `MessageSecurityException`, specific SOAP fault code) vs. network/timeout errors when `NvtSessionFactory.CreateSession` / `SessionProcess` fails.
+- **Finding (resolved):**
+  Auth failures do **not** produce a distinct exception type from network errors. The ONVIF session layer (`NvtSession.fs`) uses WCF channels with `SecurityUserNameToken` (lines 90–165) injected via `SetupUserNameToken()` (lines 689–694). Auth failures propagate as generic `FaultException` (SOAP faults) while network errors propagate as `CommunicationException` subtypes (`TimeoutException`, `EndpointNotFoundException`, etc.). The codebase has no `MessageSecurityException` or auth-specific catches anywhere. The only `FaultException` catch is for `ActionNotSupported` SOAP faults (line 240+), not auth.
+  `SessionProcess` in `DeviceListViewModel.cs` (lines 407–416) catches **all** errors generically — on any failure it falls back to the last URI with no error discrimination.
+- **Implication for Task 2.1:** Since auth failures cannot be reliably distinguished from network errors, the credential iteration logic must treat all failures as "try next credential." To avoid timeout multiplication, iteration should preserve existing timeout values and support cancellation if already present in the connection flow.
+- **Done:** Exception types documented above; Task 2.1 updated to reference this finding.
+- **Tier:** cheap
+
 ### Task 1.1 — Create `CredentialStore` with DPAPI-encrypted persistence
 - **Files:** `odm/odm.ui.views/core/CredentialStore.cs` (new), `odm/odm.ui.views/odm.ui.views.csproj` (add reference to System.Security)
 - **Change:** Create `CredentialStore` class that:
@@ -68,7 +79,7 @@ feat/credentials-ui (base: development)
     5. If all fail → try anonymous (null credential) as final fallback
   - Extract credential iteration into a helper method `TrySessionWithCredentials(DeviceDescriptionHolder, IList<Account>)`
 - **Done:** When multiple credentials are stored, the app tries each one per device until authentication succeeds; single-credential behavior is unchanged
-- **Blocker:** Need to understand error types from `NvtSessionFactory.CreateSession` to catch auth failures specifically vs. network errors. Auth failures in ONVIF are typically SOAP faults — the existing error handler in `SessionProcess` already catches all exceptions.
+- **Blocker:** Resolved by Task 1.0 spike — auth failures are indistinguishable from network errors (both surface as `FaultException` or `CommunicationException`). Iteration must treat all failures as "try next credential" rather than discriminating error types.
 - **Tier:** premium
 
 ### Task 2.V — Verify Phase 2
@@ -83,9 +94,9 @@ feat/credentials-ui (base: development)
 ### Task 3.1 — Create `CredentialManagerView` (XAML + code-behind) for managing credential pairs
 - **Files:** `odm/odm.ui.views/views/CredentialManagerView.xaml` (new), `odm/odm.ui.views/views/CredentialManagerView.xaml.cs` (new)
 - **Change:** Create a WPF UserControl with:
-  - A `ListBox` or `DataGrid` displaying all credential pairs (username shown, password masked)
-  - "Add" button → inline row or small dialog with username TextBox + PasswordBox
-  - "Edit" button → allows editing selected credential
+  - A **DataGrid** displaying all credential pairs — editable Username column (TextBox) and masked Password column (PasswordBox in a `DataGridTemplateColumn`). DataGrid chosen over ListBox because it provides inline editing natively without custom item templates.
+  - **Add credential flow:** Inline DataGrid row via `DataGrid.CanUserAddRows = true` — no separate dialog. User types directly into the new-row placeholder.
+  - "Edit" — inline editing via DataGrid's built-in cell editing
   - "Remove" button → removes selected credential with confirmation
   - "Move Up" / "Move Down" buttons to reorder priority
   - All changes save immediately via `CredentialStore`
@@ -97,9 +108,9 @@ feat/credentials-ui (base: development)
 ### Task 3.2 — Integrate `CredentialManagerView` into the application
 - **Files:** `odm/odm.ui.views/views/AuthView.xaml`, `odm/odm.ui.views/views/AuthView.xaml.cs`, possibly `odm/odm.ui.views/views/ToolBarView.xaml`
 - **Change:**
-  - Replace or augment the existing single username/password fields in `AuthView` with a "Manage Credentials" button that opens `CredentialManagerView` as a popup/dialog
-  - Keep the quick-login fields for convenience (they add/select a credential)
-  - Login button behavior: if the entered credential is new, add it to the store; if it matches existing, select it as active
+  - **Keep** the existing username/password quick-login fields in `AuthView`. Add a "Manage Credentials" button that opens `CredentialManagerView` as a **child window** (not a popup).
+  - Quick-login "Login" button behavior: add the credential to the store if not already present (match on **username, case-insensitive**). If username matches an existing entry, offer to **update the password** rather than adding a duplicate. Then set as `CurrentAccount` and trigger device refresh.
+  - **Deduplication rule:** Match on username using case-insensitive comparison. If username matches, prompt to update the stored password — never create a duplicate username entry.
   - The "Remember me" checkbox controls whether the entire credential store persists (or just the current session)
 - **Done:** "Manage Credentials" button appears in toolbar, opens credential management UI, credentials are saved and loaded on restart
 - **Blocker:** None
@@ -148,3 +159,15 @@ feat/credentials-ui (base: development)
 | 3.V | Verify Phase 3 | verify | CRUD lifecycle test |
 | 4.1 | TogglePasswordBox control + integration | standard | New control, replace PasswordBox |
 | 4.V | Verify Phase 4 | verify | Visual + functional test |
+
+---
+
+## Risk Register
+
+| # | Risk | Likelihood | Impact | Mitigation |
+|---|------|-----------|--------|------------|
+| R1 | **DPAPI portability** — credentials encrypted with `DataProtectionScope.CurrentUser` cannot be decrypted on another machine or by another Windows user | Low | Medium — credentials are machine/user-bound | Document this limitation in the UI (tooltip or help text on the credential manager). Cross-machine sync is out of scope. |
+| R2 | **Error discrimination** — auth failures indistinguishable from network errors in ONVIF SOAP faults | Medium | High — iteration logic cannot reliably skip auth failures vs. transient errors | Resolved by Task 1.0 spike: treat all failures as "try next credential." If all fail, fall back to anonymous. |
+| R3 | **Iteration latency** — trying N credentials against M slow/unreachable devices multiplies connection timeout × N | Medium | Medium — poor UX on connect | Preserve existing timeout values; add cancellation support if already present in the connection flow. Do not introduce new timeout constants. |
+| R4 | **Migration data loss** — if `account.def.xml` migration fails, the user's existing credential is silently dropped | Low | Medium — user loses saved credential | Migration must be transactional: write new `credentials.dat` first, only delete old `account.def.xml` after successful write and verification of the new store. |
+| R5 | **Toggle UX** — plaintext password visible while typing if toggle is on | Low | Low — minor UX concern | Accepted behaviour, no mitigation needed. This is standard password-toggle UX (user explicitly opted to show). |
