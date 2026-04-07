@@ -1,8 +1,8 @@
 # ODM Credentials UI — Plan Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-07 00:00:00+00:00
-**Verdict:** CHANGES NEEDED
+**Date:** 2026-04-07 12:00:00+00:00
+**Verdict:** APPROVED
 
 > See the recent git history of this file to understand the context of this review.
 
@@ -10,145 +10,144 @@
 
 ## 1. Clear "Done" Criteria — PASS
 
-Every task has a "Done:" line with testable conditions. Task 1.1 specifies "round-trip encrypt/decrypt" and "migration works"; Task 2.1 specifies "tries each credential per device until authentication succeeds; single-credential behavior is unchanged"; Task 3.1 specifies full CRUD lifecycle with persistence. These are specific enough to unambiguously verify completion.
+Every task has a "Done:" line with testable, unambiguous conditions. The new tasks since last review maintain this standard: Task 1.0 (spike) has "Exception types documented above; Task 2.1 updated to reference this finding" — clear and verifiable. Task 2.2 (credential cache) has "cache is consulted first and iteration is skipped ... cache entry is evicted and re-iterated correctly" — two specific behavioral tests.
 
-One minor note: Task 1.V's done criteria ("Solution builds clean, no regressions in existing code paths") is weaker than the others since "no regressions" can't be mechanically verified without tests, but this is acceptable given the project has no test suite.
+Task 1.V's done criteria ("no regressions in existing code paths") remains the weakest, but as noted in the prior review, this is acceptable given the project has no test suite. No change needed.
 
 ---
 
 ## 2. Cohesion and Coupling — PASS
 
-Tasks are well-decomposed along architectural boundaries:
-- Phase 1 separates storage (1.1) from the adapter layer (1.2)
-- Phase 2 isolates the connection-retry logic in its own phase
-- Phase 3 separates view creation (3.1) from integration wiring (3.2)
-- Phase 4 is a self-contained UI control
-
-Coupling between phases flows in one direction (storage → logic → UI → polish), which is correct.
+The architecture remains well-decomposed. The addition of Task 2.2 (per-device credential cache) fits cleanly within Phase 2 since it is a direct optimization of the iteration logic in Task 2.1, modifying the same file (`DeviceListViewModel.cs`). It doesn't introduce cross-phase coupling — the cache is internal to the connection flow and invisible to the UI or storage layers.
 
 ---
 
 ## 3. Key Abstractions in Earliest Tasks — PASS
 
-`CredentialStore` (the shared storage abstraction) is Task 1.1, and the `AccountManager` multi-credential API surface is Task 1.2. All later tasks depend on these, and they come first. The `TogglePasswordBox` reusable control is correctly placed before its consumers in Phase 4.
+`CredentialStore` (Task 1.1) and `AccountManager` multi-credential API (Task 1.2) remain the foundational abstractions, placed first. The credential cache in Task 2.2 is not a shared abstraction — it's an internal optimization within `DeviceListViewModel` — so its later placement is correct.
 
 ---
 
-## 4. Riskiest Assumption Validated Early — FAIL
+## 4. Riskiest Assumption Validated Early — PASS (previously FAIL)
 
-The plan identifies credential iteration error handling as a blocker concern in Task 2.1: *"Need to understand error types from NvtSessionFactory.CreateSession to catch auth failures specifically vs. network errors."* The plan then hand-waves this away with *"the existing error handler in SessionProcess already catches all exceptions."*
+**Prior finding:** The plan hand-waved error discrimination between auth failures and network errors. A spike was required.
 
-This is the riskiest technical assumption in the entire plan. Catching all exceptions is not the same as distinguishing auth failures from network/timeout errors. If the code cannot distinguish these, the iteration logic may:
-- Silently skip past the correct credential on a transient network error
-- Waste 30+ seconds per credential on TCP timeouts before trying the next one
+**Resolution:** Task 1.0 now exists as a dedicated spike that thoroughly documents the finding: auth failures surface as generic `FaultException` while network errors surface as `CommunicationException` subtypes, and the existing `SessionProcess` catches all exceptions generically with no discrimination. The spike correctly concludes that iteration must treat all failures as "try next credential" and explicitly states the implication for Task 2.1. Task 2.1's blocker note now cross-references Task 1.0's finding.
 
-The `NvtSessionFactory.CreateSession` in `NvtSession.fs` uses async race across multiple URIs with timeout logic. Understanding the failure modes (SOAP fault codes for 401-equivalent vs. connection refused vs. timeout) needs to happen before committing to the iteration design in Task 2.1.
-
-**Required change:** Add a spike or investigation step in Phase 1 (e.g., Task 1.3) that reads `NvtSession.fs` lines 468+, identifies the specific exception types thrown on auth failure vs. network failure, and documents the error-discrimination strategy. Task 2.1 should then reference that finding. If errors cannot be distinguished, the plan needs a different approach (e.g., parallel attempts with short timeouts, or a user-visible "testing credentials..." progress indicator).
-
-**Doer:** fixed in commit 26d735a — Added Task 1.0 spike with resolved finding: auth failures are indistinguishable from network errors (both FaultException/CommunicationException). Task 2.1 blocker updated to reference Task 1.0 and use "try all, fallback to anonymous" strategy.
+This is a well-executed resolution. The spike answered the question, documented the answer, and the downstream task was updated to reflect the constrained design space. The "try all, fallback to anonymous" strategy is the only viable approach given the WCF/SOAP fault architecture.
 
 ---
 
 ## 5. Later Tasks Reuse Early Abstractions (DRY) — PASS
 
-Task 3.1 uses `CredentialStore` from 1.1. Task 3.2 uses `AccountManager` APIs from 1.2. Task 4.1's `TogglePasswordBox` is used in both `AuthView` and `CredentialManagerView`. The `PasswordBoxAssistant` pattern (existing, in `odm.ui.controls`) is correctly identified for reuse rather than reinvention.
+Same as prior review. Task 2.2 adds a new internal data structure (`_credentialCache` dictionary) but correctly reuses the `Account` struct from `AccountManager` and the `TrySessionWithCredentials` helper from Task 2.1. No redundant abstractions introduced.
 
 ---
 
 ## 6. Phase Structure (2-3 Tasks + Verify) — PASS
 
-Phases 1 and 3 have 2 work tasks + verify. Phases 2 and 4 have 1 work task + verify. Single-task phases are acceptable here because each contains a cohesive, non-trivial unit of work (async retry logic and a reusable control, respectively). Splitting them further would create artificial boundaries.
+Phase counts have shifted since the prior review:
+- Phase 1: 1 spike + 2 work tasks + verify (3 tasks total, but the spike is read-only and produces no code)
+- Phase 2: 2 work tasks + verify (improved from 1 task — see below)
+- Phase 3: 2 work tasks + verify
+- Phase 4: 1 work task + verify
+
+Phase 2 now has two work tasks (2.1 iteration + 2.2 cache), which is better than before. The prior review accepted the single-task phase; now it conforms to the 2-3 task guideline.
 
 ---
 
 ## 7. Each Task Completable in One Session — PASS
 
-All tasks are scoped to 1-3 files with clear boundaries. Task 2.1 (credential iteration in an Rx/async pipeline) is the most complex but is focused on a single method modification in `DeviceListViewModel`. Task 3.1 (new XAML view) is the largest surface area but is a standard WPF CRUD form.
+Task 2.2 (credential cache) is well-scoped: one dictionary field, populate on success, check before iteration, evict on failure. This is additive to a single file and straightforward. All other tasks remain session-sized as previously reviewed.
 
 ---
 
 ## 8. Dependencies Satisfied in Order — PASS
 
-The dependency chain is correct: 1.1 → 1.2 → 2.1, and 1.1 → 3.1 → 3.2 → 4.1. Phase 2 correctly depends on Phase 1's API. Phase 3 correctly depends on both the storage layer and the iteration logic being in place. Phase 4 correctly comes last since it touches views created in Phase 3.
+The dependency chain remains correct. Task 2.2 correctly follows Task 2.1 (it extends the `TrySessionWithCredentials` helper that 2.1 creates). The full chain: 1.0 → 1.1 → 1.2 → 2.1 → 2.2 for the storage-to-connection path, and 1.1 → 3.1 → 3.2 → 4.1 for the storage-to-UI path.
+
+**NOTE:** Task 1.0 is missing from the Summary table. This is a minor documentation gap — the spike is documented in the Phase 1 section, so there's no risk of it being skipped, but the table should be complete. Not blocking.
 
 ---
 
-## 9. Vague or Ambiguous Tasks — FAIL
+## 9. Vague or Ambiguous Tasks — PASS (previously FAIL)
 
-**Task 3.1** has two unresolved design decisions:
-- *"A ListBox or DataGrid"* — these have very different editing semantics. A DataGrid supports inline editing natively; a ListBox requires custom item templates. This choice affects the entire control's architecture.
-- *"Add button → inline row or small dialog"* — inline editing vs. dialog is a UX pattern that changes the XAML structure significantly.
+**Prior finding:** Four specific ambiguities in Tasks 3.1 and 3.2 — DataGrid vs. ListBox, inline vs. dialog, quick-login interaction, and credential deduplication semantics.
 
-**Task 3.2** has three ambiguities:
-- *"Replace or augment the existing single username/password fields"* — two developers would build different UIs from this. Does the quick-login area stay or go?
-- *"possibly ToolBarView.xaml"* — the file scope is uncertain.
-- *"Login button behavior: if the entered credential is new, add it to the store; if it matches existing, select it as active"* — "matches" is undefined. The existing `Account.Equals()` compares by `Name` only (see `AccountManager.cs:33`). So entering the same username with a different password would "match" and not update the stored password. Is that the intended behavior?
+**Resolution:** All four have been resolved in the plan text:
 
-**Required change:** Resolve these design decisions in the plan text. Specifically:
-1. Choose DataGrid or ListBox for 3.1 and state why.
-2. Choose inline-add or dialog-add for 3.1.
-3. Decide whether 3.2 keeps, replaces, or hides the quick-login fields, and document the interaction between quick-login and the credential list.
-4. Define what "matches" means for credential deduplication — by name only, or by name+password.
+1. **DataGrid chosen** (Task 3.1, line 104): "DataGrid chosen over ListBox because it provides inline editing natively without custom item templates." Clear choice with stated rationale.
 
-**Doer:** fixed in commit 26d735a — Task 3.1: DataGrid with inline editing (CanUserAddRows), no dialog. Task 3.2: keep quick-login fields, "Manage Credentials" opens child window, deduplication on username (case-insensitive) with password update prompt.
+2. **Inline add via CanUserAddRows** (Task 3.1, line 105): "Inline DataGrid row via `DataGrid.CanUserAddRows = true` — no separate dialog." Unambiguous.
+
+3. **Quick-login fields kept** (Task 3.2, line 118): "Keep the existing username/password quick-login fields in AuthView. Add a 'Manage Credentials' button that opens CredentialManagerView as a child window." The interaction model is clear — quick-login for single use, child window for management.
+
+4. **Deduplication rule defined** (Task 3.2, lines 119-120): "Match on username using case-insensitive comparison. If username matches, prompt to update the stored password — never create a duplicate username entry." This is explicit and addresses the `Account.Equals` concern from the prior review.
+
+Two developers would now build the same UI from these specifications.
 
 ---
 
 ## 10. Hidden Dependencies — NOTE
 
-Two minor hidden dependencies worth documenting (not blocking):
+The two items from the prior review remain as minor notes:
 
-1. **Task 3.1** says "publish Refresh event so devices re-authenticate" — this depends on the Prism `EventAggregator` and the specific event type used in `AuthView.xaml.cs:btLogin_Click()`. The plan should name the event class to avoid guesswork.
+1. **Event class naming** — Task 3.1 still says "publish Refresh event so devices re-authenticate" without naming the specific Prism event class. The implementer will need to inspect `AuthView.xaml.cs:btLogin_Click()` to find the correct event type. This is a small lookup, not a design ambiguity, so it remains a NOTE rather than a FAIL.
 
-2. **Account struct equality** — `Account.Equals` compares by `Name` only. If `CredentialStore` uses a `List<Account>`, operations like `Remove(Account)` or `Contains(Account)` would match on username alone. This is fine if by design, but Task 1.1 should explicitly note that the store uses index-based operations (which it does — `Remove(int index)`, `Update(int index, Account)`) to avoid this trap.
+2. **Account equality semantics** — Task 1.1 specifies index-based operations (`Remove(int index)`, `Update(int index, Account)`), which sidesteps the `Account.Equals` by-name-only trap. Task 3.2 now explicitly defines deduplication as case-insensitive username comparison with password update prompt, so the equality semantics are clear at every layer. This concern is effectively resolved.
+
+**New note:** Task 2.2's cache key is described as "device URI / host" — the slash suggests either could work, but the implementer should pick one. URI is more specific (handles multiple cameras on the same host with different ports), so URI is the better default. Minor — the implementer can make this call.
 
 ---
 
-## 11. Risk Register — FAIL
+## 11. Risk Register — PASS (previously FAIL)
 
-The plan has no risk register. Individual tasks have "Blocker" notes, but these are narrow per-task concerns, not a consolidated view of project-level risks.
+**Prior finding:** No risk register existed.
 
-**Required change:** Add a "## Risks" section after the Summary table with at least these entries:
+**Resolution:** A Risk Register section now exists with 6 risks (R1-R6). Reviewing each:
 
-| # | Risk | Likelihood | Impact | Mitigation |
-|---|------|-----------|--------|------------|
-| R1 | DPAPI `ProtectedData` unavailable or blocked by group policy on target machines | Low | High — credentials cannot be saved | Fall back to `System.Security.Cryptography.Aes` with a machine-derived key, or detect and warn user |
-| R2 | Auth failures indistinguishable from network errors in ONVIF SOAP faults | Medium | High — iteration logic is unreliable | Spike in Phase 1 (see check 4 above) |
-| R3 | Credential iteration adds unacceptable latency (N credentials * timeout per device) | Medium | Medium — poor UX on connect | Set per-credential timeout to 2-3s; show progress indicator |
-| R4 | Migration of existing `account.def.xml` loses data if new format write succeeds but old file deletion is deferred | Low | Medium — user loses saved credential | Write new file first, then delete old; keep backup |
-| R5 | `PasswordBox` ↔ `TextBox` toggle in `TogglePasswordBox` loses cursor position or selection state | Low | Low — minor UX glitch | Accept as known limitation or sync `SelectionStart` |
+- **R1 (DPAPI portability):** The doer reframed this from "DPAPI blocked by group policy" to "credentials are machine/user-bound" — this is actually a more likely real-world concern and a better risk description. Mitigation (document the limitation) is pragmatic. PASS.
+- **R2 (Error discrimination):** Correctly marked as resolved by Task 1.0 spike. PASS.
+- **R3 (Iteration latency):** Mitigation says "preserve existing timeout values; add cancellation support if already present." This is weaker than the original suggestion of "2-3s per-credential timeout" but more honest — the plan doesn't want to introduce arbitrary timeout constants into an existing flow. Task 2.2's credential cache also mitigates this for repeat connections. Acceptable.
+- **R4 (Migration data loss):** Mitigation is correct — write-then-delete with verification. PASS.
+- **R5 (Toggle UX):** Reframed from cursor-position loss to "plaintext visible while typing" — this is a more realistic concern. Accepted as standard behavior. PASS.
+- **R6 (Credential cache invalidation):** New risk added for the new Task 2.2. Mitigation (evict on failure, re-iterate) is correct and matches the task description. Good addition.
 
-The plan author should review and adjust these, but the section must exist.
-
-**Doer:** fixed in commit 26d735a — Added Risk Register section with 5 risks (DPAPI portability, error discrimination, iteration latency, migration data loss, toggle UX) with mitigations.
+The register covers the key project-level risks with reasonable mitigations. It is no longer just per-task "Blocker" notes.
 
 ---
 
 ## 12. Alignment with Requirements — PASS
 
-The plan covers REQ-2 (multiple credential pairs) in Phases 1-3 and REQ-1 (password visibility toggle) in Phase 4, in the correct dependency order specified by `requirements.md`. REQ-3 and REQ-4 are out of scope for this branch, which is correct.
+The plan continues to map correctly to requirements:
 
-Key requirements mapping:
-- "User can add, edit, and delete multiple username/password pairs" → Tasks 3.1, 3.2
-- "Credentials persist across application restarts" → Task 1.1
-- "On camera connect, each stored credential pair is attempted in order" → Task 2.1
-- "Credentials are not stored in plaintext" → Task 1.1 (DPAPI)
-- "Eye icon visible next to every password input field" → Task 4.1
+| Requirement | Plan Coverage |
+|-------------|--------------|
+| REQ-2: Add, edit, delete multiple credential pairs | Tasks 3.1, 3.2 |
+| REQ-2: Secure persistent storage | Task 1.1 (DPAPI) |
+| REQ-2: Iterate credentials on connect | Tasks 2.1, 2.2 |
+| REQ-2: Failed pairs skipped silently | Task 2.1 (try-all strategy from spike) |
+| REQ-2: Not stored in plaintext | Task 1.1 (DPAPI encryption) |
+| REQ-1: Eye icon on every password field | Task 4.1 |
+| REQ-3, REQ-4 | Out of scope (correct) |
 
-The plan solves the right problem. The DPAPI approach satisfies the "encrypted local store" constraint. The iteration-then-anonymous-fallback strategy matches the "failed pairs are skipped silently" acceptance criterion.
+Task 2.2 (credential cache) is not explicitly required but is a reasonable UX optimization that prevents re-iterating N credentials on every refresh for known devices. It doesn't add scope creep — it's a small additive task within the connection phase.
 
 ---
 
 ## Summary
 
-**Passed (8/12):** Done criteria, cohesion/coupling, early abstractions, DRY reuse, phase structure, session size, dependency order, requirements alignment.
+**All 12 checks pass.** The three prior FAIL findings have been resolved:
 
-**Failed (3/12):**
-1. **Check 4 — Riskiest assumption:** Credential iteration error handling is hand-waved. Add an error-discrimination spike to Phase 1.
-2. **Check 9 — Vague tasks:** Tasks 3.1 and 3.2 have unresolved design decisions (DataGrid vs. ListBox, inline vs. dialog, quick-login interaction, credential matching semantics). Resolve these in the plan.
-3. **Check 11 — Risk register:** Missing entirely. Add a consolidated risk section.
+1. **Check 4 (was FAIL, now PASS):** Task 1.0 spike thoroughly investigated auth-failure exception types, documented that discrimination is not possible, and Task 2.1 was updated to use the "try all, fallback to anonymous" strategy.
 
-**Noted (1/12):** Check 10 — minor hidden dependencies around event types and Account equality semantics. Not blocking but worth documenting inline.
+2. **Check 9 (was FAIL, now PASS):** All four UI ambiguities resolved — DataGrid with inline editing, CanUserAddRows for new entries, quick-login fields retained alongside a child window for credential management, and case-insensitive username deduplication with password update prompt.
 
-The doer should annotate each relevant section with `**Doer:** fixed in commit <sha> — <what changed>` before requesting re-review.
+3. **Check 11 (was FAIL, now PASS):** Risk register added with 6 risks covering DPAPI portability, error discrimination, iteration latency, migration safety, toggle UX, and cache invalidation. Mitigations are pragmatic.
+
+**Minor notes (not blocking):**
+- Task 1.0 is missing from the Summary table
+- Task 3.1 should name the Prism event class for the refresh trigger
+- Task 2.2 cache key should be device URI (not host) for multi-port scenarios
+
+The plan is ready for implementation.
