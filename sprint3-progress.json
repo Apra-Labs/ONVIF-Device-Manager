@@ -1,0 +1,21 @@
+{
+  "sprint": "ODM Sprint 3 — Auth UX Polish",
+  "branch": "feat/credentials-ui",
+  "version": "2.2.252.2",
+  "started": "2026-04-07",
+  "tasks": [
+    { "id": "TASK-1", "title": "AccountManager: LoggedOutExplicitly flag", "status": "done" },
+    { "id": "TASK-2", "title": "AuthView: logout/remember/hyperlink/tab/startup", "status": "done" },
+    { "id": "TASK-3", "title": "DeviceListViewModel: respect LoggedOutExplicitly", "status": "done" },
+    { "id": "TASK-4", "title": "TogglePasswordBox: eye icon + IsTabStop=False", "status": "done" },
+    { "id": "TASK-5", "title": "CredentialManagerView: delete icon + tab nav + close behavior", "status": "done" },
+    { "id": "TASK-6", "title": "Security audit: no passwords in logs", "status": "done" },
+    { "id": "TASK-7", "title": "Unit tests: AuthFlowTests.cs", "status": "done" },
+    { "id": "TASK-8", "title": "Version bump to 2.2.252.2", "status": "done" }
+  ],
+  "verify": {
+    "build": "success",
+    "tests_passed": 39,
+    "tests_total": 39
+  }
+}

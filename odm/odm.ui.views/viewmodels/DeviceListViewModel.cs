@@ -318,8 +318,10 @@ namespace odm.ui.viewModels {
 		System.Net.NetworkCredential LoadCurrentAccount() {
 			var acc = AccountManager.Instance.CurrentAccount;
 			if (acc.IsAnonymous) {
-				var all = AccountManager.Instance.GetAllCredentials();
-				if (all.Count > 0) acc = all[0];
+				if (!AccountManager.Instance.LoggedOutExplicitly) {
+					var all = AccountManager.Instance.GetAllCredentials();
+					if (all.Count > 0) acc = all[0];
+				}
 			}
 			if (acc.IsAnonymous) return null;
 			return new System.Net.NetworkCredential() { UserName = acc.Name, Password = acc.Password };

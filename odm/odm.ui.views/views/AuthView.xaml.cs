@@ -82,7 +82,7 @@ namespace odm.ui.views
             _loginCommand = new DelegateCommand(btLogin_Click);
             btLogin.Command = _loginCommand;
             btLogout.Command = new DelegateCommand(new Action(btLogout_Click));
-            btManageCredentials.Click += BtManageCredentials_Click;
+            lnkManageCredentials.Click += BtManageCredentials_Click;
 
             username.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             password.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
@@ -104,6 +104,11 @@ namespace odm.ui.views
         void AuthView_Loaded(object sender, RoutedEventArgs e)
         {
             Update();
+            if (AccountManager.Instance.GetAllCredentials().Count > 0
+                && !AccountManager.Instance.LoggedOutExplicitly)
+            {
+                eventAggregator.GetEvent<Refresh>().Publish(true);
+            }
         }
 
         void BtManageCredentials_Click(object sender, RoutedEventArgs e)
@@ -119,6 +124,8 @@ namespace odm.ui.views
                 dbg.Error(err);
             }
         }
+
+        static string Safe(Account a) => $"name={a.Name}, pwd=[REDACTED]";
 
         static void AuthLog(string msg)
         {
@@ -145,9 +152,10 @@ namespace odm.ui.views
                 switch (LoginActionHelper.Determine(name, pwd, storeCount))
                 {
                     case LoginAction.Case1SetAndRefresh:
-                        // Case 1: explicit credentials entered — always save and connect.
+                        // Case 1: explicit credentials entered — save only if checkbox is checked.
                         AccountManager.Instance.SetCurrentAccount(
-                            new Account { Name = name, Password = pwd }, remember: true);
+                            new Account { Name = name, Password = pwd },
+                            remember: remember.IsChecked == true);
 
                         _loginCommand.RaiseCanExecuteChanged();
 
@@ -159,14 +167,14 @@ namespace odm.ui.views
                         var stored = AccountManager.Instance.GetAllCredentials();
                         AccountManager.Instance.SetCurrentAccount(stored[0], remember: false);
                         Update(); // force panel update even if CurrentAccount didn't change
-                        AuthLog("btLogin_Click Case2: SetCurrentAccount=" + stored[0].Name + " Autorized=" + AccountManager.Instance.Autorized);
+                        AuthLog("btLogin_Click Case2: " + Safe(stored[0]) + " Autorized=" + AccountManager.Instance.Autorized);
                         eventAggregator.GetEvent<Refresh>().Publish(true);
                         break;
 
                     default: // Case3Block
                         // Case 3: no fields and no stored credentials — block.
                         MessageBox.Show(
-                            "Please enter a username and password.",
+                            "No credentials available. Enter a username and password, or add entries via Manage Credentials.",
                             "Credentials Required",
                             MessageBoxButton.OK,
                             MessageBoxImage.Warning);
@@ -183,11 +191,8 @@ namespace odm.ui.views
         {
             try
             {
-                var last = AccountManager.Instance.CurrentAccount;
-                AccountManager.Instance.SetCurrentAccount(Account.Anonymous, true);
-                //username.Text = last.Name;
-                //password.Password = last.Password;
-
+                AccountManager.Instance.LoggedOutExplicitly = true;
+                AccountManager.Instance.SetCurrentAccount(Account.Anonymous, remember: false);
                 eventAggregator.GetEvent<Refresh>().Publish(true);
             }
             catch (Exception err)

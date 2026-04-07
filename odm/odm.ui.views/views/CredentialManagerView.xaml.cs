@@ -4,8 +4,10 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using Microsoft.Practices.Prism.Events;
+using odm.ui.controls;
 using odm.ui.core;
 using utils;
 
@@ -149,6 +151,105 @@ namespace odm.ui.views
             _items.Move(idx, idx + 1);
             credGrid.SelectedIndex = idx + 1;
             SaveAndRefresh();
+        }
+
+        void CredGrid_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Tab) return;
+
+            var cell = credGrid.CurrentCell;
+            if (!cell.IsValid) return;
+
+            int colIdx = credGrid.Columns.IndexOf(cell.Column);
+            int rowIdx = _items.IndexOf(cell.Item as CredentialItem);
+            if (rowIdx < 0) return;
+
+            e.Handled = true;
+
+            if (colIdx == 0)
+            {
+                // Username → Password: commit, begin edit on password column, select all
+                credGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+                credGrid.CurrentCell = new DataGridCellInfo(_items[rowIdx], credGrid.Columns[1]);
+                credGrid.SelectedItem = _items[rowIdx];
+                credGrid.BeginEdit();
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    var tpb = GetTogglePasswordBoxInCurrentCell();
+                    if (tpb != null) tpb.FocusPasswordInput();
+                }), System.Windows.Threading.DispatcherPriority.Input);
+            }
+            else if (colIdx == 1)
+            {
+                // Password → Delete button of same row
+                credGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+                credGrid.CurrentCell = new DataGridCellInfo(_items[rowIdx], credGrid.Columns[2]);
+                credGrid.SelectedItem = _items[rowIdx];
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    var btn = GetButtonInCurrentCell();
+                    btn?.Focus();
+                }), System.Windows.Threading.DispatcherPriority.Input);
+            }
+            else if (colIdx == 2)
+            {
+                // Delete → Username of next row, or btAdd if no more rows
+                int nextRow = rowIdx + 1;
+                if (nextRow < _items.Count)
+                {
+                    credGrid.CurrentCell = new DataGridCellInfo(_items[nextRow], credGrid.Columns[0]);
+                    credGrid.SelectedItem = _items[nextRow];
+                    credGrid.BeginEdit();
+                }
+                else
+                {
+                    btAdd.Focus();
+                }
+            }
+        }
+
+        TogglePasswordBox GetTogglePasswordBoxInCurrentCell()
+        {
+            var cell = GetCurrentDataGridCell();
+            return cell == null ? null : FindVisualChild<TogglePasswordBox>(cell);
+        }
+
+        Button GetButtonInCurrentCell()
+        {
+            var cell = GetCurrentDataGridCell();
+            return cell == null ? null : FindVisualChild<Button>(cell);
+        }
+
+        DataGridCell GetCurrentDataGridCell()
+        {
+            if (!credGrid.CurrentCell.IsValid) return null;
+            var col = credGrid.CurrentCell.Column;
+            var row = credGrid.ItemContainerGenerator.ContainerFromItem(credGrid.CurrentCell.Item) as DataGridRow;
+            if (row == null) return null;
+            var presenter = FindVisualChild<DataGridCellsPresenter>(row);
+            if (presenter == null) return null;
+            return presenter.ItemContainerGenerator.ContainerFromIndex(col.DisplayIndex) as DataGridCell;
+        }
+
+        static T FindVisualChild<T>(System.Windows.DependencyObject parent) where T : System.Windows.DependencyObject
+        {
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is T t) return t;
+                var result = FindVisualChild<T>(child);
+                if (result != null) return result;
+            }
+            return null;
+        }
+
+        protected override void OnClosing(CancelEventArgs e)
+        {
+            base.OnClosing(e);
+            var storeCount = CredentialStore.Instance.GetAll().Count;
+            AccountManager.Instance.LoggedOutExplicitly = (storeCount == 0);
+            AccountManager.Instance.SetCurrentAccount(Account.Anonymous, remember: false);
+            _eventAggregator.GetEvent<Refresh>().Publish(true);
         }
     }
 }

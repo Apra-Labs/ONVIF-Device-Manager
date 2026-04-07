@@ -63,6 +63,12 @@ namespace odm.ui.core
             _currentAccount = all.Count > 0 ? all[0] : Account.Anonymous;
         }
 
+        /// <summary>
+        /// True after an explicit logout. Cleared whenever a real (non-anonymous) account
+        /// is set. Used by DeviceListViewModel to suppress the stored-credential fallback.
+        /// </summary>
+        public bool LoggedOutExplicitly { get; set; } = false;
+
         public event EventHandler CurrentAccountChanged;
         Account _currentAccount = Account.Anonymous;
         public Account CurrentAccount
@@ -107,6 +113,8 @@ namespace odm.ui.core
         /// </summary>
         public void SetCurrentAccount(Account account, bool remember)
         {
+            if (!account.IsAnonymous)
+                LoggedOutExplicitly = false;
             this.CurrentAccount = account;
             if (remember && !account.IsAnonymous)
             {

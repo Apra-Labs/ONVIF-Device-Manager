@@ -1185,6 +1185,9 @@
     <Activity Include="ErrorView.xml" />
   </ItemGroup>
   <ItemGroup>
+    <Resource Include="images\Delete16.png" />
+  </ItemGroup>
+  <ItemGroup>
     <Resource Include="images\warning-icon-th.png" />
   </ItemGroup>
   <ItemGroup>

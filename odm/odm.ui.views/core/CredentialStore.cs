@@ -34,6 +34,9 @@ namespace odm.ui.core
             return _credentials.AsReadOnly();
         }
 
+        /// <summary>Safe log summary — never includes passwords.</summary>
+        public string RedactedSummary() => $"{_credentials.Count} credential(s) stored";
+
         public void Add(Account account)
         {
             _credentials.Add(account);

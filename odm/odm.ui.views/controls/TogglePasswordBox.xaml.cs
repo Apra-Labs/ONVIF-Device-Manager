@@ -82,5 +82,22 @@ namespace odm.ui.controls
             ctrl.textBox.Text = val;
             ctrl._updating = false;
         }
+
+        public void SelectAll()
+        {
+            if (textBox.Visibility == Visibility.Visible)
+                textBox.SelectAll();
+            else
+                passwordBox.SelectAll();
+        }
+
+        public void FocusPasswordInput()
+        {
+            if (passwordBox.Visibility == Visibility.Visible)
+                passwordBox.Focus();
+            else
+                textBox.Focus();
+            SelectAll();
+        }
     }
 }

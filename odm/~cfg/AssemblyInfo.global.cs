@@ -19,9 +19,9 @@ using System.Runtime.InteropServices;
 //
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
-// Dev builds: increment the 4th part manually (e.g. 2.2.252.1 → 2.2.252.2).
+// Dev builds: increment the 4th part manually (e.g. 2.2.252.2 → 2.2.252.2).
 // CI builds: override Revision via /p:Revision=<commit_count> and set
 //   AssemblyInformationalVersion to "2.2.252-<short_git_hash>".
-[assembly: AssemblyVersion("2.2.252.1")]
-[assembly: AssemblyFileVersion("2.2.252.1")]
-[assembly: System.Reflection.AssemblyInformationalVersion("2.2.252.1-dev")]
+[assembly: AssemblyVersion("2.2.252.2")]
+[assembly: AssemblyFileVersion("2.2.252.2")]
+[assembly: System.Reflection.AssemblyInformationalVersion("2.2.252.2-dev")]
