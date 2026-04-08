@@ -1,3 +1,48 @@
+# HTTPS/TLS/RTSPS Support — Plan Review (Round 2)
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-08
+**Verdict:** APPROVED
+
+> Round 2 re-review. See below for original review and doer responses.
+
+## Round 2 Findings
+
+### 1. Task ordering in Phase 1 (Task 3 before Task 2) — PASS
+Phase 1 now lists Task 1 → Task 3 → Task 2. Task 2 explicitly declares Task 3 as a blocker. The summary table reflects the corrected order. Dependency is clear and correct.
+
+### 2. Task 1 control flow — PASS
+Task 1 now specifies a 5-step control flow:
+- Step 1: extractable `generateHttpsVariants` helper as a module-level `let` binding, publicly accessible for unit testing.
+- Step 2: sequential HTTP-then-HTTPS race for multi-URI input, 3s per-attempt timeout. HTTPS variants only after HTTP race is fully exhausted.
+- Step 3: single-URI input follows the same sequential logic (HTTP → 443 → 8443).
+- Step 4: `Async.StartChild` with `CancellationToken` / `Async.WithCancellation` for deadlock mitigation; cancel outstanding children on first success.
+- Step 5: logging at fallback decision point.
+
+Two developers reading this spec would produce functionally equivalent implementations. No ambiguity remains.
+
+### 3. Task 6 trigger condition — PASS
+Task 6 is rewritten with a clean dual-transport strategy: for HTTPS devices, always request both standard RTSP and RtspOverHttp transports, return both URIs. The session layer explicitly does NOT perform TCP probing — that responsibility is left to the player/caller. The "unreachable" language that conflated SOAP-level and network-level failures is gone.
+
+### 4. Task 6 done criterion — PASS
+Done criterion now requires: non-null URI with valid scheme (`rtsp://`, `rtsps://`, `http://`, `https://`), logged transport type, and offline coverage via `StreamTransportNegotiationTests`. No "playable" language remains. Testable without a live camera.
+
+### 5. Task 9 error path verification + offline test — PASS
+Task 9 now includes a pre-step: read `LiveVideoView.xaml.cs` to confirm `Error(string)` exists; create it if missing. Done criterion includes offline unit test `RtspsUriTests.SchemeDetection_Rtsps_ReturnsErrorState`. Both the WPF concern and headless testability are addressed.
+
+### 6. Task 1 deadlock mitigation — PASS
+Step 4 explicitly specifies `Async.StartChild` with `CancellationToken` (or `Async.WithCancellation`), cancellation of outstanding children on first success, and the requirement that no hanging async tasks remain. This is a concrete, implementable mitigation.
+
+## Summary
+
+All 4 blocking issues and 3 recommended fixes from Round 1 have been resolved. The plan is now unambiguous, correctly ordered, and has testable done criteria for every task. No residual issues found.
+
+**Verdict: APPROVED** — implementation may proceed.
+
+---
+
+# Original Review (Round 1)
+
 # HTTPS/TLS/RTSPS Support — Plan Review
 
 **Reviewer:** odm-rev
@@ -96,7 +141,7 @@ Two developers would implement this differently because:
 
 3. **No timeout specified.** How long to wait before declaring HTTP "failed" and trying HTTPS? The existing `Async.Race` presumably has a timeout — should the HTTPS retry use the same timeout or a separate one?
 
-**Fix needed:** Specify the exact control flow — sequential retry after race timeout, with explicit per-attempt timeout values and port list.
+**Fix needed:** Specify the exact control flow — sequential retry after race timeout, per-attempt timeout values, and port list for both single and multi-URI cases.
 
 ---
 
