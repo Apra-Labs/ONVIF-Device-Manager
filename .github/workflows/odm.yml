@@ -25,13 +25,27 @@ jobs:
     - name: Install .NET Framework targeting packs
       shell: pwsh
       run: |
-        $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
-        & $installer modify `
-          --installPath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise" `
-          --add Microsoft.Net.Component.4.TargetingPack `
-          --add Microsoft.Net.Component.4.5.2.TargetingPack `
-          --quiet --norestart
-        exit 0
+        # Install .NET 4.0 and 4.5 reference assemblies via NuGet packages
+        $nuget = "nuget"
+        $outDir = "$env:TEMP\netfx-ref"
+        & $nuget install Microsoft.NETFramework.ReferenceAssemblies.net40 -OutputDirectory $outDir -ExcludeVersion -NonInteractive
+        & $nuget install Microsoft.NETFramework.ReferenceAssemblies.net45 -OutputDirectory $outDir -ExcludeVersion -NonInteractive
+
+        $refRoot = "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework"
+
+        # Copy .NET 4.0 reference assemblies
+        $src40 = "$outDir\Microsoft.NETFramework.ReferenceAssemblies.net40\build\.NETFramework\v4.0"
+        $dst40 = "$refRoot\v4.0"
+        if (-not (Test-Path $dst40)) { New-Item -ItemType Directory -Path $dst40 | Out-Null }
+        Copy-Item "$src40\*" $dst40 -Recurse -Force
+
+        # Copy .NET 4.5 reference assemblies
+        $src45 = "$outDir\Microsoft.NETFramework.ReferenceAssemblies.net45\build\.NETFramework\v4.5"
+        $dst45 = "$refRoot\v4.5"
+        if (-not (Test-Path $dst45)) { New-Item -ItemType Directory -Path $dst45 | Out-Null }
+        Copy-Item "$src45\*" $dst45 -Recurse -Force
+
+        Write-Host "Targeting packs installed."
 
     - name: Build application
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
