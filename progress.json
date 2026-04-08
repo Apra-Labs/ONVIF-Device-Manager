@@ -141,8 +141,8 @@
       "tier": "cheap",
       "type": "verify",
       "phase": "phase5",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "27/27 tests pass (21 offline + 6 integration against Milesight 192.168.1.190). Sprint complete."
     }
   ]
 }
