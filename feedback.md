@@ -1,3 +1,78 @@
+# HTTPS/TLS/RTSPS — Phase 1 Code Review
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-08
+**Verdict:** APPROVED
+
+## Findings
+
+### TASK-1 (commit 2894ce4): Scheme-upgrade fallback — PASS
+
+**`GenerateHttpsVariants` helper:**
+- Correctly handles single URI, multi-URI, and already-HTTPS URIs (passthrough).
+- Default port 80 maps to 443 + 8443; non-standard ports keep their port number + 8443; port 8443 deduplicates to a single variant.
+- `Seq.distinct` prevents duplicate HTTPS URIs when input contains overlapping endpoints.
+- Path is preserved correctly via `UriBuilder` (copies full URI including `/onvif/device_service`).
+- Method is `static member` (public), accessible for unit testing. Good.
+
+**HTTP-then-HTTPS sequential fallback:**
+- `raceEndpoints uris` (HTTP) runs first. Only on `None` result does `raceEndpoints httpsUris` (HTTPS) execute. Correctly sequential — HTTP race is fully exhausted before HTTPS is attempted. PASS.
+- Multi-endpoint race uses existing `Async.Race` pattern. Single-endpoint path avoids unnecessary race overhead. Good.
+
+**Timeout and cancellation:**
+- NOTE: Plan specified 3s per-attempt timeouts and `Async.StartChild` with `CancellationToken`. Implementation uses existing 2s socket-level timeouts (SendTimeout/ReceiveTimeout = 2000ms) without `Async.StartChild`. This is a minor deviation from plan — functionally acceptable since the 2s timeouts are the pre-existing behavior and provide adequate deadlock protection. However, there is no explicit cancellation of losing race competitors. Consider adding `Async.StartChild` cancellation in a future pass to prevent socket handle leakage under heavy multi-URI scenarios.
+
+**HTTP camera regression risk:**
+- Original HTTP URIs are tried first. If HTTP connectivity succeeds, HTTPS fallback is never triggered. No regression for HTTP-only cameras. PASS.
+
+**Error messages:**
+- Clear, distinct error messages for: empty URI array, all-HTTP-failed, and all-HTTPS-failed cases. Good diagnostics. PASS.
+
+**Logging:**
+- Logs at fallback decision point: "HTTP connectivity failed for N URIs, retrying with HTTPS variants". PASS.
+
+### TASK-3 (commit bb4e831): Test project references — PASS
+
+- References `onvif.session.dll` from `$(OdmViewsBin)` (Release output of `odm.ui.views`). Path is correct and consistent with other references in the project.
+- No circular dependency: `odm.tests` depends on `onvif.session`, not the reverse.
+- Includes all necessary transitive dependencies: `FSharp.Core`, `utils.fsharp`, `utils.diagnostics`, `utils.common`, `onvif.services`.
+- `System.ServiceModel` reference present for WCF binding types used in tests.
+- `CopyLocalLockFileAssemblies=true` ensures test runner finds all DLLs. PASS.
+
+### TASK-2 (commit 5ccec4d): HTTPS binding tests — PASS
+
+**`UnsecureFactory_WithTls_CreatesHttpsBinding`:**
+- Uses reflection to access private `CreateChannelFactory` method — correct approach since the method is private static.
+- Verifies binding contains `HttpsTransportBindingElement` (not just "no exception thrown"). Good.
+- Checks `RequireClientCertificate == false`. Good.
+
+**`UnsecureFactory_WithoutTls_CreatesHttpBinding`:**
+- Verifies positive case (`HttpTransportBindingElement` present) AND negative case (`HttpsTransportBindingElement` absent). Thorough. PASS.
+
+**Build and test verification:**
+- `dotnet build odm/odm.tests/odm.tests.csproj` succeeds with 0 errors.
+- `dotnet vstest odm.tests.dll` — 2/2 tests pass, 0 failures.
+
+## Notes
+
+1. **Minor plan deviation (non-blocking):** Plan called for 3s timeouts and `Async.StartChild` cancellation. Implementation uses pre-existing 2s socket timeouts without explicit child cancellation. Acceptable for Phase 1 — recommend addressing in a later phase if multi-URI HTTPS fallback sees production use with many endpoints.
+
+2. **`GenerateHttpsVariants` is a static member, not a module-level `let` binding.** Plan specified a module-level function; implementation chose a static member on `NvtSessionFactory`. This is arguably better — keeps the method co-located with its consumer and avoids polluting the module namespace. PASS.
+
+3. **`raceEndpoints` refactor is clean.** The original `CreateSession(uris)` was a single monolithic block with duplicated endpoint logic. The refactored version extracts `findUriForEndpoint` and `raceEndpoints` as local helpers, reducing duplication and making the HTTP/HTTPS two-phase flow readable. Good improvement.
+
+## Summary
+
+All three Phase 1 tasks are correctly implemented. The scheme-upgrade fallback is sequential (HTTP exhausted before HTTPS), preserves URI paths, handles edge cases (already-HTTPS, non-standard ports, deduplication), and does not regress HTTP-only cameras. Tests verify binding types via reflection with both positive and negative assertions. Test project references are correct with no circular dependencies. Build and all tests pass.
+
+One minor plan deviation (2s vs 3s timeouts, no `Async.StartChild` cancellation) is non-blocking and acceptable for Phase 1.
+
+**Verdict: APPROVED** — Phase 2 may proceed.
+
+---
+
+# Prior Plan Reviews
+
 # HTTPS/TLS/RTSPS Support — Plan Review (Round 2)
 
 **Reviewer:** odm-rev
