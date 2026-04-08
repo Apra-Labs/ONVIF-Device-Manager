@@ -16,3 +16,4 @@ Release
 /build
 CLAUDE.md
 .claude/
+.env
