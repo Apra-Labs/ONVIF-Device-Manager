@@ -99,16 +99,16 @@
       "title": "Detect rtsps:// scheme before player launch + graceful error",
       "tier": "premium",
       "phase": "phase4",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Commit ca4c7d8. Added VideoPlayerActivity.IsRtspsUri static member. Checks mediaUri.uri after GetStreamUri; raises NotSupportedException for rtsps:// URIs. Existing with-handler shows error via ErrorView. Full solution Release x64 build: 0 errors."
     },
     {
       "id": "TASK-10",
       "title": "RtspsUriTests.cs (offline)",
       "tier": "cheap",
       "phase": "phase4",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Commit d904cf5. 5 offline tests for rtsps:// detection (lowercase, uppercase, rtsp/http/null/empty). Added odm.ui.activities.dll reference to odm.tests.csproj. All 21 offline tests pass (16 pre-existing + 5 new)."
     },
     {
       "id": "VERIFY-4",
