@@ -50,6 +50,9 @@ jobs:
     - name: Build application
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
 
+    - name: Restore tests
+      run: dotnet restore odm\odm.tests\odm.tests.csproj
+
     - name: Build tests
       run: msbuild odm\odm.tests\odm.tests.csproj /p:Configuration=Debug /p:Platform="Any CPU" /v:minimal
 
