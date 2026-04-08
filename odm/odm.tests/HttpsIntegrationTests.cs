@@ -51,7 +51,9 @@ namespace odm.tests
             var portStr = Environment.GetEnvironmentVariable("ODM_TEST_HTTPS_PORT");
             _httpsPort = string.IsNullOrEmpty(portStr) ? 443 : int.Parse(portStr);
 
-            // Mirror App.xaml.cs:74 — accept self-signed certs in headless test context
+            // Mirror App.xaml.cs:72-75 — some devices don't understand Expect: 100-Continue;
+            // accept self-signed certs in headless test context
+            ServicePointManager.Expect100Continue = false;
             ServicePointManager.ServerCertificateValidationCallback = (s, c, ch, e) => true;
 
             var cred = new NetworkCredential(_user, _pass);
