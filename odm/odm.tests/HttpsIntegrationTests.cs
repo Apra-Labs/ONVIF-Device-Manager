@@ -58,8 +58,15 @@ namespace odm.tests
 
             var cred = new NetworkCredential(_user, _pass);
             var factory = new NvtSessionFactory(cred);
-            var deviceUri = new Uri(string.Format("https://{0}:{1}/onvif/device_service", _host, _httpsPort));
-            _session = factory.CreateSession(deviceUri);
+            // Use http:// input — the scheme-upgrade fallback should auto-detect that
+            // SOAP on port 80 is non-functional and upgrade to https:// transparently
+            var deviceUris = new[] { new Uri(string.Format("http://{0}/onvif/device_service", _host)) };
+            // CreateSession(Uri[]) returns FSharpAsync — run synchronously with generous timeout
+            // for SOAP probe + scheme-upgrade fallback (probe timeout is 5s per endpoint)
+            _session = FSharpAsync.RunSynchronously(
+                factory.CreateSession(deviceUris),
+                FSharpOption<int>.Some(60000),
+                FSharpOption<CancellationToken>.None);
         }
 
         private static T Run<T>(FSharpAsync<T> computation, int timeoutMs = 30000)

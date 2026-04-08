@@ -491,108 +491,57 @@
             |> Seq.distinct |> Seq.toArray
 
         member this.CreateSession(uris:Uri[]) = async{
-            let CheckConnectivity (host:string, port:int) = async{
-//                let ConectAsync(socket:Socket, host:string, port:int) = async{
-//                    do! Async.FromBeginEnd(
-//                        host, port, 
-//                        (fun (host:string, port:int, cb:AsyncCallback, o:obj)->
-//                            socket.BeginConnect(host, port, cb,o)
-//                        ),
-//                        socket.EndConnect,
-//                        (fun()->socket.Close())
-//                    )
-                    
-//                    return Disposable.Create(fun ()->
-//                        try socket.Close() with _->()
-//                    )
-//                }
-                use socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
-                socket.NoDelay <- true
-                //socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontRoute, 1)
-                socket.SendBufferSize <- 0
-                socket.SendTimeout <- 2000 //2 sec.
-                socket.ReceiveBufferSize <- 128
-                socket.ReceiveTimeout <- 2000 //2 sec.
-                socket.Bind(new IPEndPoint(IPAddress.Any, 0))
-//                use! connDisp = ConectAsync(socket, host, port)
-                let! res = async{
-                    try
-                        do! Async.FromBeginEnd(
-                            host, port, 
-                            (fun (host:string, port:int, cb:AsyncCallback, o:obj)->
-                                socket.BeginConnect(host, port, cb,o)
-                            ),
-                            socket.EndConnect,
-                            (fun()->socket.Close())
-                        )
-                        if System.Environment.OSVersion.Version.Major >= 6 then
-                            return true
-                        else
-                            log.WriteWarning( sprintf "operating system is XP or lower")
-                            let! bytesSent =  Async.FromBeginEnd(
-                                (fun (cb:AsyncCallback, o:obj)->
-                                    let tmp = [|0uy|]
-                                    socket.BeginSend(tmp, 0, 1, (SocketFlags.None), cb,o)
-                                ),
-                                (fun ar -> socket.EndSend(ar))
-                            )
-                            return (bytesSent > 0)
-                    finally
-                            socket.Close()
-                }
-
-                  //dbg.Info(pintfs "socket %s" );
-//                do! Async.FromBeginEnd(
-//                    (fun (cb:AsyncCallback, o:obj)->
-//                        let tmp = [|0uy|]
-//                        socket.BeginSend(tmp, 0, 0, (SocketFlags.None), cb,o)
-//                    ),
-//                    (fun ar -> socket.EndSend(ar) |> ignore)
-//                )
-//                do! Async.FromBeginEnd(
-//                    (fun (cb:AsyncCallback, o:obj)->
-//                        socket.BeginDisconnect(false, cb,o)
-//                    ),
-//                    socket.EndDisconnect
-//                )
-//                do! Async.FromBeginEnd(
-//                    (fun (cb:AsyncCallback, o:obj)->
-//                        let tmp = [|0uy|]
-//                        socket.BeginReceive(tmp, 0, 0, (SocketFlags.None), cb,o)
-//                    ),
-//                    (fun ar -> socket.EndReceive(ar) |> ignore)
-//                )
-                if res then
+            /// SOAP-level probe: sends GetSystemDateAndTime (unauthenticated) to verify
+            /// the endpoint actually responds to ONVIF requests. TCP connectivity alone
+            /// is insufficient — some cameras bind port 80 but silently drop SOAP payloads.
+            let SoapProbe (uri:Uri) = async{
+                try
+                    do! Async.SwitchToThreadPool()
+                    let useTls = uri.Scheme = Uri.UriSchemeHttps
+                    let! factory = getDeviceUnsecureFactory(useTls)
+                    let endpointAddr = new EndpointAddress(uri)
+                    let proxy = factory.CreateChannel(endpointAddr)
+                    let dev = new DeviceAsync(proxy) :> IDeviceAsync
+                    let! _dateTime = dev.GetSystemDateAndTime()
+                    try (proxy :?> ICommunicationObject).Abort() with _ -> ()
                     return true
-                else
+                with _ ->
                     return false
             }
-            let findUriForEndpoint (srcUris:Uri[]) (host, port) =
-                srcUris |> Seq.find (fun uri -> uri.Host = host && uri.Port = port)
+
+            let soapProbeWithTimeout (uri:Uri) (timeoutMs:int) = async{
+                let! child = Async.StartChild(SoapProbe(uri), timeoutMs)
+                try
+                    let! result = child
+                    return result
+                with
+                | :? TimeoutException ->
+                    return false
+            }
 
             let raceEndpoints (srcUris:Uri[]) = async {
-                let eps = srcUris |> Seq.map (fun uri -> (uri.Host, uri.Port)) |> Seq.distinct |> Seq.toList
-                match eps with
+                let distinctUris = srcUris |> Seq.distinct |> Seq.toList
+                match distinctUris with
                 | [] -> return None
-                | [(h,p)] ->
-                    let! cr = CheckConnectivity(h, p)
+                | [single] ->
+                    let! cr = soapProbeWithTimeout single 5000
                     if cr then
-                        log.WriteInfo(sprintf "connection test passed on %s:%d" h p)
-                        return Some (findUriForEndpoint srcUris (h, p))
+                        log.WriteInfo(sprintf "SOAP probe passed on %s" (single.ToString()))
+                        return Some single
                     else
+                        log.WriteInfo(sprintf "SOAP probe failed on %s" (single.ToString()))
                         return None
                 | _ ->
                     let! t = Async.Race(seq{
-                        for ep in eps do
+                        for uri in distinctUris do
                             yield async{
-                                let! cr = CheckConnectivity(ep)
-                                let host, port = ep
+                                let! cr = soapProbeWithTimeout uri 5000
                                 match cr with
                                 | true ->
-                                    log.WriteInfo(sprintf "connection test passed on %s:%d" host port)
-                                    return findUriForEndpoint srcUris (host, port)
+                                    log.WriteInfo(sprintf "SOAP probe passed on %s" (uri.ToString()))
+                                    return uri
                                 | false ->
-                                    return failwith("connectivity test failed")
+                                    return failwith("SOAP probe failed")
                             }
                     })
                     return t
@@ -600,23 +549,23 @@
 
             if uris.Length = 0 then return failwith("no uri was passed")
 
-            // Try original URIs first
+            // Try original URIs first (SOAP-level probe, not just TCP)
             let! httpResult = raceEndpoints uris
             match httpResult with
             | Some uri ->
                 return this.CreateSession(uri)
             | None ->
-                // HTTP connectivity failed — try HTTPS variants
+                // SOAP probe failed on all original URIs — try HTTPS variants
                 let httpsUris = NvtSessionFactory.GenerateHttpsVariants uris
                 if httpsUris.Length = 0 then
-                    return failwith("connectivity test failed for all URIs")
-                log.WriteInfo(sprintf "HTTP connectivity failed for %d URIs, retrying with HTTPS variants" uris.Length)
+                    return failwith("SOAP probe failed for all URIs")
+                log.WriteInfo(sprintf "HTTP SOAP probe failed for %d URIs, retrying with HTTPS variants" uris.Length)
                 let! httpsResult = raceEndpoints httpsUris
                 match httpsResult with
                 | Some uri ->
                     return this.CreateSession(uri)
                 | None ->
-                    return failwith("connectivity test failed for all URIs (including HTTPS fallback)")
+                    return failwith("SOAP probe failed for all URIs (including HTTPS fallback)")
 
 //            let cts = new CancellationTokenSource()
 //            use! cancellation = Async.OnCancel(fun ()-> 
