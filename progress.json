@@ -82,8 +82,8 @@
       "title": "FixUrlHttpsTests.cs + StreamTransportNegotiationTests.cs",
       "tier": "standard",
       "phase": "phase3",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Added NvtSessionFactory.UpgradeScheme public static for testability. FixUrlHttpsTests.cs: 5 offline tests for scheme/port upgrade logic. StreamTransportNegotiationTests.cs: 4 offline tests verifying SslStreamTransportBindingElement (HTTPS) and HttpTransportBindingElement (HTTP) selection plus Soap12 message version. Also fixed SslStreamTransport.fs: HTTP status logging (>=400) and decodeChunked bounds check. All 16 offline tests pass."
     },
     {
       "id": "VERIFY-3",
