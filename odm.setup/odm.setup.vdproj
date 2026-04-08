@@ -3301,7 +3301,7 @@
         "UpgradeCode" = "8:{FA8AD70A-97A7-484E-B2A0-A4A3BAE9BA35}"
         "AspNetVersion" = "8:2.0.50727.0"
         "RestartWWWService" = "11:FALSE"
-        "RemovePreviousVersions" = "11:FALSE"
+        "RemovePreviousVersions" = "11:TRUE"
         "DetectNewerInstalledVersion" = "11:TRUE"
         "InstallAllUsers" = "11:FALSE"
         "ProductVersion" = "8:2.2.250"
