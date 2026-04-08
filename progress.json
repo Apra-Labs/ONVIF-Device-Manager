@@ -132,8 +132,8 @@
       "title": "Logging and documentation",
       "tier": "cheap",
       "phase": "phase5",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "SslStreamTransport.fs: improved comments on sslSend single-write (gSOAP multi-record stall), Action header stripping (gSOAP HTTP 500 on mustUnderstand), UnderstoodHeaders.Add (WCF FaultException guard). NvtSession.fs: expanded GenerateHttpsVariants doc comment (why cameras advertise http:// xAddrs), added sequential-probe comment on raceEndpoints (cameras reject parallel connections), expanded UpgradeSchemeIfNeeded comment (ONVIF spec gap). Build: 0 errors."
     },
     {
       "id": "VERIFY-5",

@@ -475,8 +475,10 @@ namespace odm.core
                 url
 
         /// Generates HTTPS URI variants from HTTP URIs for scheme-upgrade fallback.
-        /// For each HTTP URI, produces HTTPS on port 443 (or same port if non-standard)
-        /// and an additional variant on port 8443. Publicly accessible for unit testing.
+        /// Called when all HTTP SOAP probes fail: some cameras advertise only http:// xAddrs
+        /// via WS-Discovery yet actually require HTTPS. Produces port-443 and port-8443 variants
+        /// for each HTTP URI; already-HTTPS inputs return empty (no upgrade needed).
+        /// Publicly accessible for unit testing.
         static member GenerateHttpsVariants (uris: Uri[]) : Uri[] =
             uris
             |> Array.collect (fun uri ->
@@ -528,6 +530,9 @@ namespace odm.core
                     return false
             }
 
+            // Sequential probe: tries each URI one at a time rather than in parallel.
+            // Some cameras (e.g. Hikvision) drop or reject connections when multiple
+            // simultaneous TCP connections arrive during negotiation.
             let raceEndpoints (srcUris:Uri[]) = async {
                 let distinctUris = srcUris |> Seq.distinct |> Seq.toList
                 let probeOne (uri:Uri) = async {
@@ -750,8 +755,9 @@ namespace odm.core
                 fun() -> comp
 
             // Upgrade an HTTP URL to HTTPS when the device was reached via HTTPS.
-            // Cameras often return capability xAddr values with http:// even when
-            // they only accept connections on the HTTPS port.
+            // ONVIF cameras return capability xAddr values (e.g. PTZ, media, imaging service URLs)
+            // with http:// regardless of how they were connected to — the ONVIF spec does not
+            // mandate scheme-aware xAddr reporting, so cameras always advertise the HTTP address.
             let UpgradeSchemeIfNeeded (url: Uri) =
                 if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp then
                     let b = new UriBuilder(url)

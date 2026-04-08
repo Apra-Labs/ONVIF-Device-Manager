@@ -119,7 +119,9 @@ module internal SslStreamHelpers =
         // Cast the raw integer to avoid a compile-time reference to the 4.5-only symbol.
         ssl.AuthenticateAsClient(host, null, enum<SslProtocols> 3072, false)
 
-        // Single write: headers + body combined to avoid multi-TLS-record stall
+        // Single ssl.Write() call: headers and body must arrive in one TLS record.
+        // gSOAP cameras (2.8.x firmware) stall indefinitely when the TLS payload is
+        // fragmented across two records, which is what .NET's HttpWebRequest does by default.
         let full = Array.zeroCreate (headerBytes.Length + bodyBytes.Length)
         Buffer.BlockCopy(headerBytes, 0, full, 0, headerBytes.Length)
         Buffer.BlockCopy(bodyBytes, 0, full, headerBytes.Length, bodyBytes.Length)
@@ -160,10 +162,10 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         let rawBodyBytes = Array.init buf.Count (fun i -> buf.Array.[buf.Offset + i])
         bufMgr.ReturnBuffer(buf.Array)
 
-        // Strip <Action s:mustUnderstand="1"> from the SOAP header.
-        // WCF always emits this header even with MessageVersion.Soap12 (AddressingNone),
-        // and gSOAP camera firmware returns HTTP 500 MustUnderstand SOAP fault when it
-        // sees a mustUnderstand="1" header it does not recognise.
+        // Strip <Action s:mustUnderstand="1"> from the outgoing SOAP header.
+        // WCF always emits this header even with MessageVersion.Soap12 (AddressingNone).
+        // gSOAP camera firmware (2.8.x) returns HTTP 500 with a MustUnderstand SOAP fault
+        // for any WS-Addressing header it does not recognise — Action is one such header.
         let bodyBytes =
             let xml = Encoding.UTF8.GetString(rawBodyBytes)
             // Match the Action open tag (which may span to >) then the content then the close tag.
@@ -186,10 +188,10 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         Buffer.BlockCopy(resp.Body, 0, respBuf, 0, resp.Body.Length)
         let msg =
             encoder.ReadMessage(ArraySegment<byte>(respBuf, 0, resp.Body.Length), bufMgr, resp.ContentType)
-        // Mark all mustUnderstand headers in the response as understood.
-        // gSOAP cameras include Action mustUnderstand="1" in their responses;
-        // WCF's ServiceChannel.HandleReply throws FaultException if any
-        // mustUnderstand header has not been marked understood.
+        // Mark all mustUnderstand response headers as understood before returning to WCF.
+        // gSOAP cameras include Action mustUnderstand="1" in their response envelope;
+        // WCF's ServiceChannel.HandleReply throws a FaultException for any mustUnderstand
+        // header that has not been explicitly acknowledged by the channel.
         for i in 0 .. msg.Headers.Count - 1 do
             let hdr = msg.Headers.[i]
             if hdr.MustUnderstand then
