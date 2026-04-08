@@ -26,6 +26,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Reference Include="odm.ui.activities">
+      <HintPath>$(MSBuildThisFileDirectory)..\odm.ui.activities\bin\Release\odm.ui.activities.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="onvif.session">
       <HintPath>$(OdmViewsBin)onvif.session.dll</HintPath>
       <Private>true</Private>
