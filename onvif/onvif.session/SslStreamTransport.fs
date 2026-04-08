@@ -60,6 +60,8 @@ module internal SslStreamHelpers =
                     proceed <- false
                 else
                     let dataStart = eol + 2
+                    if dataStart + size > data.Length then
+                        failwithf "decodeChunked: chunk size %d exceeds buffer (dataStart=%d, bufLen=%d)" size dataStart data.Length
                     ms.Write(data, dataStart, size)
                     pos <- dataStart + size + 2
         ms.ToArray()
@@ -176,6 +178,8 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
 
         // Send via raw SslStream
         let resp = SslStreamHelpers.sslSend via bodyBytes contentType timeoutMs
+        if resp.StatusCode >= 400 then
+            System.Diagnostics.Debug.WriteLine(sprintf "SslStreamTransport: HTTP %d from %O" resp.StatusCode via)
 
         // Deserialize response
         let respBuf = bufMgr.TakeBuffer(resp.Body.Length)

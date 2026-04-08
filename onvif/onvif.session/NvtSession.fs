@@ -462,6 +462,18 @@ namespace odm.core
                 factory.Endpoint.Behaviors.Add(new CustomBehavior())
             factory
 
+        /// Upgrades an HTTP URL to HTTPS when the session's device was reached via HTTPS.
+        /// Maps port 80 -> 443; keeps other non-standard ports unchanged.
+        /// Publicly accessible for unit testing (mirrors the private UpgradeSchemeIfNeeded closure).
+        static member UpgradeScheme (deviceUri: Uri) (url: Uri) : Uri =
+            if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp then
+                let b = new UriBuilder(url)
+                b.Scheme <- Uri.UriSchemeHttps
+                if b.Port = 80 then b.Port <- 443
+                b.Uri
+            else
+                url
+
         /// Generates HTTPS URI variants from HTTP URIs for scheme-upgrade fallback.
         /// For each HTTP URI, produces HTTPS on port 443 (or same port if non-standard)
         /// and an additional variant on port 8443. Publicly accessible for unit testing.
