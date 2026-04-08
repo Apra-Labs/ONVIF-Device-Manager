@@ -631,8 +631,9 @@ namespace odm.core
                 //return! TryCreateSession(uris2)
         }
 
-        member this.CreateSession(deviceUri:Uri) = 
+        member this.CreateSession(deviceUri:Uri) =
             log.WriteInfo(sprintf "creating session for %s" (deviceUri.ToString()))
+            ServicePointManager.FindServicePoint(deviceUri).Expect100Continue <- false
             let sessionId = obj()
             let GetDeviceUnsecureClient = 
                 let comp = Async.Memoize(async{
