@@ -1,0 +1,148 @@
+{
+  "sprint": "HTTPS/TLS/RTSPS Camera Support",
+  "branch": "feature/https_support",
+  "updated": "2026-04-08",
+  "tasks": [
+    {
+      "id": "TASK-1",
+      "title": "Scheme-upgrade fallback in CreateSession(uris:Uri[])",
+      "tier": "premium",
+      "phase": "phase1",
+      "status": "completed",
+      "notes": "Commit 2894ce4. Added GenerateHttpsVariants static method + HTTPS fallback in CreateSession. Build passes, 39/39 tests green."
+    },
+    {
+      "id": "TASK-3",
+      "title": "Add onvif.session reference to test project",
+      "tier": "cheap",
+      "phase": "phase1",
+      "status": "completed",
+      "notes": "Commit bb4e831. Created csproj with onvif.session, onvif.services, FSharp.Core, utils.fsharp, System.ServiceModel refs. dotnet build succeeds."
+    },
+    {
+      "id": "TASK-2",
+      "title": "Verify HTTPS unsecured factory path + HttpsBindingTests",
+      "tier": "standard",
+      "phase": "phase1",
+      "status": "completed",
+      "notes": "Commit 5ccec4d. Existing code is correct — useTls=true creates HttpsTransportBindingElement. 2 new tests pass."
+    },
+    {
+      "id": "VERIFY-1",
+      "title": "VERIFY: Phase 1",
+      "tier": "cheap",
+      "type": "verify",
+      "phase": "phase1",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-4",
+      "title": "Create HttpsIntegrationTests.cs scaffold",
+      "tier": "standard",
+      "phase": "phase2",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-5",
+      "title": "Create SchemeUpgradeTests.cs (offline unit tests)",
+      "tier": "standard",
+      "phase": "phase2",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "VERIFY-2",
+      "title": "VERIFY: Phase 2",
+      "tier": "cheap",
+      "type": "verify",
+      "phase": "phase2",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-6",
+      "title": "Dual-transport GetStreamUri for HTTPS devices",
+      "tier": "premium",
+      "phase": "phase3",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-7",
+      "title": "FixUrl HTTPS + RTSP-over-HTTP + rtsps:// awareness",
+      "tier": "standard",
+      "phase": "phase3",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-8",
+      "title": "FixUrlHttpsTests.cs + StreamTransportNegotiationTests.cs",
+      "tier": "standard",
+      "phase": "phase3",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "VERIFY-3",
+      "title": "VERIFY: Phase 3",
+      "tier": "cheap",
+      "type": "verify",
+      "phase": "phase3",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-9",
+      "title": "Detect rtsps:// scheme before player launch + graceful error",
+      "tier": "premium",
+      "phase": "phase4",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-10",
+      "title": "RtspsUriTests.cs (offline)",
+      "tier": "cheap",
+      "phase": "phase4",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "VERIFY-4",
+      "title": "VERIFY: Phase 4",
+      "tier": "cheap",
+      "type": "verify",
+      "phase": "phase4",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-11",
+      "title": "Full regression pass",
+      "tier": "cheap",
+      "phase": "phase5",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "TASK-12",
+      "title": "Logging and documentation",
+      "tier": "cheap",
+      "phase": "phase5",
+      "status": "pending",
+      "notes": ""
+    },
+    {
+      "id": "VERIFY-5",
+      "title": "VERIFY: Phase 5 (Final)",
+      "tier": "cheap",
+      "type": "verify",
+      "phase": "phase5",
+      "status": "pending",
+      "notes": ""
+    }
+  ]
+}
