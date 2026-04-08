@@ -484,7 +484,7 @@
                     else
                         [| builder443.Uri; builder8443.Uri |]
                 elif uri.Scheme = Uri.UriSchemeHttps then
-                    [| uri |]
+                    [||]  // Already HTTPS — no upgrade variants needed
                 else
                     [||]
             )
