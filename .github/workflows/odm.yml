@@ -59,7 +59,7 @@ jobs:
     - name: Run tests
       run: |
         $vstest = "${{ env.DevEnvDir }}CommonExtensions\Microsoft\TestWindow\vstest.console.exe"
-        & $vstest "odm\odm.tests\bin\Debug\net48\odm.tests.dll" /logger:trx
+        & $vstest "odm\odm.tests\bin\Any CPU\Debug\net48\odm.tests.dll" /logger:trx
       shell: pwsh
 
     - name: Collect artifacts
