@@ -124,8 +124,8 @@
       "title": "Full regression pass",
       "tier": "cheap",
       "phase": "phase5",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "21/21 offline tests pass. 6 integration tests also passed (ODM_TEST_HOST set). 27/27 total. No failures."
     },
     {
       "id": "TASK-12",
