@@ -138,6 +138,7 @@
     <Compile Include="Services\ReplayAsync.fs" />
     <Compile Include="Services\SearchAsync.fs" />
     <Compile Include="Services\ActionEngineAsync.fs" />
+    <Compile Include="SslStreamTransport.fs" />
     <Compile Include="NvtSession.fs" />
     <None Include="packages.config" />
   </ItemGroup>

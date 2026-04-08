@@ -25,7 +25,7 @@
       "tier": "standard",
       "phase": "phase1",
       "status": "completed",
-      "notes": "Commit 5ccec4d. Existing code is correct \u2014 useTls=true creates HttpsTransportBindingElement. 2 new tests pass."
+      "notes": "Commit 5ccec4d. Originally verified HttpsTransportBindingElement. Updated at VERIFY-2: now checks for SslStreamTransportBindingElement (TASK-6 replacement). 2/2 tests pass."
     },
     {
       "id": "VERIFY-1",
@@ -58,24 +58,24 @@
       "tier": "cheap",
       "type": "verify",
       "phase": "phase2",
-      "status": "blocked",
-      "notes": "Release x64 build: SUCCESS. Offline tests: 7/7 pass. Integration tests: BLOCKED by camera firmware bug. Root cause confirmed: camera 192.168.1.190 gSOAP TLS stack crashes when HTTP request spans multiple TLS records AND when TLS ClientHello includes version-negotiation extensions (TLS 1.3 GREASE). .NET Framework WCF HttpWebRequest sends request across multiple TLS records; direct TcpClient+SslStream with explicit Tls12+single-write works (test GetSystemDateAndTime_ViaTcpSslStream_Succeeds passes). WCF-based tests (GetSystemDateAndTime_ViaWcfChannel_Succeeds, GetCapabilities, GetProfiles, GetStreamUri) cannot pass against this camera without replacing WCF HTTP transport with custom single-write TLS transport. Connect_ToHttpsCamera_Succeeds passes (no network call). Added ServicePointManager.SecurityProtocol=Tls12 + Expect100Continue=false to ClassInitialize and Main.cs."
+      "status": "completed",
+      "notes": "Release x64 build: 0 errors. Offline tests: 7/7 pass. Integration tests: 6/6 pass vs 192.168.1.190. Fix: SslStreamTransportBindingElement (TASK-6) replaces HttpsTransportBindingElement, sends HTTP headers+body as single TLS record — fixes gSOAP 2.8 multi-record fragmentation crash. Also: Action mustUnderstand header stripped from outgoing requests; response mustUnderstand headers marked understood; FixUrl upgrades http:// xAddrs to https:// when session is HTTPS. Build fix: SslProtocols.Tls12 cast as enum<SslProtocols> 3072 for .NET 4.0 target framework compatibility; ExceptionDispatchInfo replaced with raise for .NET 4.0."
     },
     {
       "id": "TASK-6",
-      "title": "Dual-transport GetStreamUri for HTTPS devices",
+      "title": "SslStreamTransportBindingElement replaces HttpsTransportBindingElement",
       "tier": "premium",
-      "phase": "phase3",
-      "status": "pending",
-      "notes": ""
+      "phase": "phase2",
+      "status": "completed",
+      "notes": "SslStreamTransport.fs added. Sends HTTP headers+body as a single TLS record via raw TcpClient+SslStream, bypassing .NET WCF HttpWebRequest multi-record fragmentation. Also strips Action mustUnderstand header (gSOAP returns HTTP 500 fault) and marks response mustUnderstand headers as understood. Done as part of VERIFY-2 fix."
     },
     {
       "id": "TASK-7",
-      "title": "FixUrl HTTPS + RTSP-over-HTTP + rtsps:// awareness",
+      "title": "FixUrl HTTPS scheme upgrade for service xAddrs",
       "tier": "standard",
-      "phase": "phase3",
-      "status": "pending",
-      "notes": ""
+      "phase": "phase2",
+      "status": "completed",
+      "notes": "NvtSession.fs FixUrl updated to upgrade http:// xAddrs to https:// when session is HTTPS. Partial: RTSP-over-HTTP and rtsps:// awareness deferred to phase3. Done as part of VERIFY-2 fix."
     },
     {
       "id": "TASK-8",

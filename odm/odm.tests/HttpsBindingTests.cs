@@ -13,7 +13,8 @@ namespace odm.tests
     {
         /// <summary>
         /// Verifies that CreateChannelFactory with useTls=true produces a binding
-        /// containing HttpsTransportBindingElement.
+        /// containing SslStreamTransportBindingElement (TASK-6: replaces HttpsTransportBindingElement
+        /// to send headers+body as a single TLS record, fixing gSOAP multi-record fragmentation crash).
         /// </summary>
         [TestMethod]
         public void UnsecureFactory_WithTls_CreatesHttpsBinding()
@@ -39,11 +40,18 @@ namespace odm.tests
             var binding = channelFactory.Endpoint.Binding as CustomBinding;
             Assert.IsNotNull(binding, "Binding should be a CustomBinding");
 
+            // TASK-6: SslStreamTransportBindingElement replaces HttpsTransportBindingElement.
+            // It bypasses .NET's HttpWebRequest to avoid multi-TLS-record fragmentation on gSOAP cameras.
+            var sslElement = binding.Elements
+                .OfType<SslStreamTransportBindingElement>()
+                .FirstOrDefault();
+            Assert.IsNotNull(sslElement, "Binding must contain SslStreamTransportBindingElement when useTls=true");
+
+            // Confirm HttpsTransportBindingElement is NOT present (it was replaced).
             var httpsElement = binding.Elements
                 .OfType<HttpsTransportBindingElement>()
                 .FirstOrDefault();
-            Assert.IsNotNull(httpsElement, "Binding must contain HttpsTransportBindingElement when useTls=true");
-            Assert.IsFalse(httpsElement.RequireClientCertificate, "RequireClientCertificate should be false");
+            Assert.IsNull(httpsElement, "Binding must NOT contain HttpsTransportBindingElement when useTls=true (replaced by SslStreamTransportBindingElement)");
         }
 
         /// <summary>

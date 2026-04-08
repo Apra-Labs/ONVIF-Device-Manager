@@ -418,7 +418,7 @@ namespace odm.core
         static member private CreateChannelFactory<'T>(mtomEncoding:bool, wsAddressing:bool, securityToken: bool, useTls: bool):ChannelFactory<'T> =
             let binding = 
                 let bindingElements = seq{
-                    let msgVer = 
+                    let msgVer =
                         if wsAddressing then
                             MessageVersion.Soap12WSAddressing10
                         else
@@ -433,25 +433,22 @@ namespace odm.core
                         let encoding = new TextMessageEncodingBindingElement(msgVer, Encoding.UTF8)
                         encoding.ReaderQuotas.MaxStringContentLength <- Int32.MaxValue //100 * 1024 * 1024
                         yield encoding :> BindingElement
-                    
-                    let transport = 
-                        if useTls then 
-                            let transport = new HttpsTransportBindingElement()
-                            transport.RequireClientCertificate <- false
-                            transport :> HttpTransportBindingElement
-                        else
-                            new HttpTransportBindingElement()
-                    
-                    transport.MaxReceivedMessageSize <- int64(Int32.MaxValue) //100L * 1024L * 1024L
-                    transport.KeepAliveEnabled <- false
-                    transport.MaxBufferSize <- Int32.MaxValue
-                    transport.ProxyAddress <- null
-                    transport.BypassProxyOnLocal <- true
-                    //transport.ManualAddressing <- true
-                    transport.UseDefaultWebProxy <- false
-                    transport.TransferMode <-TransferMode.StreamedResponse
-                    //transport.TransferMode <- TransferMode.Buffered
-                    yield transport :> BindingElement
+
+                    if useTls then
+                        // SslStreamTransportBindingElement replaces HttpsTransportBindingElement.
+                        // It sends the request as a single TLS record, fixing gSOAP multi-record bug.
+                        yield new SslStreamTransportBindingElement() :> BindingElement
+                    else
+                        let transport = new HttpTransportBindingElement()
+                        transport.MaxReceivedMessageSize <- int64(Int32.MaxValue) //100L * 1024L * 1024L
+                        transport.KeepAliveEnabled <- false
+                        transport.MaxBufferSize <- Int32.MaxValue
+                        transport.ProxyAddress <- null
+                        transport.BypassProxyOnLocal <- true
+                        //transport.ManualAddressing <- true
+                        transport.UseDefaultWebProxy <- false
+                        transport.TransferMode <- TransferMode.StreamedResponse
+                        yield transport :> BindingElement
                 }
                 new CustomBinding(bindingElements)
             binding.CloseTimeout <- TimeSpan.FromSeconds(30.0)
@@ -740,31 +737,48 @@ namespace odm.core
                 })
                 fun() -> comp
 
+            // Upgrade an HTTP URL to HTTPS when the device was reached via HTTPS.
+            // Cameras often return capability xAddr values with http:// even when
+            // they only accept connections on the HTTPS port.
+            let UpgradeSchemeIfNeeded (url: Uri) =
+                if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp then
+                    let b = new UriBuilder(url)
+                    b.Scheme <- Uri.UriSchemeHttps
+                    // Map port 80 -> 443; keep other non-default ports (e.g. 8080 stays 8080)
+                    if b.Port = 80 then b.Port <- 443
+                    b.Uri
+                else
+                    url
+
             let FixUrl(url:Uri) = async{
-                if not(url.IsAbsoluteUri) then
-                    //return new Uri(deviceUri.GetBaseUri(), url)
-                    return new Uri(deviceUri, url)
-                elif not(deviceUri.Host = url.Host) then
-                    if url.HostNameType = UriHostNameType.IPv4 then
-                        let! caps = GetCapabilities()
-                        let internalDeviceUrl = new Uri(caps.device.xAddr)
-                        if internalDeviceUrl.Host = url.Host then
-                            if internalDeviceUrl.Port = url.Port && internalDeviceUrl.Scheme = url.Scheme then
-                                return url.Relocate(deviceUri.Host, deviceUri.Port)
-                            else
-                                return url.Relocate(deviceUri.Host)
-//                            let baseUrl = 
-//                                if url.Port < 0 then 
+                let! resolved =
+                    async{
+                        if not(url.IsAbsoluteUri) then
+                            //return new Uri(deviceUri.GetBaseUri(), url)
+                            return new Uri(deviceUri, url)
+                        elif not(deviceUri.Host = url.Host) then
+                            if url.HostNameType = UriHostNameType.IPv4 then
+                                let! caps = GetCapabilities()
+                                let internalDeviceUrl = new Uri(caps.device.xAddr)
+                                if internalDeviceUrl.Host = url.Host then
+                                    if internalDeviceUrl.Port = url.Port && internalDeviceUrl.Scheme = url.Scheme then
+                                        return url.Relocate(deviceUri.Host, deviceUri.Port)
+                                    else
+                                        return url.Relocate(deviceUri.Host)
+//                            let baseUrl =
+//                                if url.Port < 0 then
 //                                    new Uri(sprintf "%s://%s" (url.Scheme) (deviceUri.Host))
-//                                else 
+//                                else
 //                                    new Uri(sprintf "%s://%s:%d" (url.Scheme) (deviceUri.Host) (url.Port))
 //                            return new Uri(baseUrl, url.PathAndQuery)
+                                else
+                                    return url
+                            else
+                                return url
                         else
                             return url
-                    else
-                        return url
-                else
-                    return url
+                    }
+                return UpgradeSchemeIfNeeded resolved
             }
 
             let GetMediaClient = 
