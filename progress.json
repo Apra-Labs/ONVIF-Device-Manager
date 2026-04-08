@@ -33,8 +33,8 @@
       "tier": "cheap",
       "type": "verify",
       "phase": "phase1",
-      "status": "pending",
-      "notes": ""
+      "status": "completed",
+      "notes": "Build: Release x64 SUCCESS. Tests: 2/2 HttpsBindingTests passed. Pushed to origin at 9acc102."
     },
     {
       "id": "TASK-4",
