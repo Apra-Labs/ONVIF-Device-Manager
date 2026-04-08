@@ -22,6 +22,10 @@ jobs:
     - name: Setup VS Dev Environment
       uses: seanmiddleditch/gha-setup-vsdevenv@v4
 
+    - name: Install .NET Framework targeting packs
+      run: choco install netfx-4.0-devpack netfx-4.5.2-devpack -y --no-progress
+      shell: pwsh
+
     - name: Build application
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
 
