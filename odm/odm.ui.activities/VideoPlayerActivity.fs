@@ -8,7 +8,7 @@ namespace odm.ui.activities
     open System.Threading
     open System.Windows
     open System.Windows.Threading
-    
+
     open Microsoft.Practices.Unity
 
     open onvif.services
@@ -47,6 +47,10 @@ namespace odm.ui.activities
                             null
 
                     let! mediaUri = session.GetStreamUri(model.streamSetup, model.profileToken)
+                    if VideoPlayerActivity.IsRtspsUri mediaUri.uri then
+                        raise (NotSupportedException(
+                            sprintf "Native RTSPS streaming is not supported (URI: %s). " mediaUri.uri +
+                                    "Configure the camera to use RTSP over HTTP/HTTPS transport instead."))
                     let viewModel = new VideoPlayerView.Model(
                         streamSetup = model.streamSetup,
                         mediaUri = mediaUri,
@@ -77,5 +81,11 @@ namespace odm.ui.activities
                     VideoPlayerActivity.Run(ctx, model)
             end
         }
-        
+
+        /// Returns true when the URI uses the rtsps:// scheme (case-insensitive).
+        /// Live555 does not support native RTSPS; exposed as a static member for unit testing.
+        static member IsRtspsUri (uri: string) =
+            not (String.IsNullOrEmpty(uri)) &&
+            uri.StartsWith("rtsps://", StringComparison.OrdinalIgnoreCase)
+
     end
