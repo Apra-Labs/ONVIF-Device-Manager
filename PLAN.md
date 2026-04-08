@@ -20,18 +20,16 @@
 ### Phase 1: F1 Core — Scheme-Upgrade Fallback + HTTPS Unsecured Factory
 
 #### Task 1: Scheme-upgrade fallback in `CreateSession(uris:Uri[])`
-- **Change:** In `NvtSession.fs:CreateSession(uris:Uri[])`, after all TCP connectivity checks fail on the original URIs, generate HTTPS variants (replace `http://` with `https://`, default port 443) and retry connectivity. If a single HTTP URI is provided and TCP connect fails, automatically attempt HTTPS on port 443, then 8443. Log each fallback attempt.
+- **Change:** In `NvtSession.fs:CreateSession(uris:Uri[])`, implement HTTPS scheme-upgrade fallback with the following exact control flow:
+  1. **Extract a testable helper** `generateHttpsVariants: Uri[] -> Uri[]` as a module-level `let` binding (or static method) at the top of NvtSession.fs. Given a list of URIs, it replaces `http://` scheme with `https://` and swaps port to 443 (if port was 80 or default). For each URI, also produce a variant on port 8443. This function must be publicly accessible for unit testing from `SchemeUpgradeTests` (Task 5).
+  2. **Control flow — multi-URI input:** First, race all original (HTTP) URIs with TCP connectivity check using the existing `Async.Race` pattern (3-second per-attempt timeout, matching existing TCP probe timeout). If ALL original URIs fail connectivity, call `generateHttpsVariants` to produce HTTPS variants and race those with the same 3-second per-attempt timeout. Do NOT run both races in parallel — run HTTPS variants only after the HTTP race is fully exhausted.
+  3. **Control flow — single-URI input:** Same sequential logic — try HTTP first (3-second timeout), if it fails try HTTPS on port 443 (3-second timeout), then HTTPS on port 8443 (3-second timeout).
+  4. **Deadlock mitigation:** Use `Async.StartChild` with a `CancellationToken` (or `Async.WithCancellation`) to bound each individual connectivity attempt to the 3-second timeout. Cancel outstanding child tasks when the first successful connection is found. Do not leave hanging async tasks — every spawned child must be cancellable.
+  5. Log each fallback attempt: `"HTTP connectivity failed for N URIs, retrying with HTTPS variants"`.
 - **Files:** `onvif/onvif.session/NvtSession.fs` (lines 468-575)
 - **Tier:** premium
-- **Done when:** `CreateSession([| new Uri("http://192.168.1.190/onvif/device_service") |])` on an HTTPS-only camera succeeds by falling back to HTTPS. Log output shows `"HTTP connectivity failed, retrying with HTTPS on port 443"`.
-- **Blockers:** F# async control flow in `Async.Race` — must handle the case where all original endpoints fail and then retry HTTPS endpoints without deadlocking.
-
-#### Task 2: Verify HTTPS unsecured factory path (confirm or fix)
-- **Change:** Confirm that `getDeviceUnsecureFactory(useTls=true)` at line 314 produces a working HTTPS binding for the time-sync call. If the camera's device URI is `https://`, the `GetSystemDateAndTime` call at line 665 must succeed over HTTPS without WS-Security. Write a focused unit test `HttpsBindingTests` that verifies `CreateChannelFactory<Device>(false, false, false, true)` produces an `HttpsTransportBindingElement`.
-- **Files:** `onvif/onvif.session/NvtSession.fs` (lines 314-318, 646-694), `odm/odm.tests/HttpsBindingTests.cs` (new)
-- **Tier:** standard
-- **Done when:** Unit test `HttpsBindingTests.UnsecureFactory_WithTls_CreatesHttpsBinding` passes. If the existing code is correct (it appears to be), this task is verification + test only.
-- **Blockers:** Test project must reference `onvif.session` assembly.
+- **Done when:** `CreateSession([| new Uri("http://192.168.1.190/onvif/device_service") |])` on an HTTPS-only camera succeeds (log shows scheme-upgrade). PLUS: unit test `SchemeUpgradeTests.GenerateHttpsVariants_*` passes offline.
+- **Blockers:** F# async control flow in `Async.Race` — mitigated by `Async.StartChild` + cancellation (see step 4 above).
 
 #### Task 3: Add `onvif.session` reference to test project
 - **Change:** Update `odm.tests.csproj` to reference the pre-built `onvif.session.dll` and its transitive dependencies (`onvif.services.dll`, `FSharp.Core.dll`, etc.) from the Release output directory so that integration and unit tests can instantiate `NvtSessionFactory` directly.
@@ -39,6 +37,13 @@
 - **Tier:** cheap
 - **Done when:** `dotnet build odm/odm.tests/odm.tests.csproj` succeeds with the new references.
 - **Blockers:** Must identify the exact output path for onvif.session Release build.
+
+#### Task 2: Verify HTTPS unsecured factory path (confirm or fix)
+- **Change:** Confirm that `getDeviceUnsecureFactory(useTls=true)` at line 314 produces a working HTTPS binding for the time-sync call. If the camera's device URI is `https://`, the `GetSystemDateAndTime` call at line 665 must succeed over HTTPS without WS-Security. Write a focused unit test `HttpsBindingTests` that verifies `CreateChannelFactory<Device>(false, false, false, true)` produces an `HttpsTransportBindingElement`.
+- **Files:** `onvif/onvif.session/NvtSession.fs` (lines 314-318, 646-694), `odm/odm.tests/HttpsBindingTests.cs` (new)
+- **Tier:** standard
+- **Done when:** Unit test `HttpsBindingTests.UnsecureFactory_WithTls_CreatesHttpsBinding` passes. If the existing code is correct (it appears to be), this task is verification + test only.
+- **Blockers:** Task 3 (test project must reference `onvif.session` assembly).
 
 #### VERIFY: Phase 1
 - Build: MSBuild `Release|x64` — must succeed
@@ -75,10 +80,14 @@
 ### Phase 3: F2 — RTSP Streaming over HTTPS
 
 #### Task 6: Transport negotiation in `GetStreamUri`
-- **Change:** In `NvtSession.fs:GetStreamUri` (line 1463), when the device session URI scheme is `https://`, try `RtspOverHttp` transport if standard RTSP fails. Sequence: (1) call `GetStreamUri` with the original `StreamSetup`, (2) if the returned URI is unreachable or the device is HTTPS-only, retry with `StreamSetup { stream = StreamType.RTPUnicast; transport = { protocol = TransportProtocol.HTTP } }`. Return the first successful URI.
+- **Change:** In `NvtSession.fs:GetStreamUri` (line 1463), always request both transports from the camera when the device session URI scheme is `https://`, and return both results to the caller. Strategy:
+  1. Call `GetStreamUri` with the original `StreamSetup` (standard RTSP/UDP) — this always succeeds at the SOAP level.
+  2. If the device URI scheme is `https://`, ALSO call `GetStreamUri` with `StreamSetup { stream = RTPUnicast; transport = { protocol = HTTP } }` (RtspOverHttp).
+  3. Return: for HTTPS devices, a result containing both the standard RTSP URI (fallback) and the RtspOverHttp URI (primary), e.g. as a tuple or discriminated union. For non-HTTPS devices, return existing single URI unchanged.
+  4. The session layer does NOT perform TCP probing on the returned URIs — that is the player's responsibility. No "unreachable" checks in the session layer.
 - **Files:** `onvif/onvif.session/NvtSession.fs` (lines 1463-1470)
 - **Tier:** premium
-- **Done when:** `GetStreamUri` returns a playable URI for HTTPS-only camera 192.168.1.190. Log shows transport negotiation sequence.
+- **Done when:** For an HTTPS device, `GetStreamUri` returns a result (tuple or discriminated union) containing both the standard RTSP URI and the RtspOverHttp URI (if camera supports both). For a non-HTTPS device, returns existing single URI. The returned URI(s) are non-null with a valid scheme (`rtsp://`, `rtsps://`, `http://`, or `https://`) and the transport type used is logged. Unit test `StreamTransportNegotiationTests` (Task 8) covers both cases offline.
 - **Blockers:** Camera must support at least one of standard RTSP or RTSP-over-HTTP. If camera returns standard RTSP on a separate port that is open, this negotiation is unnecessary but must not break.
 
 #### Task 7: FixUrl HTTPS + RTSP-over-HTTP awareness
@@ -106,11 +115,12 @@
 ### Phase 4: F3 — RTSPS Native Streaming (Best-Effort)
 
 #### Task 9: Detect `rtsps://` scheme before player launch
-- **Change:** In `VideoPlayerActivity.fs`, before passing the media URI to the player view, check if the scheme is `rtsps://`. If the native player (Live555) does not support it, set an error message on the view model instead of passing the URI. The detection can be a simple scheme check. Live555's RTSPS support depends on whether it was compiled with OpenSSL — assume it was NOT for safety; provide a clear in-panel error.
+- **Change:** In `VideoPlayerActivity.fs`, before passing the media URI to the player view, check if the scheme is `rtsps://`. If the native player (Live555) does not support it, set an error message on the view model instead of passing the URI. The detection can be a simple scheme check. Live555's RTSPS support depends on whether it was compiled with OpenSSL — assume it was NOT for safety; provide a clear in-panel error suggesting "try enabling RTSP-over-HTTPS."
+  - **Pre-step:** Before implementing the error path, read `odm/odm.ui.views/views/SectionNVT/LiveVideoView.xaml.cs` to confirm `Error(string)` or equivalent exists. If the method does not exist, create it as a simple label overlay on the video panel.
 - **Files:** `odm/odm.ui.activities/VideoPlayerActivity.fs` (line 49), `odm/odm.ui.views/views/SectionNVT/LiveVideoView.xaml.cs` (error display)
 - **Tier:** premium
-- **Done when:** An `rtsps://` URI produces a visible error message in the video panel instead of a blank/crash. Standard `rtsp://` URIs continue to work.
-- **Blockers:** Need to verify the error display path in `LiveVideoView.xaml.cs`. WPF-dependent — cannot be integration-tested headlessly.
+- **Done when:** An `rtsps://` URI produces a visible error message in the video panel instead of a blank/crash. Standard `rtsp://` URIs continue to work. AND unit test `RtspsUriTests.SchemeDetection_Rtsps_ReturnsErrorState` passes offline (no WPF required).
+- **Blockers:** Need to verify the error display path in `LiveVideoView.xaml.cs` (see pre-step). WPF-dependent visual outcome cannot be integration-tested headlessly, but the scheme-detection logic is tested offline.
 
 #### Task 10: `RtspsUriTests.cs` (offline)
 - **Change:** Unit tests: (a) `FixUrl` with `rtsps://` input produces correct host/port fixup, (b) scheme detection helper identifies `rtsps://` correctly, (c) fallback message content validation.
@@ -156,8 +166,8 @@
 | Task | Phase | Feature | Tier | Key File |
 |------|-------|---------|------|----------|
 | 1 — Scheme-upgrade fallback | 1 | F1 | premium | NvtSession.fs:468-575 |
-| 2 — Verify HTTPS unsecured factory | 1 | F1 | standard | NvtSession.fs:314-318 |
 | 3 — Test project references | 1 | F1 | cheap | odm.tests.csproj |
+| 2 — Verify HTTPS unsecured factory | 1 | F1 | standard | NvtSession.fs:314-318 |
 | 4 — Integration test scaffold | 2 | F1 | standard | HttpsIntegrationTests.cs |
 | 5 — Scheme-upgrade unit tests | 2 | F1 | standard | SchemeUpgradeTests.cs |
 | 6 — Transport negotiation | 3 | F2 | premium | NvtSession.fs:1463-1470 |

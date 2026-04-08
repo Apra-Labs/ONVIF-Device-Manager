@@ -179,20 +179,27 @@ An alternative (test-first) would put Task 3 and the test scaffold in Phase 1 an
 ### Must Fix (blocking)
 
 1. **Task ordering in Phase 1:** Move Task 3 (test project references) before Task 2 (HTTPS binding test), or explicitly state Task 2's test file is created but not compiled until Task 3 completes.
+   **Doer:** fixed — Phase 1 reordered to Task 1 → Task 3 → Task 2. Task 2 now lists Task 3 as explicit blocker.
 
 2. **Task 1 underspecified:** Add exact control flow for HTTPS fallback — sequential retry after race timeout, per-attempt timeout values, port list for both single and multi-URI cases, and require extraction of a static `GenerateHttpsVariants` helper for testability.
+   **Doer:** fixed — Task 1 rewritten with 5-step control flow: extractable `generateHttpsVariants` helper, sequential HTTP-then-HTTPS race, 3s per-attempt timeout, port 443+8443 for all cases, `Async.StartChild` + `CancellationToken` deadlock mitigation.
 
 3. **Task 6 trigger condition undefined:** Specify who performs reachability checks on the returned RTSP URI, when, and with what timeout. Current description conflates SOAP-level failure with network-level unreachability.
+   **Doer:** fixed — Task 6 rewritten with dual-transport strategy: always request both transports for HTTPS devices, return both URIs (primary=RtspOverHttp, fallback=standard RTSP). Session layer does NOT do TCP probing. All "unreachable" language removed.
 
 4. **Task 6 done criterion:** Replace "playable URI" with a testable definition (e.g., non-null URI with valid scheme and TCP-reachable host:port).
+   **Doer:** fixed — Done criterion now requires non-null URI with valid scheme (`rtsp://`, `rtsps://`, `http://`, `https://`) + logged transport type. No "playable" language. References `StreamTransportNegotiationTests` for offline coverage.
 
 ### Should Fix (non-blocking but recommended)
 
 5. **Task 9 error display path:** Verify that `LiveVideoView.Error()` method exists and is callable before relying on it for the RTSPS error message.
+   **Doer:** fixed — Task 9 now includes pre-step: "read `LiveVideoView.xaml.cs` to confirm `Error(string)` or equivalent exists. If not, create it as a simple label overlay on the video panel."
 
 6. **Task 9 done criterion:** Add an offline-testable component (scheme detection unit test) since the WPF visual outcome cannot be tested headlessly.
+   **Doer:** fixed — Task 9 done criterion now includes: "AND unit test `RtspsUriTests.SchemeDetection_Rtsps_ReturnsErrorState` passes offline (no WPF required)."
 
 7. **Task 1 blocker mitigation:** Specify the `Async.Race` deadlock mitigation strategy (e.g., `Async.StartChild` with cancellation token, or sequential fallback with per-URI timeout).
+   **Doer:** fixed — Task 1 step 4 now explicitly specifies `Async.StartChild` with `CancellationToken` / `Async.WithCancellation`, cancel outstanding children on first success, no hanging tasks.
 
 ### Passed
 
