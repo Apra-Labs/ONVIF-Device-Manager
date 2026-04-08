@@ -1,4 +1,4 @@
-﻿namespace odm.core
+namespace odm.core
 
     open System
     open System.Collections.Generic
@@ -521,30 +521,25 @@
 
             let raceEndpoints (srcUris:Uri[]) = async {
                 let distinctUris = srcUris |> Seq.distinct |> Seq.toList
-                match distinctUris with
-                | [] -> return None
-                | [single] ->
-                    let! cr = soapProbeWithTimeout single 5000
+                let probeOne (uri:Uri) = async {
+                    let! cr = soapProbeWithTimeout uri 5000
                     if cr then
-                        log.WriteInfo(sprintf "SOAP probe passed on %s" (single.ToString()))
-                        return Some single
+                        log.WriteInfo(sprintf "SOAP probe passed on %s" (uri.ToString()))
+                        return Some uri
                     else
-                        log.WriteInfo(sprintf "SOAP probe failed on %s" (single.ToString()))
+                        log.WriteInfo(sprintf "SOAP probe failed on %s" (uri.ToString()))
                         return None
-                | _ ->
-                    let! t = Async.Race(seq{
-                        for uri in distinctUris do
-                            yield async{
-                                let! cr = soapProbeWithTimeout uri 5000
-                                match cr with
-                                | true ->
-                                    log.WriteInfo(sprintf "SOAP probe passed on %s" (uri.ToString()))
-                                    return uri
-                                | false ->
-                                    return failwith("SOAP probe failed")
-                            }
-                    })
-                    return t
+                }
+                let rec tryFirst (uris:Uri list) = async {
+                    match uris with
+                    | [] -> return None
+                    | uri :: rest ->
+                        let! result = probeOne uri
+                        match result with
+                        | Some _ -> return result
+                        | None -> return! tryFirst rest
+                }
+                return! tryFirst distinctUris
             }
 
             if uris.Length = 0 then return failwith("no uri was passed")

@@ -101,9 +101,13 @@ namespace odm.tests
 
                     Assert.Fail("Expected failure — no real ONVIF device is running");
                 }
-                catch (AggregateException ex)
+                catch (Exception ex)
                 {
-                    var msg = ex.InnerException?.Message ?? ex.Message;
+                    // FSharpAsync.RunSynchronously may throw System.Exception directly (not
+                    // wrapped in AggregateException) when the async computation calls failwith.
+                    // Unwrap AggregateException if present, otherwise use the exception itself.
+                    var inner = (ex as AggregateException)?.InnerException ?? ex;
+                    var msg = inner.Message;
                     // The error should mention HTTPS fallback, confirming SOAP probe failed
                     // on the HTTP endpoint and the code proceeded to try HTTPS variants
                     Assert.IsTrue(

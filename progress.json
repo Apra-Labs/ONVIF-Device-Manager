@@ -25,7 +25,7 @@
       "tier": "standard",
       "phase": "phase1",
       "status": "completed",
-      "notes": "Commit 5ccec4d. Existing code is correct — useTls=true creates HttpsTransportBindingElement. 2 new tests pass."
+      "notes": "Commit 5ccec4d. Existing code is correct \u2014 useTls=true creates HttpsTransportBindingElement. 2 new tests pass."
     },
     {
       "id": "VERIFY-1",
@@ -59,7 +59,7 @@
       "type": "verify",
       "phase": "phase2",
       "status": "blocked",
-      "notes": "Commit fcbcfde: replaced TCP-only CheckConnectivity with SOAP-level probe (GetSystemDateAndTime, 5s timeout) in CreateSession(uris:Uri[]). Reverted https:// hardcoding in HttpsIntegrationTests — now uses http:// input to validate scheme-upgrade fires automatically. Added SoapProbe_OnSilentPort_TriggersHttpsFallback test. dotnet build test project: SUCCESS. BLOCKED: MSBuild.exe and vstest.console.exe commands blocked by permission system — need manual run of full Release x64 build + offline tests + integration tests to verify."
+      "notes": "Commit fcbcfde: replaced TCP-only CheckConnectivity with SOAP-level probe (GetSystemDateAndTime, 5s timeout) in CreateSession(uris:Uri[]). Reverted https:// hardcoding in HttpsIntegrationTests \u2014 now uses http:// input to validate scheme-upgrade fires automatically. Added SoapProbe_OnSilentPort_TriggersHttpsFallback test. dotnet build test project: SUCCESS. BLOCKED: MSBuild.exe and vstest.console.exe commands blocked by permission system \u2014 need manual run of full Release x64 build + offline tests + integration tests to verify."
     },
     {
       "id": "TASK-6",
