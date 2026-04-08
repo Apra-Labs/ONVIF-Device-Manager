@@ -227,9 +227,9 @@
                 ()
         end
     end
-        
+
     type NvtSessionFactory(credentials: NetworkCredential) = class
-        
+
         static let AlternateImplementation (comp:Async<'T>) (altComp:Async<'T>):Async<'T> = 
             let tramp = new Trampoline()
             let useAlt = false
@@ -465,6 +465,31 @@
                 factory.Endpoint.Behaviors.Add(new CustomBehavior())
             factory
 
+        /// Generates HTTPS URI variants from HTTP URIs for scheme-upgrade fallback.
+        /// For each HTTP URI, produces HTTPS on port 443 (or same port if non-standard)
+        /// and an additional variant on port 8443. Publicly accessible for unit testing.
+        static member GenerateHttpsVariants (uris: Uri[]) : Uri[] =
+            uris
+            |> Array.collect (fun uri ->
+                if uri.Scheme = Uri.UriSchemeHttp then
+                    let port = if uri.IsDefaultPort || uri.Port = 80 then 443 else uri.Port
+                    let builder443 = new UriBuilder(uri)
+                    builder443.Scheme <- Uri.UriSchemeHttps
+                    builder443.Port <- port
+                    let builder8443 = new UriBuilder(uri)
+                    builder8443.Scheme <- Uri.UriSchemeHttps
+                    builder8443.Port <- 8443
+                    if port = 8443 then
+                        [| builder443.Uri |]
+                    else
+                        [| builder443.Uri; builder8443.Uri |]
+                elif uri.Scheme = Uri.UriSchemeHttps then
+                    [| uri |]
+                else
+                    [||]
+            )
+            |> Seq.distinct |> Seq.toArray
+
         member this.CreateSession(uris:Uri[]) = async{
             let CheckConnectivity (host:string, port:int) = async{
 //                let ConectAsync(socket:Socket, host:string, port:int) = async{
@@ -542,37 +567,56 @@
                 else
                     return false
             }
-            let endpoints = uris |> Seq.map (fun uri->(uri.Host, uri.Port)) |> Seq.distinct |> Seq.toList
-            match endpoints with
-            | a::[] -> 
-                return this.CreateSession(
-                    uris |> Seq.find (fun uri-> 
-                        let h,p = endpoints.Head
-                        uri.Host = h && uri.Port = p
-                    )
-                )
-            | [] -> return failwith("no uri was passed")
-            | _ -> 
-                let! t = Async.Race(seq{
-                    for ep in endpoints do
-                        yield async{
-                            let! cr = CheckConnectivity(ep)
-                            let host, port = ep
-                            match cr with
-                            | true -> 
-                                log.WriteInfo(sprintf "connection test passed on %s:%d" host port)
-                                return this.CreateSession(
-                                    uris |> Seq.find (fun uri-> 
-                                        uri.Host = host && uri.Port = port
-                                    )
-                                )
-                            | false -> 
-                                return failwith("connectivity test failed")
-                        }
-                })
-                match t with
-                | Some s -> return s
-                | None -> return failwith("no uri was passed")
+            let findUriForEndpoint (srcUris:Uri[]) (host, port) =
+                srcUris |> Seq.find (fun uri -> uri.Host = host && uri.Port = port)
+
+            let raceEndpoints (srcUris:Uri[]) = async {
+                let eps = srcUris |> Seq.map (fun uri -> (uri.Host, uri.Port)) |> Seq.distinct |> Seq.toList
+                match eps with
+                | [] -> return None
+                | [(h,p)] ->
+                    let! cr = CheckConnectivity(h, p)
+                    if cr then
+                        log.WriteInfo(sprintf "connection test passed on %s:%d" h p)
+                        return Some (findUriForEndpoint srcUris (h, p))
+                    else
+                        return None
+                | _ ->
+                    let! t = Async.Race(seq{
+                        for ep in eps do
+                            yield async{
+                                let! cr = CheckConnectivity(ep)
+                                let host, port = ep
+                                match cr with
+                                | true ->
+                                    log.WriteInfo(sprintf "connection test passed on %s:%d" host port)
+                                    return findUriForEndpoint srcUris (host, port)
+                                | false ->
+                                    return failwith("connectivity test failed")
+                            }
+                    })
+                    return t
+            }
+
+            if uris.Length = 0 then return failwith("no uri was passed")
+
+            // Try original URIs first
+            let! httpResult = raceEndpoints uris
+            match httpResult with
+            | Some uri ->
+                return this.CreateSession(uri)
+            | None ->
+                // HTTP connectivity failed — try HTTPS variants
+                let httpsUris = NvtSessionFactory.GenerateHttpsVariants uris
+                if httpsUris.Length = 0 then
+                    return failwith("connectivity test failed for all URIs")
+                log.WriteInfo(sprintf "HTTP connectivity failed for %d URIs, retrying with HTTPS variants" uris.Length)
+                let! httpsResult = raceEndpoints httpsUris
+                match httpsResult with
+                | Some uri ->
+                    return this.CreateSession(uri)
+                | None ->
+                    return failwith("connectivity test failed for all URIs (including HTTPS fallback)")
 
 //            let cts = new CancellationTokenSource()
 //            use! cancellation = Async.OnCancel(fun ()-> 
