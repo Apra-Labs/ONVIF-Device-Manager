@@ -263,6 +263,7 @@ namespace odm.ui.activities
                 |VideoEncoding.h264 -> validateConfig(options.h264)
                 |VideoEncoding.jpeg -> validateConfig(options.jpeg)
                 |VideoEncoding.mpeg4 -> validateConfig(options.mpeg4)
+                |VideoEncoding.h265 -> validateConfig(options.h265)
                 |_ -> raise (new ArgumentException(LocalVideoSettings.instance.errorEncoder))
             
             if isVecConfigured then 

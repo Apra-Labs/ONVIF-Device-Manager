@@ -46,7 +46,7 @@
       "id": "4",
       "title": "F# / UI Layer",
       "tasks": [
-        {"id": "4.1", "title": "Handle H265 in VideoSettingsActivity encoder match", "status": "pending", "type": "task", "notes": ""},
+        {"id": "4.1", "title": "Handle H265 in VideoSettingsActivity encoder match", "status": "completed", "type": "task", "notes": "Added |VideoEncoding.h265 -> validateConfig(options.h265) to the isVecConfigured match expression in apply_changes(), before the |_ default case. Mirrors the h264/jpeg/mpeg4 pattern exactly."},
         {"id": "4.2", "title": "Handle H265 govLength and configuration in VideoSettingsActivity", "status": "pending", "type": "task", "notes": ""},
         {"id": "4.3", "title": "VERIFY: full solution builds", "status": "pending", "type": "verify", "notes": ""}
       ]
