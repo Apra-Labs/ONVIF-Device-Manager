@@ -143,6 +143,8 @@ namespace onvifmp{
 			return InitVideoSubsession(AV_CODEC_ID_MJPEG, sprops);
 		}else if (_stricmp(codecName, "H264")==0){
 			return InitVideoSubsession(AV_CODEC_ID_H264, sprops);
+		}else if (_stricmp(codecName, "H265")==0){
+			return InitVideoSubsession(AV_CODEC_ID_HEVC, sprops);
 		}else if (_stricmp(codecName, "MPEG4")==0){
 			return InitVideoSubsession(AV_CODEC_ID_MPEG4, sprops);
 		}else if (_stricmp(codecName, "MP4V-ES")==0){
