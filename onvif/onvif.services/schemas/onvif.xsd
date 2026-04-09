@@ -309,6 +309,7 @@ IN NO EVENT WILL THE CORPORATION OR ITS MEMBERS OR THEIR AFFILIATES BE LIABLE FO
 			<xs:enumeration value="JPEG"/>
 			<xs:enumeration value="MPEG4"/>
 			<xs:enumeration value="H264"/>
+		<xs:enumeration value="H265"/>
 		</xs:restriction>
 	</xs:simpleType>
 	<!--===============================-->

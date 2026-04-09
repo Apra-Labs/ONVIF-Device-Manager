@@ -1,148 +1,64 @@
 {
-  "sprint": "HTTPS/TLS/RTSPS Camera Support",
-  "branch": "feature/https_support",
-  "updated": "2026-04-08",
-  "tasks": [
+  "project": "H265 ODM Support",
+  "branch": "feat/h265-support",
+  "updated_at": "2026-04-10",
+  "phases": [
     {
-      "id": "TASK-1",
-      "title": "Scheme-upgrade fallback in CreateSession(uris:Uri[])",
-      "tier": "premium",
-      "phase": "phase1",
-      "status": "completed",
-      "notes": "Commit 2894ce4. Added GenerateHttpsVariants static method + HTTPS fallback in CreateSession. Build passes, 39/39 tests green."
+      "id": "1",
+      "title": "ONVIF Schema & Type Bindings",
+      "tasks": [
+        {"id": "1.1", "title": "Add H265 to VideoEncoding enum in XSD", "status": "completed", "type": "task", "notes": "Added <xs:enumeration value=\"H265\"/> after H264 entry in VideoEncoding simpleType in schemas/onvif.xsd"},
+        {"id": "1.2", "title": "Add H265 to VideoEncoding enum in generated C# types", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.3", "title": "Add H265Profile enum", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.4", "title": "Add H265Configuration class", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.5", "title": "Add H265 field to VideoEncoderConfiguration", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.6", "title": "Add H265Options and H265Options2 classes", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.7", "title": "Add H265 field to VideoEncoderConfigurationOptions", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.8", "title": "Mirror XSD changes to Service References copy", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.9", "title": "VERIFY: ONVIF schema and types compile", "status": "pending", "type": "verify", "notes": ""}
+      ]
     },
     {
-      "id": "TASK-3",
-      "title": "Add onvif.session reference to test project",
-      "tier": "cheap",
-      "phase": "phase1",
-      "status": "completed",
-      "notes": "Commit bb4e831. Created csproj with onvif.session, onvif.services, FSharp.Core, utils.fsharp, System.ServiceModel refs. dotnet build succeeds."
+      "id": "2",
+      "title": "Upgrade Media Libraries",
+      "tasks": [
+        {"id": "2.1", "title": "Upgrade FFmpeg to a version with HEVC decoder", "status": "pending", "type": "task", "notes": ""},
+        {"id": "2.2", "title": "Update FFmpeg API calls for new version", "status": "pending", "type": "task", "notes": ""},
+        {"id": "2.3", "title": "Update CODEC_ID constants to AV_CODEC_ID", "status": "pending", "type": "task", "notes": ""},
+        {"id": "2.4", "title": "Upgrade live555 to a version with H265VideoRTPSource", "status": "pending", "type": "task", "notes": ""},
+        {"id": "2.5", "title": "Update core.h includes for new live555", "status": "pending", "type": "task", "notes": ""},
+        {"id": "2.6", "title": "VERIFY: media libraries build", "status": "pending", "type": "verify", "notes": ""}
+      ]
     },
     {
-      "id": "TASK-2",
-      "title": "Verify HTTPS unsecured factory path + HttpsBindingTests",
-      "tier": "standard",
-      "phase": "phase1",
-      "status": "completed",
-      "notes": "Commit 5ccec4d. Originally verified HttpsTransportBindingElement. Updated at VERIFY-2: now checks for SslStreamTransportBindingElement (TASK-6 replacement). 2/2 tests pass."
+      "id": "3",
+      "title": "C++ Player Pipeline",
+      "tasks": [
+        {"id": "3.1", "title": "Add H265 codec branch in Live555::InitSubsession", "status": "pending", "type": "task", "notes": ""},
+        {"id": "3.2", "title": "Create H265VirtualSink class", "status": "pending", "type": "task", "notes": ""},
+        {"id": "3.3", "title": "Route H265 codec to H265VirtualSink in SetupSubsession", "status": "pending", "type": "task", "notes": ""},
+        {"id": "3.4", "title": "Add H265 CODEC_FLAG2_CHUNKS handling in VideoDecoder", "status": "pending", "type": "task", "notes": ""},
+        {"id": "3.5", "title": "Include H265VirtualSink.hpp in build", "status": "pending", "type": "task", "notes": ""},
+        {"id": "3.6", "title": "VERIFY: C++ player builds and links", "status": "pending", "type": "verify", "notes": ""}
+      ]
     },
     {
-      "id": "VERIFY-1",
-      "title": "VERIFY: Phase 1",
-      "tier": "cheap",
-      "type": "verify",
-      "phase": "phase1",
-      "status": "completed",
-      "notes": "Build: Release x64 SUCCESS. Tests: 2/2 HttpsBindingTests passed. Pushed to origin at 9acc102."
+      "id": "4",
+      "title": "F# / UI Layer",
+      "tasks": [
+        {"id": "4.1", "title": "Handle H265 in VideoSettingsActivity encoder match", "status": "pending", "type": "task", "notes": ""},
+        {"id": "4.2", "title": "Handle H265 govLength and configuration in VideoSettingsActivity", "status": "pending", "type": "task", "notes": ""},
+        {"id": "4.3", "title": "VERIFY: full solution builds", "status": "pending", "type": "verify", "notes": ""}
+      ]
     },
     {
-      "id": "TASK-4",
-      "title": "Create HttpsIntegrationTests.cs scaffold",
-      "tier": "standard",
-      "phase": "phase2",
-      "status": "completed",
-      "notes": "Commit 36cc087. Integration tests with [TestCategory=Integration], Assert.Inconclusive skip when ODM_TEST_HOST absent, .env loader, ServicePointManager callback, 4 tests: Connect/GetCapabilities/GetProfiles/GetStreamUri."
-    },
-    {
-      "id": "TASK-5",
-      "title": "Create SchemeUpgradeTests.cs (offline unit tests)",
-      "tier": "standard",
-      "phase": "phase2",
-      "status": "completed",
-      "notes": "Commit 332a19d. 4 offline unit tests for GenerateHttpsVariants. Also fixed NvtSession.fs: HTTPS input now returns [] (no upgrade variants needed)."
-    },
-    {
-      "id": "VERIFY-2",
-      "title": "VERIFY: Phase 2",
-      "tier": "cheap",
-      "type": "verify",
-      "phase": "phase2",
-      "status": "completed",
-      "notes": "Release x64 build: 0 errors. Offline tests: 7/7 pass. Integration tests: 6/6 pass vs 192.168.1.190. Fix: SslStreamTransportBindingElement (TASK-6) replaces HttpsTransportBindingElement, sends HTTP headers+body as single TLS record — fixes gSOAP 2.8 multi-record fragmentation crash. Also: Action mustUnderstand header stripped from outgoing requests; response mustUnderstand headers marked understood; FixUrl upgrades http:// xAddrs to https:// when session is HTTPS. Build fix: SslProtocols.Tls12 cast as enum<SslProtocols> 3072 for .NET 4.0 target framework compatibility; ExceptionDispatchInfo replaced with raise for .NET 4.0."
-    },
-    {
-      "id": "TASK-6",
-      "title": "SslStreamTransportBindingElement replaces HttpsTransportBindingElement",
-      "tier": "premium",
-      "phase": "phase2",
-      "status": "completed",
-      "notes": "SslStreamTransport.fs added. Sends HTTP headers+body as a single TLS record via raw TcpClient+SslStream, bypassing .NET WCF HttpWebRequest multi-record fragmentation. Also strips Action mustUnderstand header (gSOAP returns HTTP 500 fault) and marks response mustUnderstand headers as understood. Done as part of VERIFY-2 fix."
-    },
-    {
-      "id": "TASK-7",
-      "title": "FixUrl HTTPS scheme upgrade for service xAddrs",
-      "tier": "standard",
-      "phase": "phase2",
-      "status": "completed",
-      "notes": "NvtSession.fs FixUrl updated to upgrade http:// xAddrs to https:// when session is HTTPS. Partial: RTSP-over-HTTP and rtsps:// awareness deferred to phase3. Done as part of VERIFY-2 fix."
-    },
-    {
-      "id": "TASK-8",
-      "title": "FixUrlHttpsTests.cs + StreamTransportNegotiationTests.cs",
-      "tier": "standard",
-      "phase": "phase3",
-      "status": "completed",
-      "notes": "Added NvtSessionFactory.UpgradeScheme public static for testability. FixUrlHttpsTests.cs: 5 offline tests for scheme/port upgrade logic. StreamTransportNegotiationTests.cs: 4 offline tests verifying SslStreamTransportBindingElement (HTTPS) and HttpTransportBindingElement (HTTP) selection plus Soap12 message version. Also fixed SslStreamTransport.fs: HTTP status logging (>=400) and decodeChunked bounds check. All 16 offline tests pass."
-    },
-    {
-      "id": "VERIFY-3",
-      "title": "VERIFY: Phase 3",
-      "tier": "cheap",
-      "type": "verify",
-      "phase": "phase3",
-      "status": "completed",
-      "notes": "Release x64 build: 0 errors. Offline tests: 16/16 pass. Date: 2026-04-08."
-    },
-    {
-      "id": "TASK-9",
-      "title": "Detect rtsps:// scheme before player launch + graceful error",
-      "tier": "premium",
-      "phase": "phase4",
-      "status": "completed",
-      "notes": "Commit ca4c7d8. Added VideoPlayerActivity.IsRtspsUri static member. Checks mediaUri.uri after GetStreamUri; raises NotSupportedException for rtsps:// URIs. Existing with-handler shows error via ErrorView. Full solution Release x64 build: 0 errors."
-    },
-    {
-      "id": "TASK-10",
-      "title": "RtspsUriTests.cs (offline)",
-      "tier": "cheap",
-      "phase": "phase4",
-      "status": "completed",
-      "notes": "Commit d904cf5. 5 offline tests for rtsps:// detection (lowercase, uppercase, rtsp/http/null/empty). Added odm.ui.activities.dll reference to odm.tests.csproj. All 21 offline tests pass (16 pre-existing + 5 new)."
-    },
-    {
-      "id": "VERIFY-4",
-      "title": "VERIFY: Phase 4",
-      "tier": "cheap",
-      "type": "verify",
-      "phase": "phase4",
-      "status": "completed",
-      "notes": "Release x64 build: 0 errors. Offline tests: 21/21 pass. Date: 2026-04-08."
-    },
-    {
-      "id": "TASK-11",
-      "title": "Full regression pass",
-      "tier": "cheap",
-      "phase": "phase5",
-      "status": "completed",
-      "notes": "21/21 offline tests pass. 6 integration tests also passed (ODM_TEST_HOST set). 27/27 total. No failures."
-    },
-    {
-      "id": "TASK-12",
-      "title": "Logging and documentation",
-      "tier": "cheap",
-      "phase": "phase5",
-      "status": "completed",
-      "notes": "SslStreamTransport.fs: improved comments on sslSend single-write (gSOAP multi-record stall), Action header stripping (gSOAP HTTP 500 on mustUnderstand), UnderstoodHeaders.Add (WCF FaultException guard). NvtSession.fs: expanded GenerateHttpsVariants doc comment (why cameras advertise http:// xAddrs), added sequential-probe comment on raceEndpoints (cameras reject parallel connections), expanded UpgradeSchemeIfNeeded comment (ONVIF spec gap). Build: 0 errors."
-    },
-    {
-      "id": "VERIFY-5",
-      "title": "VERIFY: Phase 5 (Final)",
-      "tier": "cheap",
-      "type": "verify",
-      "phase": "phase5",
-      "status": "completed",
-      "notes": "27/27 tests pass (21 offline + 6 integration against Milesight 192.168.1.190). Sprint complete."
+      "id": "5",
+      "title": "Integration Testing",
+      "tasks": [
+        {"id": "5.1", "title": "VERIFY: Test H265 ONVIF profile negotiation", "status": "pending", "type": "verify", "notes": ""},
+        {"id": "5.2", "title": "VERIFY: Test H265 stream playback end-to-end", "status": "pending", "type": "verify", "notes": ""},
+        {"id": "5.3", "title": "VERIFY: Regression test H264 and MJPEG playback", "status": "pending", "type": "verify", "notes": ""}
+      ]
     }
   ]
 }
