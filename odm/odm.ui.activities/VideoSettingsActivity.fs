@@ -97,6 +97,8 @@ namespace odm.ui.activities
                     yield options.jpeg.frameRateRange
                 if options.mpeg4 |> NotNull then
                     yield options.mpeg4.frameRateRange
+                if options.h265 |> NotNull then
+                    yield options.h265.frameRateRange
             })
 
             let encIntervalRanges = Seq.toList(seq{
@@ -106,6 +108,8 @@ namespace odm.ui.activities
                     yield options.jpeg.encodingIntervalRange
                 if options.mpeg4 |> NotNull then
                     yield options.mpeg4.encodingIntervalRange
+                if options.h265 |> NotNull then
+                    yield options.h265.encodingIntervalRange
             })
             
             let govLengthRanges = Seq.toList(seq{
@@ -113,12 +117,16 @@ namespace odm.ui.activities
                     yield options.h264.govLengthRange
                 if options.mpeg4 |> NotNull then
                     yield options.mpeg4.govLengthRange
+                if options.h265 |> NotNull then
+                    yield options.h265.govLengthRange
             })
-            let govLength = 
+            let govLength =
                 if vec.encoding = VideoEncoding.h264 && NotNull(vec.h264) then
                     vec.h264.govLength
                 elif vec.encoding = VideoEncoding.mpeg4 && NotNull(vec.mpeg4) then
                     vec.mpeg4.govLength
+                elif vec.encoding = VideoEncoding.h265 && NotNull(vec.h265) then
+                    vec.h265.govLength
                 else
                     -1
 
@@ -132,6 +140,8 @@ namespace odm.ui.activities
                             yield x.Deserialize<Mpeg4Options2>().bitrateRange
                         elif x.Name = @"H264" then
                             yield x.Deserialize<H264Options2>().bitrateRange
+                        elif x.Name = @"H265" then
+                            yield x.Deserialize<H265Options2>().bitrateRange
             })
             
             let quality = vec.quality
@@ -251,6 +261,9 @@ namespace odm.ui.activities
                         elif model.encoder = VideoEncoding.mpeg4 then
                             if vec.mpeg4 |> IsNull then vec.mpeg4 <- new Mpeg4Configuration()
                             vec.mpeg4.govLength <- model.govLength |> CoerceGovLength(options.mpeg4)
+                        elif model.encoder = VideoEncoding.h265 then
+                            if vec.h265 |> IsNull then vec.h265 <- new H265Configuration()
+                            vec.h265.govLength <- model.govLength |> CoerceGovLength(options.h265)
                         true
                     else
                         false

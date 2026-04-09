@@ -47,7 +47,7 @@
       "title": "F# / UI Layer",
       "tasks": [
         {"id": "4.1", "title": "Handle H265 in VideoSettingsActivity encoder match", "status": "completed", "type": "task", "notes": "Added |VideoEncoding.h265 -> validateConfig(options.h265) to the isVecConfigured match expression in apply_changes(), before the |_ default case. Mirrors the h264/jpeg/mpeg4 pattern exactly."},
-        {"id": "4.2", "title": "Handle H265 govLength and configuration in VideoSettingsActivity", "status": "pending", "type": "task", "notes": ""},
+        {"id": "4.2", "title": "Handle H265 govLength and configuration in VideoSettingsActivity", "status": "completed", "type": "task", "notes": "Added h265 branches in 6 locations in VideoSettingsActivity.fs: (1) frameRateRanges seq — options.h265.frameRateRange; (2) encIntervalRanges seq — options.h265.encodingIntervalRange; (3) govLengthRanges seq — options.h265.govLengthRange; (4) govLength if/elif — vec.h265.govLength when encoding=h265; (5) bitrateRanges seq — H265Options2 deserialization for x.Name=H265; (6) validateConfig govLength assignment — creates H265Configuration and sets govLength. ProfileDescription.fs and ConfigureProfileActivity.fs reviewed — no H265-specific branching needed (display is generic)."},
         {"id": "4.3", "title": "VERIFY: full solution builds", "status": "pending", "type": "verify", "notes": ""}
       ]
     },
