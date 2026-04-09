@@ -105,7 +105,7 @@ namespace onvifmp{
 	}
 
 
-	IFrameProcessorFactory Live555::InitVideoSubsession(CodecID codecId, const char* sprops){
+	IFrameProcessorFactory Live555::InitVideoSubsession(AVCodecID codecId, const char* sprops){
 		//dbg::Info(sys::String::Format("processing subsession for {0}",gcnew sys::String(codecName)));
 		if(videoBuffer == nullptr || videoSubsessionInitialized){
 			return nullptr;

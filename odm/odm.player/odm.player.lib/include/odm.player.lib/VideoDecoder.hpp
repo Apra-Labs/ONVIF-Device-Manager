@@ -6,11 +6,10 @@ namespace onvifmp{
 	class VideoDecoder : public IFrameProcessor{
 	public:
 		typedef function<shared_ptr<VideoDecoder> (VirtualSink* sink)> Factory;
-		static Factory Create(CodecID codecId, const char* sporps){
+		static Factory Create(AVCodecID codecId, const char* sporps){
 			return ([=](VirtualSink* sink)->shared_ptr<VideoDecoder>{
-				//avcodec_init();
-				av_register_all();
-				avcodec_register_all();
+				// av_register_all() and avcodec_register_all() were removed in FFmpeg 4.0.
+				// Codecs and formats are now registered automatically.
 
 				auto avCodec = avcodec_find_decoder(codecId);
 				if (avCodec == NULL) {
@@ -40,7 +39,8 @@ namespace onvifmp{
 			//if it has been initialized before, we should do cleanup first
 			Cleanup();
 
-			avCodecContext = avcodec_alloc_context();
+			// avcodec_alloc_context3 replaces deprecated avcodec_alloc_context (removed in FFmpeg 4.0)
+			avCodecContext = avcodec_alloc_context3(avCodec);
 			if (!avCodecContext) {
 				//failed to allocate codec context
 				Cleanup();
@@ -62,23 +62,25 @@ namespace onvifmp{
 					return false;
 				}
 				delete[] spropRecords;
-					
+
 				avCodecContext->extradata = extraDataBuffer;
 				avCodecContext->extradata_size = extraDataSize;
 			}
 			AddExtraData(startCode, sizeof(startCode));
 			avCodecContext->flags = 0;
 
-			if (avcodec_open(avCodecContext, avCodec) < 0) {
+			// avcodec_open2 replaces deprecated avcodec_open (removed in FFmpeg 4.0)
+			if (avcodec_open2(avCodecContext, avCodec, NULL) < 0) {
 				//failed to open codec
 				Cleanup();
 				return false;
 			}
-			if (avCodecContext->codec_id == CODEC_ID_H264){
+			if (avCodecContext->codec_id == AV_CODEC_ID_H264 || avCodecContext->codec_id == AV_CODEC_ID_HEVC){
 				avCodecContext->flags2 |= CODEC_FLAG2_CHUNKS;
 				//avCodecContext->flags2 |= CODEC_FLAG2_SHOW_ALL;
 			}
-			avFrame = avcodec_alloc_frame();
+			// av_frame_alloc replaces deprecated avcodec_alloc_frame (removed in FFmpeg 4.0)
+			avFrame = av_frame_alloc();
 			if (!avFrame){
 				//failed to allocate frame
 				Cleanup();
@@ -90,12 +92,13 @@ namespace onvifmp{
 		void Cleanup(){
 			extraDataSize = 0;
 			if (avFrame != NULL){
-				av_free(avFrame);
+				// av_frame_free replaces av_free for AVFrame (frees the frame and its data)
+				av_frame_free(&avFrame);
 				avFrame = NULL;
 			}
 			if(avCodecContext != NULL){
-				avcodec_close(avCodecContext);
-				av_free(avCodecContext);
+				// avcodec_free_context replaces avcodec_close + av_free for AVCodecContext
+				avcodec_free_context(&avCodecContext);
 				avCodecContext = NULL;
 			}
 		}
@@ -122,7 +125,7 @@ namespace onvifmp{
 		static const int MaxExtraDataSize = 1024;
 		uint8_t extraDataBuffer[MaxExtraDataSize];
 		shared_ptr<IVideoRenderer> videoRenderer;
-		
+
 		void AddExtraData(uint8_t* data, int size){
 			auto newSize = extraDataSize+size;
 			if(newSize > MaxExtraDataSize){
@@ -136,26 +139,34 @@ namespace onvifmp{
 			static int frame_num = 0;
 			auto started = clock();
 
-			AVPacket avpkt;
-			avpkt.data = framePtr;
-			avpkt.size = frameSize;
-			while (avpkt.size > 0) {
-				int got_frame = 0;
-				auto len = avcodec_decode_video2(avCodecContext, avFrame, &got_frame, &avpkt);
-				if (len < 0) {
+			// New send/receive API replaces deprecated avcodec_decode_video2 (removed in FFmpeg 3.1+)
+			AVPacket* avpkt = av_packet_alloc();
+			if (!avpkt) {
+				return;
+			}
+			avpkt->data = framePtr;
+			avpkt->size = frameSize;
+
+			int ret = avcodec_send_packet(avCodecContext, avpkt);
+			av_packet_free(&avpkt);
+
+			if (ret < 0) {
+				//TODO: log error
+				return;
+			}
+
+			while (ret >= 0) {
+				ret = avcodec_receive_frame(avCodecContext, avFrame);
+				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+					break;
+				}
+				if (ret < 0) {
 					//TODO: log error
 					return;
 				}
-				//int silentMode = 0;
-				//mSilentMode.GetValue(silentMode);
-				if (got_frame /*&& !silentMode*/) {
-					//printf("frame decoded...\n");
-					if(videoRenderer!=nullptr){
-						videoRenderer->RenderFrame(avCodecContext, avFrame);
-					}
+				if(videoRenderer!=nullptr){
+					videoRenderer->RenderFrame(avCodecContext, avFrame);
 				}
-				avpkt.size -= len;
-				avpkt.data += len;
 			}
 			printf("processed in %ldms\n", clock()-started);
 			//dbg::Info(sys::String::Format("processed in {0}ms",clock()-started));
