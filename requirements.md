@@ -31,7 +31,7 @@ ODM is a C#/.NET WPF application (not Python) that uses a multi-process video pi
 5. **Decoding** (C++, FFmpeg): `VideoDecoder.hpp` decodes frames using FFmpeg's avcodec
 6. **Rendering** (C++→C#): `VideoRenderer.hpp` converts color space and writes to shared memory `VideoBuffer`, which WPF's `VideoPlayer.xaml.cs` renders via `WriteableBitmap`
 
-### Four Blocking Gaps
+### Five Blocking Gaps
 
 **Gap 1 — FFmpeg too old (CRITICAL)**
 - **Location:** `libs/ffmpeg-git-a5c1a0c/` — FFmpeg avcodec-54, built 2012-06-14
@@ -53,6 +53,11 @@ ODM is a C#/.NET WPF application (not Python) that uses a multi-process video pi
 - **Problem:** `VideoEncoding` enum has only `jpeg`, `mpeg4`, `h264`. No `h265` value.
 - **Also missing:** `H265Configuration` class, `H265Profile` enum, `H265Options` class in `VideoEncoderConfigurationOptions`.
 - **UI impact:** `VideoSettingsView.xaml.cs:159-188` and `VideoSettingsActivity.fs:93-266` only handle 3 codecs. H.265 cameras would show no encoder options.
+
+**Gap 5 — F# UI Activity crashes on H.265 (BLOCKING)**
+- **Location:** `odm/odm.ui.activities/VideoSettingsActivity.fs:261-266`
+- **Problem:** The encoder match expression at line 262 handles `VideoEncoding.h264`, `.jpeg`, `.mpeg4` and throws `ArgumentException` on the default `|_` branch. An H.265 profile would crash the settings UI.
+- **Also:** Lines 93-134 compute frame rate, encoding interval, GOV length, and bitrate ranges only from `options.h264`, `options.jpeg`, `options.mpeg4`. H.265 option ranges are ignored.
 
 ### ONVIF Library Analysis
 - **Not Python-based** — ODM uses WCF-generated C# service proxies from ONVIF WSDL schemas, not a Python ONVIF library

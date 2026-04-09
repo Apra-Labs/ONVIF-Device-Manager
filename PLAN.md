@@ -2,207 +2,40 @@
 
 ## Overview
 
-ODM currently cannot play H.265/HEVC streams because of **four layered gaps**: (1) the bundled FFmpeg (avcodec-54, June 2012) predates HEVC decoder support entirely, (2) the bundled Live555 (2013.02.11) predates H.265 RTP depayloading, (3) the C++ media pipeline (`Live555.cpp:137-155`) has no codec-name branch for `"H265"`, and (4) the ONVIF types layer (`onvif.types.cs:3618-3628`) defines `VideoEncoding` with only `jpeg/mpeg4/h264` — no `h265` enum value. The fix requires upgrading both native libraries, threading H.265 through the RTSP→decode→render pipeline, and extending the ONVIF type model + UI.
+ONVIF Device Manager cannot play H.265/HEVC streams because **all five layers** of its video pipeline predate H.265 support: the ONVIF XSD schema (no `H265` enum), the generated C# type bindings, the bundled FFmpeg (libavcodec 54, ~2012), the bundled live555 (2013.02.11), and the C++ player codec dispatch. Each layer must be updated: schema/types to negotiate H.265, libraries to decode it, and the C++/F# code to route it through the pipeline.
 
 ## Dependencies
 
-| Dependency | Current Version | Required Version | Why |
-|---|---|---|---|
-| FFmpeg | avcodec-54 (2012-06-14 git-a5c1a0c) | ≥ avcodec-58 (FFmpeg 4.x+) | HEVC decoder (`AV_CODEC_ID_HEVC`) added in avcodec-55; modern builds include hardware-accelerated HEVC |
-| Live555 | 2013.02.11 | ≥ 2015.01.01 | `H265VideoRTPSource` added circa 2014; required for H.265 RTP depayloading |
+| Component | Current Version | Required For H.265 | Notes |
+|-----------|----------------|--------------------|-|
+| FFmpeg libavcodec | 54.25.100 (~2012) | 56+ (FFmpeg 2.4+), ideally 4.x+ | HEVC decoder added in libavcodec 55; stable from 56+ |
+| live555 | 2013.02.11 | 2014.07.04+ | `H265VideoRTPSource` added mid-2014 |
+| ONVIF XSD | Pre-17.06 (no H265) | 17.06+ spec | `VideoEncoding.H265` introduced in ONVIF Profile S 2.x |
 
-### FFmpeg API Migration Notes
-The current code uses deprecated FFmpeg API calls that were removed in newer versions:
-- `CodecID` → `AVCodecID` (enum renamed)
-- `CODEC_ID_*` → `AV_CODEC_ID_*` (constant prefix changed)
-- `avcodec_alloc_context()` → `avcodec_alloc_context3()`
-- `avcodec_open()` → `avcodec_open2()`
-- `avcodec_alloc_frame()` → `av_frame_alloc()`
-- `avcodec_decode_video2()` → `avcodec_send_packet()` / `avcodec_receive_frame()`
-- `av_register_all()` / `avcodec_register_all()` → no-ops in FFmpeg 4.x (auto-registered)
-- `CODEC_FLAG2_CHUNKS` → `AV_CODEC_FLAG2_CHUNKS`
-- `parseSPropParameterSets()` — still available via live555
-- `avcodec_close()` + `av_free()` → `avcodec_free_context()`
+## Phase 1 — ONVIF Schema & Type Bindings
 
----
-
-## Phase 1 — Upgrade Native Libraries
-
-### Task 1.1 — Upgrade FFmpeg binaries and headers
-**File:** `libs/ffmpeg-git-a5c1a0c/` (entire directory)
-**What:** Replace with FFmpeg 7.x (or latest LTS) shared builds for both win32 and x64. Download from https://github.com/BtbN/FFmpeg-Builds or build from source. Update:
-- `libs/ffmpeg-git-a5c1a0c/include/` — new headers (libavcodec, libavformat, libavutil, libswscale)
-- `libs/ffmpeg-git-a5c1a0c/win32/bin/` — new DLLs
-- `libs/ffmpeg-git-a5c1a0c/x64/bin/` — new DLLs
-- Rename directory to reflect new version (e.g., `libs/ffmpeg-7.x/`)
-**Why:** Current avcodec-54 (2012) has no HEVC decoder. `AV_CODEC_ID_HEVC` was introduced in avcodec-55 (2013-2014).
-**Done when:** `ffprobe -decoders | grep hevc` on the new FFmpeg binary shows HEVC decoder available.
+### Task 1.1 — Add H265 to VideoEncoding enum in XSD
+**File:** `onvif/onvif.services/schemas/onvif.xsd:307-313`
+**What:** Add `<xs:enumeration value="H265"/>` to the `VideoEncoding` simpleType restriction, after the `H264` entry.
+**Why:** The XSD defines the canonical list of video encodings. Without H265 here, the generated C# enum cannot represent it, and ONVIF SOAP responses containing `H265` will fail deserialization.
+**Done when:** The `VideoEncoding` simpleType in `onvif.xsd` includes JPEG, MPEG4, H264, and H265.
 **Type:** task
 
-### Task 1.2 — Update FFmpeg linker references in vcxproj
-**File:** `odm/odm.player/odm.player.net/odm.player.net.vcxproj:92-96`
-**What:** Update `<AdditionalDependencies>` to match new FFmpeg library names (e.g., `avcodec.lib` instead of `avcodec-54.lib` if naming changed). Update `<AdditionalIncludeDirectories>` and `<AdditionalLibraryDirectories>` if the FFmpeg directory was renamed.
-**Why:** Build will fail if lib references don't match new FFmpeg.
-**Done when:** Project compiles against new FFmpeg headers and links against new libraries.
-**Type:** task
-
-### Task 1.3 — Update FFmpeg DLL copy rules in odm.ui.app.csproj
-**File:** `odm/odm.ui.app/odm.ui.app.csproj` (the `<Content>` entries for FFmpeg DLLs)
-**What:** Update all `<Content Include="..\..\libs\ffmpeg-git-a5c1a0c\win32\bin\avcodec-54.dll">` entries to reference new DLL names and paths. There are 8 DLLs: avcodec, avdevice, avfilter, avformat, avutil, postproc, swresample, swscale.
-**Why:** Runtime will fail if the correct DLLs aren't copied to output directory.
-**Done when:** All new FFmpeg DLLs are listed as Content and copy to `3rd/` output folder.
-**Type:** task
-
-### Task 1.4 — Upgrade Live555 library
-**File:** `libs/live555-2013.02.11/` (entire directory)
-**What:** Replace with Live555 ≥ 2015.01.01. Build as static library for Win32/x64. Key new header needed: `H265VideoRTPSource.hh`.
-**Why:** Current Live555 (2013.02.11) cannot depayload H.265 RTP streams. `H265VideoRTPSource` was added later.
-**Done when:** Live555 static lib builds cleanly and includes `H265VideoRTPSource.hh`.
-**Type:** task
-
-### Task 1.5 — VERIFY: Native libraries build and link
-**What:** Full build of `odm.player.lib` and `odm.player.net` projects. Verify they compile and link against upgraded FFmpeg + Live555 without errors.
-**Done when:** Clean build of both native projects succeeds on x64.
-**Type:** verify
-
----
-
-## Phase 2 — Migrate C++ Media Pipeline to New FFmpeg API
-
-### Task 2.1 — Migrate VideoDecoder.hpp to modern FFmpeg API
-**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/VideoDecoder.hpp`
-**What:** Update all deprecated FFmpeg calls:
-- Line 9: `Create(CodecID codecId, ...)` → `Create(AVCodecID codecId, ...)`
-- Line 12: Remove `av_register_all()` / `avcodec_register_all()` (no-ops in FFmpeg 4.x+)
-- Line 15: `avcodec_find_decoder(codecId)` — same function name, but param type changes to `AVCodecID`
-- Line 43: `avcodec_alloc_context()` → `avcodec_alloc_context3(avCodec)`
-- Line 72: `avcodec_open(avCodecContext, avCodec)` → `avcodec_open2(avCodecContext, avCodec, NULL)`
-- Line 77: `CODEC_ID_H264` → `AV_CODEC_ID_H264`
-- Line 78: `CODEC_FLAG2_CHUNKS` → `AV_CODEC_FLAG2_CHUNKS`
-- Line 81: `avcodec_alloc_frame()` → `av_frame_alloc()`
-- Lines 93-99: `avcodec_close()` + `av_free()` → `avcodec_free_context(&avCodecContext)`
-- Lines 139-158: `avcodec_decode_video2()` → `avcodec_send_packet()` + `avcodec_receive_frame()` loop
-- Line 117: `AVCodec*` → `const AVCodec*` (const-correctness in modern FFmpeg)
-**Why:** Old API functions were removed in newer FFmpeg. Code won't compile without migration.
-**Done when:** VideoDecoder.hpp compiles cleanly with new FFmpeg headers.
-**Type:** task
-
-### Task 2.2 — Update core.h type references
-**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/core.h`
-**What:**
-- Line 17: Add `#include "H265VideoRTPSource.hh"` (if needed for H.265 RTP source)
-- Ensure `PixelFormat` type references resolve correctly (FFmpeg renamed `PixelFormat` → `AVPixelFormat`)
-- Line 116: `AVCodecContext*` / `AVFrame*` types should still work but verify
-**Why:** Header compatibility with upgraded FFmpeg.
-**Done when:** core.h compiles without errors.
-**Type:** task
-
-### Task 2.3 — Update VideoRenderer.hpp for AVPixelFormat
-**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/VideoRenderer.hpp`
-**What:** Replace any `PixelFormat` references with `AVPixelFormat` (FFmpeg renamed this enum). Verify `sws_getContext()` calls use updated enum values.
-**Why:** `PixelFormat` was deprecated and removed in favor of `AVPixelFormat`.
-**Done when:** VideoRenderer.hpp compiles cleanly.
-**Type:** task
-
-### Task 2.4 — VERIFY: C++ pipeline compiles with new API
-**What:** Full build of odm.player.lib and odm.player.net. All deprecated API usage eliminated.
-**Done when:** Clean build, zero warnings from deprecated FFmpeg usage.
-**Type:** verify
-
----
-
-## Phase 3 — Add H.265 Codec Path in Native Pipeline
-
-### Task 3.1 — Add H.265 codec branch in Live555.cpp InitSubsession
-**File:** `odm/odm.player/odm.player.lib/Live555.cpp:137-155`
-**What:** Add H.265 codec name handling in `InitSubsession()`. Insert after the H264 branch (line 145):
-```cpp
-}else if (_stricmp(codecName, "H265")==0){
-    return InitVideoSubsession(AV_CODEC_ID_HEVC, sprops);
-```
-The RTP codec name for H.265 is `"H265"` per RFC 7798.
-**Why:** Without this branch, H.265 RTP subsessions from SDP are silently ignored (function returns `nullptr` at line 154).
-**Done when:** When Live555 parses an SDP with `H265` codec, it routes to `InitVideoSubsession` with `AV_CODEC_ID_HEVC`.
-**Type:** task
-
-### Task 3.2 — Create H265VirtualSink for HEVC NAL unit framing
-**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/H265VirtualSink.hpp` (new file)
-**What:** Create `H265VirtualSink` class analogous to `H264VirtualSink.hpp`. H.265 uses the same 4-byte start code prefix (`0x00 0x00 0x00 0x01`) for NAL units as H.264. The class should:
-- Inherit from `VirtualSink`
-- Prepend start code to frames that lack one
-- Check for both 3-byte and 4-byte start codes (same logic as H264VirtualSink)
-- The NAL unit structure is identical in start-code-prefixed Annex B format
-**Why:** H.265 RTP payloads may arrive without start codes (same issue as H.264). The sink corrects this.
-**Done when:** H265VirtualSink.hpp exists and compiles.
-**Type:** task
-
-### Task 3.3 — Add H.265 sink selection in Live555.cpp SetupSubsession
-**File:** `odm/odm.player/odm.player.lib/Live555.cpp:176-182`
-**What:** Extend the sink selection block to handle H.265:
-```cpp
-if(_stricmp(codecName, "H264")==0){
-    sink = H264VirtualSink::CreateNew(*usageEnvironment);
-}else if(_stricmp(codecName, "H265")==0){
-    sink = H265VirtualSink::CreateNew(*usageEnvironment);
-}else{
-    sink = VirtualSink::CreateNew(*usageEnvironment);
-}
-```
-**Why:** H.265 needs NAL start code correction just like H.264.
-**Done when:** H.265 subsessions use H265VirtualSink.
-**Type:** task
-
-### Task 3.4 — Add H.265 flags in VideoDecoder.hpp
-**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/VideoDecoder.hpp:77-80`
-**What:** Extend the codec-specific flag block to also handle HEVC:
-```cpp
-if (avCodecContext->codec_id == AV_CODEC_ID_H264 || avCodecContext->codec_id == AV_CODEC_ID_HEVC){
-    avCodecContext->flags2 |= AV_CODEC_FLAG2_CHUNKS;
-}
-```
-**Why:** HEVC benefits from the same chunked decoding flag as H.264.
-**Done when:** HEVC decoder context has CHUNKS flag set.
-**Type:** task
-
-### Task 3.5 — Include H265VirtualSink.hpp in all.h
-**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/all.h:132`
-**What:** Add `#include "odm.player.lib/H265VirtualSink.hpp"` after the H264VirtualSink include.
-**Why:** New header must be included in the compilation.
-**Done when:** all.h includes the new header.
-**Type:** task
-
-### Task 3.6 — VERIFY: H.265 codec path compiles and links
-**What:** Full build of odm.player.lib, odm.player.net, odm.player.host. Verify H.265 code path is reachable.
-**Done when:** Clean build. Manual test with H.265 RTSP stream if available, or unit-level verification.
-**Type:** verify
-
----
-
-## Phase 4 — Extend ONVIF Type Model for H.265
-
-### Task 4.1 — Add H265 to VideoEncoding enum
-**File:** `onvif/onvif.services/onvif.types.cs:3618-3628`
-**What:** Add `h265` value to the `VideoEncoding` enum:
+### Task 1.2 — Add H265 to VideoEncoding enum in generated C# types
+**File:** `onvif/onvif.services/onvif.types.cs:3616-3628`
+**What:** Add a new enum member to `VideoEncoding`:
 ```csharp
 [System.Xml.Serialization.XmlEnumAttribute(Name = "H265")]
 h265,
 ```
-**Why:** ONVIF Profile S supports `VideoEncoding.H265`. Without this enum value, the XML deserializer will throw when a camera reports H.265 encoding.
-**Done when:** `VideoEncoding.h265` is a valid enum member.
+**Why:** The C# enum is the runtime representation of the XSD type. Without `h265`, any ONVIF profile returning `VideoEncoding=H265` will throw a deserialization exception.
+**Done when:** `VideoEncoding` enum has four members: `jpeg`, `mpeg4`, `h264`, `h265`.
 **Type:** task
 
-### Task 4.2 — Add H265Configuration class
-**File:** `onvif/onvif.services/onvif.types.cs` (after H264Configuration, ~line 3783)
-**What:** Add `H265Configuration` class with `govLength` (int) and `h265Profile` (`H265Profile`) properties. Add `H265Profile` enum with values: `Main`, `Main10`, `MainStillPicture`. Follow the exact serialization pattern of `H264Configuration`:
+### Task 1.3 — Add H265Profile enum
+**File:** `onvif/onvif.services/onvif.types.cs` (insert after `H264Profile` at line ~3783)
+**What:** Add a new enum:
 ```csharp
-[System.SerializableAttribute()]
-[System.Xml.Serialization.XmlTypeAttribute(TypeName = "H265Configuration", Namespace = "http://www.onvif.org/ver10/schema")]
-public partial class H265Configuration {
-    private int _govLength;
-    private H265Profile _h265Profile;
-    // ... properties with XmlElementAttribute ...
-}
-
 [System.SerializableAttribute()]
 [System.Xml.Serialization.XmlTypeAttribute(TypeName = "H265Profile", Namespace = "http://www.onvif.org/ver10/schema")]
 public enum H265Profile {
@@ -214,127 +47,260 @@ public enum H265Profile {
     mainStillPicture,
 }
 ```
-**Why:** ONVIF H.265 cameras return `H265Configuration` in their profile. Without this type, deserialization fails.
-**Done when:** `H265Configuration` and `H265Profile` classes exist and serialize correctly.
+Also add the corresponding `xs:simpleType name="H265Profile"` in `onvif.xsd` after the `H264Profile` type (after line 329).
+**Why:** ONVIF 17.06+ defines H265Profile with Main, Main10, MainStillPicture. Needed for H265Configuration.
+**Done when:** `H265Profile` enum exists in both XSD and C# types.
 **Type:** task
 
-### Task 4.3 — Add h265 field to VideoEncoderConfiguration
-**File:** `onvif/onvif.services/onvif.types.cs:3411-3437`
-**What:** Add `private H265Configuration _h265;` field and corresponding property with `[XmlElementAttribute("H265", ...)]` attribute, following the pattern of `h264` field (lines 3429-3431).
-**Why:** Camera profiles with H.265 encoding include an `H265` configuration block.
-**Done when:** `VideoEncoderConfiguration.h265` property exists.
-**Type:** task
-
-### Task 4.4 — Add H265Options class and wire into VideoEncoderConfigurationOptions
-**File:** `onvif/onvif.services/onvif.types.cs`
-**What:**
-1. Create `H265Options` class (after `H264Options`, ~line 6565) with same structure: `resolutionsAvailable`, `govLengthRange`, `frameRateRange`, `encodingIntervalRange`, `h265ProfilesSupported`. Follow the exact pattern of `H264Options` (lines 6483-6565).
-2. Add `private H265Options _h265Options;` field and property to `VideoEncoderConfigurationOptions` (after `_h264`, ~line 6262).
-3. Create `H265Options2` class (after `H264Options2`, ~line 6868) with `bitrateRange` property.
-4. Add `H265Options2` field to `VideoEncoderOptionsExtension` (~line 6569).
-**Why:** Without these, the UI cannot discover H.265-capable resolutions and settings from the camera.
-**Done when:** All H265Options types exist and are wired into the options hierarchy.
-**Type:** task
-
-### Task 4.5 — VERIFY: ONVIF types compile
-**What:** Build `onvif.services` project. Verify all new types are serializable.
-**Done when:** Clean build. No XML serialization errors.
-**Type:** verify
-
----
-
-## Phase 5 — Update UI and Settings Activities for H.265
-
-### Task 5.1 — Add H.265 to VideoSettingsActivity codec filtering
-**File:** `odm/odm.ui.activities/VideoSettingsActivity.fs:93-136`
-**What:** Add H.265 options to all the settings aggregation blocks:
-- Lines 93-100: Add `if options.h265 |> NotNull then yield options.h265.frameRateRange`
-- Lines 102-109: Add `if options.h265 |> NotNull then yield options.h265.encodingIntervalRange`
-- Lines 111-116: Add `if options.h265 |> NotNull then yield options.h265.govLengthRange`
-- Lines 118-123: Add `elif vec.encoding = VideoEncoding.h265 && NotNull(vec.h265) then vec.h265.govLength`
-- Lines 126-135: Add `elif x.Name = @"H265" then yield x.Deserialize<H265Options2>().bitrateRange`
-**Why:** Without these, H.265 encoder options won't populate the settings sliders.
-**Done when:** Video settings UI shows H.265-specific ranges when camera reports H.265 support.
-**Type:** task
-
-### Task 5.2 — Add H.265 to apply_changes codec match
-**File:** `odm/odm.ui.activities/VideoSettingsActivity.fs:248-266`
-**What:** Extend the encoder-specific config block:
-- After line 253, add:
-```fsharp
-elif model.encoder = VideoEncoding.h265 then
-    if vec.h265 |> IsNull then vec.h265 <- new H265Configuration()
-    vec.h265.govLength <- model.govLength |> CoerceGovLength(options.h265)
-```
-- In the match block (lines 261-266), add: `|VideoEncoding.h265 -> validateConfig(options.h265)`
-**Why:** Without this, saving H.265 encoder settings would throw.
-**Done when:** Applying H.265 video settings saves the config to the camera.
-**Type:** task
-
-### Task 5.3 — Add H.265 encoder/resolution display in VideoSettingsView
-**File:** `odm/odm.ui.views/views/SectionNVT/VideoSettingsView.xaml.cs:171-188`
-**What:** Add H.265 resolution enumeration in `GetEncoderResolutions()`:
+### Task 1.4 — Add H265Configuration class
+**File:** `onvif/onvif.services/onvif.types.cs` (insert after `H264Configuration` at line ~3766)
+**What:** Add a new class mirroring `H264Configuration` (lines 3732-3766) but for H265:
 ```csharp
-if (opts.h265 != null && opts.h265.resolutionsAvailable != null) {
-    foreach (var res in opts.h265.resolutionsAvailable) {
-        yield return Tuple.Create(VideoEncoding.h265, res);
-    }
+[System.SerializableAttribute()]
+[System.Xml.Serialization.XmlTypeAttribute(TypeName = "H265Configuration", Namespace = "http://www.onvif.org/ver10/schema")]
+public partial class H265Configuration {
+    private int _govLength;
+    private H265Profile _h265Profile;
+    // govLength property (same pattern as H264Configuration.govLength)
+    // h265Profile property
 }
 ```
-Also add H.265 color in `EncoderResolutionPair.Foreground` (after line 138):
-```csharp
-case VideoEncoding.h265:
-    frgnd = new SolidColorBrush(Color.FromArgb(255, 80, 0, 80)); // purple
-    break;
+Also add the corresponding `xs:complexType name="H265Configuration"` in `onvif.xsd`.
+**Why:** When a camera reports an H.265 encoder configuration, the SOAP response includes an `H265` element inside `VideoEncoderConfiguration`. This class deserializes it.
+**Done when:** `H265Configuration` class compiles and has `govLength` and `h265Profile` properties.
+**Type:** task
+
+### Task 1.5 — Add H265 field to VideoEncoderConfiguration
+**File:** `onvif/onvif.services/onvif.types.cs:3411` (class `VideoEncoderConfiguration`)
+**What:** Add a private `H265Configuration _h265` field and public property, mirroring the existing `_h264`/`h264` pattern (lines 3431, 3567). Also add `H265Configuration` element to the `VideoEncoderConfiguration` complexType in `onvif.xsd`.
+**Why:** When a camera's profile uses H.265 encoding, the VideoEncoderConfiguration SOAP element contains an `H265` child element.
+**Done when:** `VideoEncoderConfiguration` has an `h265` property of type `H265Configuration`.
+**Type:** task
+
+### Task 1.6 — Add H265Options and H265Options2 classes
+**File:** `onvif/onvif.services/onvif.types.cs` (after `H264Options` at ~line 6484 and `H264Options2` at ~line 6867)
+**What:** Add `H265Options` class (mirroring `H264Options` structure: resolutions, govLengthRange, frameRateRange, encodingIntervalRange, h265ProfilesSupported) and `H265Options2` (mirroring `H264Options2`). Also add corresponding XSD types.
+**Why:** `VideoEncoderConfigurationOptions` needs to report what H.265 settings the camera supports.
+**Done when:** `H265Options` and `H265Options2` classes exist with resolution, rate, and profile fields.
+**Type:** task
+
+### Task 1.7 — Add H265 field to VideoEncoderConfigurationOptions
+**File:** `onvif/onvif.services/onvif.types.cs:6252` (class `VideoEncoderConfigurationOptions`)
+**What:** Add `H265Options _h265` field and public property (same pattern as `_h264`/`h264` at lines 6262, 6322-6330). Also add to `VideoEncoderOptionsExtension` (line 6569) an `H265Options2 _h265` field. Update the XSD complexTypes accordingly.
+**Why:** When camera capabilities are queried, H.265 options must be deserializable.
+**Done when:** `VideoEncoderConfigurationOptions.h265` property exists.
+**Type:** task
+
+### Task 1.8 — Mirror XSD changes to Service References copy
+**File:** `onvif/onvif.services/Service References/services/onvif.xsd`
+**What:** Copy all XSD changes from Task 1.1, 1.3, 1.4, 1.5, 1.6, 1.7 to the mirror XSD file in the Service References directory.
+**Why:** Both XSD copies must stay in sync. The Service References copy is used by the WCF/svcutil codegen pipeline.
+**Done when:** Both `schemas/onvif.xsd` and `Service References/services/onvif.xsd` are identical in H.265-related additions.
+**Type:** task
+
+### Task 1.9 — Verify: ONVIF schema and types compile
+**What:** Build the `onvif.services` project to confirm all new types compile and XML serialization attributes are correct.
+**Done when:** `onvif.services.csproj` builds without errors.
+**Type:** verify
+
+## Phase 2 — Upgrade Media Libraries
+
+### Task 2.1 — Upgrade FFmpeg to a version with HEVC decoder
+**File:** `libs/ffmpeg-git-a5c1a0c/` (entire directory)
+**What:** Replace the bundled FFmpeg (libavcodec 54.25) with a version that includes the HEVC decoder. Minimum: FFmpeg 2.4 / libavcodec 56. Recommended: FFmpeg 4.4+ / libavcodec 58+ for stability and performance. Must provide:
+- Windows x64 and win32 builds (matching current `win32/` and `x64/` layout)
+- Static libraries: `avcodec.lib`, `avutil.lib`, `swscale.lib` (at minimum)
+- Headers in `include/`
+- DLLs for runtime: `avcodec-*.dll`, `avutil-*.dll`, `swscale-*.dll`
+
+**Why:** libavcodec 54 has no `CODEC_ID_HEVC` / `AV_CODEC_ID_HEVC`. The HEVC decoder (`libde265` or built-in) was introduced in libavcodec 55 and stabilized in 56+.
+**Done when:** `include/libavcodec/avcodec.h` contains `AV_CODEC_ID_HEVC` (or `CODEC_ID_HEVC`). Libraries link successfully.
+**Type:** task
+
+### Task 2.2 — Update FFmpeg API calls for new version
+**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/VideoDecoder.hpp`
+**What:** The current code uses deprecated FFmpeg APIs:
+- Line 12: `av_register_all()` — removed in FFmpeg 4.0+
+- Line 13: `avcodec_register_all()` — removed in FFmpeg 4.0+
+- Line 43: `avcodec_alloc_context()` — deprecated, use `avcodec_alloc_context3()`
+- Line 72: `avcodec_open()` — deprecated, use `avcodec_open2()`
+- Line 81: `avcodec_alloc_frame()` — deprecated, use `av_frame_alloc()`
+
+Wrap old API calls in `#if LIBAVCODEC_VERSION_MAJOR < 55` guards or update to new APIs.
+**Why:** FFmpeg 4.x removed these deprecated functions entirely. Must use new API or the code won't compile.
+**Done when:** VideoDecoder.hpp compiles against the new FFmpeg version.
+**Type:** task
+
+### Task 2.3 — Update CODEC_ID constants to AV_CODEC_ID
+**File:** `odm/odm.player/odm.player.lib/Live555.cpp:142-151`
+**What:** FFmpeg 55+ renamed `CODEC_ID_*` to `AV_CODEC_ID_*`. Update:
+- `CODEC_ID_MJPEG` → `AV_CODEC_ID_MJPEG`
+- `CODEC_ID_H264` → `AV_CODEC_ID_H264`
+- `CODEC_ID_MPEG4` → `AV_CODEC_ID_MPEG4`
+- `CODEC_ID_MPEG2VIDEO` → `AV_CODEC_ID_MPEG2VIDEO`
+
+Also update `VideoDecoder.hpp:77` (`CODEC_ID_H264` → `AV_CODEC_ID_H264`).
+**Why:** The old `CODEC_ID_*` macros are removed in newer FFmpeg. Code won't compile without this.
+**Done when:** No `CODEC_ID_` references remain; all use `AV_CODEC_ID_` prefix.
+**Type:** task
+
+### Task 2.4 — Upgrade live555 to a version with H265VideoRTPSource
+**File:** `libs/live555-2013.02.11/` (entire directory)
+**What:** Replace bundled live555 (2013.02.11) with version 2014.07.04 or later (ideally latest stable). Must include:
+- `H265VideoRTPSource.hh` / `H265VideoRTPSource.cpp` in `liveMedia/`
+- Updated `MediaSession.cpp` that creates `H265VideoRTPSource` for RTP payload type 96 with H265 encoding
+- All existing functionality (H264, JPEG, MPEG4 RTP sources) preserved
+
+**Why:** live555 2013 has no H265 RTP depacketizer. The library automatically creates the correct RTPSource subclass based on SDP codec name; it needs `H265VideoRTPSource` to handle `H265` in SDP.
+**Done when:** `liveMedia/include/H265VideoRTPSource.hh` exists. live555 library compiles.
+**Type:** task
+
+### Task 2.5 — Update core.h includes for new live555
+**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/core.h:17`
+**What:** Add `#include "H265VideoRTPSource.hh"` after the existing `#include "H264VideoRTPSource.hh"` (line 17).
+**Why:** Needed for the H265VirtualSink (Task 3.2) to reference H265 RTP types.
+**Done when:** `core.h` includes both H264 and H265 RTP source headers.
+**Type:** task
+
+### Task 2.6 — Verify: media libraries build
+**What:** Build `odm.player.lib.vcxproj` and `live555.vcxproj` to confirm the upgraded libraries compile and link.
+**Done when:** Both native projects build successfully on x64 and win32.
+**Type:** verify
+
+## Phase 3 — C++ Player Pipeline
+
+### Task 3.1 — Add H265 codec branch in Live555::InitSubsession
+**File:** `odm/odm.player/odm.player.lib/Live555.cpp:137-154`
+**What:** Add an `else if` branch for H265 in `InitSubsession()`:
+```cpp
+}else if (_stricmp(codecName, "H265")==0){
+    return InitVideoSubsession(AV_CODEC_ID_HEVC, sprops);
 ```
-**Why:** Without this, H.265 resolutions won't appear in the encoder dropdown.
-**Done when:** H.265 encoder options appear in the video settings dropdown with a distinct color.
+Insert after the H264 branch (line 145) and before the MPEG4 branch (line 146).
+**Why:** When live555 parses the SDP and finds an H265 codec, `SetupSubsession` calls `InitSubsession` with `codecName="H265"`. Without this branch, `InitSubsession` returns `nullptr` and the stream is silently dropped.
+**Done when:** `InitSubsession("H265", ...)` returns a valid `IFrameProcessorFactory`.
 **Type:** task
 
-### Task 5.4 — VERIFY: Full solution builds and UI shows H.265
-**What:** Full solution build (`odm.sln`). Manual verification: when connected to an H.265-capable camera (or mock ONVIF response), the video settings dropdown should list H.265 options.
-**Done when:** Clean build. H.265 options visible in video settings UI when reported by camera.
+### Task 3.2 — Create H265VirtualSink class
+**File:** New file: `odm/odm.player/odm.player.lib/include/odm.player.lib/H265VirtualSink.hpp`
+**What:** Create an H265VirtualSink class modeled on `H264VirtualSink.hpp`. H.265 NAL units also use Annex-B start codes (`0x00 0x00 0x01` or `0x00 0x00 0x00 0x01`), so the logic is nearly identical to `H264VirtualSink`:
+- Prepend 4-byte start code `{0x00, 0x00, 0x00, 0x01}` before each NAL unit
+- Check if the payload already contains start codes (same logic as H264VirtualSink lines 55-60)
+
+The class structure mirrors `H264VirtualSink` exactly — only the class name changes.
+**Why:** H.265 RTP payloads arrive as raw NAL units without Annex-B start codes. The FFmpeg HEVC decoder expects Annex-B format.
+**Done when:** `H265VirtualSink.hpp` exists with `CreateNew()` factory method and start-code prepending logic.
+**Type:** task
+
+### Task 3.3 — Route H265 codec to H265VirtualSink in SetupSubsession
+**File:** `odm/odm.player/odm.player.lib/Live555.cpp:176-182`
+**What:** Update the sink selection in `SetupSubsession` to use `H265VirtualSink` for H265:
+```cpp
+if(_stricmp(codecName, "H264")==0){
+    sink = H264VirtualSink::CreateNew(*usageEnvironment);
+}else if(_stricmp(codecName, "H265")==0){
+    sink = H265VirtualSink::CreateNew(*usageEnvironment);
+}else{
+    sink = VirtualSink::CreateNew(*usageEnvironment);
+}
+```
+**Why:** H.265 NAL units need start-code prepending, same as H.264.
+**Done when:** H265 streams use `H265VirtualSink` for frame processing.
+**Type:** task
+
+### Task 3.4 — Add H265 CODEC_FLAG2_CHUNKS handling in VideoDecoder
+**File:** `odm/odm.player/odm.player.lib/include/odm.player.lib/VideoDecoder.hpp:77-80`
+**What:** Extend the CODEC_FLAG2_CHUNKS check to also apply to HEVC:
+```cpp
+if (avCodecContext->codec_id == AV_CODEC_ID_H264 || avCodecContext->codec_id == AV_CODEC_ID_HEVC){
+    avCodecContext->flags2 |= CODEC_FLAG2_CHUNKS;
+}
+```
+**Why:** Like H.264, H.265 streams over RTP may deliver partial NAL units. `CODEC_FLAG2_CHUNKS` tells FFmpeg to handle incomplete frames gracefully.
+**Done when:** HEVC decoder is initialized with CHUNKS flag.
+**Type:** task
+
+### Task 3.5 — Include H265VirtualSink.hpp in build
+**File:** `odm/odm.player/odm.player.lib/Live555.cpp` (top of file, near includes)
+**What:** Add `#include "odm.player.lib/H265VirtualSink.hpp"` to the includes.
+**Why:** `Live555.cpp` references `H265VirtualSink::CreateNew` (from Task 3.3).
+**Done when:** Live555.cpp compiles with H265VirtualSink reference.
+**Type:** task
+
+### Task 3.6 — Verify: C++ player builds and links
+**What:** Build `odm.player.lib.vcxproj` to confirm H265 pipeline compiles. Verify no linker errors from FFmpeg or live555 symbol changes.
+**Done when:** `odm.player.lib` builds cleanly on x64.
 **Type:** verify
 
----
+## Phase 4 — F# / UI Layer
 
-## Phase 6 — Integration Testing
-
-### Task 6.1 — Test H.265 stream playback end-to-end
-**What:** Test with either:
-- A real H.265 ONVIF camera
-- An RTSP test server streaming H.265 (e.g., `ffmpeg -re -i input.mp4 -c:v libx265 -f rtsp rtsp://localhost:8554/test`)
-- Verify: stream negotiation, SDP parsing, RTP depayloading, decoding, rendering all work
-**Done when:** H.265 video plays in the ODM video player window.
+### Task 4.1 — Handle H265 in VideoSettingsActivity encoder match
+**File:** `odm/odm.ui.activities/VideoSettingsActivity.fs:261-266`
+**What:** Add H265 case to the `isVecConfigured` match expression:
+```fsharp
+match model.encoder with
+|VideoEncoding.h264 -> validateConfig(options.h264)
+|VideoEncoding.jpeg -> validateConfig(options.jpeg)
+|VideoEncoding.mpeg4 -> validateConfig(options.mpeg4)
+|VideoEncoding.h265 -> validateConfig(options.h265)
+|_ -> raise (new ArgumentException(...))
+```
+**Why:** Currently the `|_` default case throws an `ArgumentException` for any unknown encoding, which would crash the UI when an H.265 profile is selected.
+**Done when:** Selecting an H.265 profile in the video settings UI does not throw.
 **Type:** task
 
-### Task 6.2 — Regression test H.264 and MJPEG playback
-**What:** Verify existing H.264 and MJPEG streams still play correctly after all changes.
-**Done when:** H.264 and MJPEG streams play without regression.
+### Task 4.2 — Handle H265 govLength and configuration in VideoSettingsActivity
+**File:** `odm/odm.ui.activities/VideoSettingsActivity.fs:93-134`
+**What:** Add H265 handling wherever H264 is handled:
+- Lines 94-95: Add `if options.h265 |> NotNull then yield options.h265.frameRateRange` (mirroring h264 pattern)
+- Lines 103-104: Add H265 `encodingIntervalRange`
+- Lines 112-113: Add H265 `govLengthRange`
+- Lines 118-123: Add `elif vec.encoding = VideoEncoding.h265 && NotNull(vec.h265) then vec.h265.govLength`
+- Lines 133-134: Add `elif x.Name = @"H265" then yield x.Deserialize<H265Options2>().bitrateRange`
+- Lines 248-253: Add `elif model.encoder = VideoEncoding.h265 then` branch to create H265Configuration and set govLength
+**Why:** The video settings activity needs to display and apply H.265-specific encoder parameters.
+**Done when:** H.265 encoder settings can be viewed and modified in the UI.
 **Type:** task
 
-### Task 6.3 — Run existing unit tests
-**What:** Run all tests in `odm/odm.tests/` to ensure no regressions.
-**Done when:** All existing tests pass.
-**Type:** task
-
-### Task 6.4 — VERIFY: Full integration verification
-**What:** Final checkpoint — all codecs work, no regressions, solution builds clean.
-**Done when:** H.265, H.264, and MJPEG all play. Tests pass. Clean build.
+### Task 4.3 — Verify: full solution builds
+**What:** Build the entire `odm.sln` solution. All projects must compile.
+**Done when:** `odm.sln` builds with 0 errors on x64/Release configuration.
 **Type:** verify
 
----
+## Phase 5 — Integration Testing
+
+### Task 5.1 — Test H265 ONVIF profile negotiation
+**What:** Connect to a camera (or ONVIF simulator) that advertises H.265 profiles. Verify:
+- `GetProfiles()` returns profiles with `VideoEncoding.h265` without deserialization errors
+- `GetVideoEncoderConfigurationOptions()` returns H265 options
+- `GetStreamUri()` returns a valid RTSP URI for the H.265 profile
+**Done when:** H.265 profiles appear in the ODM profile list without errors.
+**Type:** verify
+
+### Task 5.2 — Test H265 stream playback end-to-end
+**What:** Play an H.265 RTSP stream from a real camera or test source. Verify:
+- RTSP DESCRIBE returns SDP with H265 codec
+- live555 creates H265VideoRTPSource
+- Frames are decoded by FFmpeg HEVC decoder
+- Video renders in the WPF VideoPlayer control
+**Done when:** H.265 video plays in ODM with no visual artifacts or crashes.
+**Type:** verify
+
+### Task 5.3 — Regression test H264 and MJPEG playback
+**What:** Verify that existing H.264 and MJPEG streams still play correctly after all changes.
+**Done when:** H.264 and MJPEG streams play without regressions.
+**Type:** verify
 
 ## Risks
 
-1. **FFmpeg API churn** — The jump from avcodec-54 (2012) to modern FFmpeg (7.x, 2024) spans 12 years of API changes. The migration in Task 2.1 is substantial. If too many APIs changed, consider an intermediate version (FFmpeg 4.4 LTS) as a stepping stone.
+1. **FFmpeg API breakage**: Upgrading from libavcodec 54 to 56+ involves significant API changes (deprecated function removal, renamed constants). Task 2.2 and 2.3 mitigate this, but there may be additional API changes in areas not yet identified.
 
-2. **Live555 build complexity** — Live555 doesn't use CMake; it uses a custom makefile system. Building on Windows may require MSYS2 or manual vcxproj creation. The existing `libs/live555-2013.02.11/` may have a custom VS project already.
+2. **live555 build complexity**: live555 does not use CMake/MSBuild natively. The current `live555.vcxproj` is hand-crafted. Upgrading live555 will require updating this project file to include new source files (`H265VideoRTPSource.cpp`, etc.) and remove any deleted files.
 
-3. **Binary compatibility** — The FFmpeg DLLs are loaded at runtime. If the new DLL names differ (e.g., `avcodec-61.dll` vs `avcodec-54.dll`), all references in csproj, vcxproj, and any P/Invoke declarations must be updated.
+3. **FFmpeg binary availability**: Pre-built FFmpeg Windows static libraries with HEVC enabled must be sourced or compiled. The HEVC decoder may require `libde265` or be built-in depending on the FFmpeg build configuration.
 
-4. **ONVIF schema version** — The ONVIF WSDL/XSD schemas in `onvif/onvif.services/schemas/` are from an older ONVIF spec version. H.265 types may not exist in those schemas. We're adding them manually to `onvif.types.cs` which is a hand-maintained file (not auto-generated from WSDL), so this is safe. However, if the WCF service proxies (`Reference.cs`, `Reference1.cs`) also need H.265 types, those may require re-generation from updated WSDL.
+4. **CODEC_FLAG2_CHUNKS deprecation**: Newer FFmpeg versions may have renamed or changed this flag. Need to verify the equivalent flag name in the target FFmpeg version.
 
-5. **VPS (Video Parameter Sets)** — H.265 introduces VPS in addition to SPS/PPS. The `parseSPropParameterSets()` function used in `VideoDecoder.hpp:52` may need adjustment for H.265's `sprop-vps`, `sprop-sps`, `sprop-pps` SDP parameters (RFC 7798 defines these separately, vs H.264's single `sprop-parameter-sets`).
+5. **ONVIF spec fidelity**: The H265-related XSD types added manually must match the official ONVIF 17.06+ schema exactly. Mismatch will cause deserialization failures with real cameras.
 
-6. **Hardware acceleration** — Modern FFmpeg supports hardware-accelerated HEVC decoding (DXVA2/D3D11VA on Windows). The current software-only decode path will work but may struggle with 4K HEVC streams. Hardware acceleration is out of scope for this sprint but should be considered for follow-up.
+6. **H.265 patent licensing**: H.265/HEVC has complex patent licensing. Deployment on end-user machines requires awareness of MPEG-LA and HEVC Advance patent pools. This is a distribution concern, not a code concern.
