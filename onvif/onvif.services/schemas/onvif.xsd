@@ -533,6 +533,28 @@ IN NO EVENT WILL THE CORPORATION OR ITS MEMBERS OR THEIR AFFILIATES BE LIABLE FO
 		</xs:complexContent>
 	</xs:complexType>
 	<!--===============================-->
+	<xs:complexType name="H265Options">
+		<xs:sequence>
+			<xs:element name="ResolutionsAvailable" type="tt:VideoResolution" maxOccurs="unbounded"><xs:annotation><xs:documentation>List of supported image sizes.</xs:documentation></xs:annotation></xs:element>
+			<xs:element name="GovLengthRange" type="tt:IntRange"><xs:annotation><xs:documentation>Supported group of Video frames length.</xs:documentation></xs:annotation></xs:element>
+			<xs:element name="FrameRateRange" type="tt:IntRange"><xs:annotation><xs:documentation>Supported frame rate in fps (frames per second).</xs:documentation></xs:annotation></xs:element>
+			<xs:element name="EncodingIntervalRange" type="tt:IntRange"><xs:annotation><xs:documentation>Supported encoding interval range.</xs:documentation></xs:annotation></xs:element>
+			<xs:element name="H265ProfilesSupported" type="tt:H265Profile" maxOccurs="unbounded"><xs:annotation><xs:documentation>List of supported H.265 profiles.</xs:documentation></xs:annotation></xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<!--===============================-->
+	<xs:complexType name="H265Options2">
+		<xs:complexContent>
+			<xs:extension base="tt:H265Options">
+				<xs:sequence>
+					<xs:element name="BitrateRange" type="tt:IntRange"><xs:annotation><xs:documentation>Supported range of encoded bitrate in kbps.</xs:documentation></xs:annotation></xs:element>
+					<xs:any namespace="##any" processContents="lax" minOccurs="0" maxOccurs="unbounded"/>
+				</xs:sequence>
+				<xs:anyAttribute processContents="lax"/>
+			</xs:extension>
+		</xs:complexContent>
+	</xs:complexType>
+	<!--===============================-->
 	<!--    AudioSourceConfiguration   -->
 	<!--===============================-->
 	<xs:complexType name="AudioSourceConfiguration">

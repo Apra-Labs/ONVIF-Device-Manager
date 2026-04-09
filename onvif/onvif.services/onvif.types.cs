@@ -6635,6 +6635,91 @@ namespace onvif.services {
 	}
 
 	[System.SerializableAttribute()]
+	[System.Xml.Serialization.XmlTypeAttribute(TypeName = "H265Options", Namespace = "http://www.onvif.org/ver10/schema")]
+	public partial class H265Options {
+
+		private VideoResolution[] _resolutionsAvailable;
+
+		private IntRange _govLengthRange;
+
+		private IntRange _frameRateRange;
+
+		private IntRange _encodingIntervalRange;
+
+		private H265Profile[] _h265ProfilesSupported;
+
+		/// <summary>
+		/// List of supported image sizes.
+		/// </summary>
+		/// <remarks>reqired, order 0</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("ResolutionsAvailable", Namespace = "http://www.onvif.org/ver10/schema")]
+		public VideoResolution[] resolutionsAvailable {
+			get {
+				return this._resolutionsAvailable;
+			}
+			set {
+				this._resolutionsAvailable = value;
+			}
+		}
+
+		/// <summary>
+		/// Supported group of Video frames length.
+		/// </summary>
+		/// <remarks>reqired, order 1</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("GovLengthRange", Namespace = "http://www.onvif.org/ver10/schema")]
+		public IntRange govLengthRange {
+			get {
+				return this._govLengthRange;
+			}
+			set {
+				this._govLengthRange = value;
+			}
+		}
+
+		/// <summary>
+		/// Supported frame rate in fps (frames per second).
+		/// </summary>
+		/// <remarks>reqired, order 2</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("FrameRateRange", Namespace = "http://www.onvif.org/ver10/schema")]
+		public IntRange frameRateRange {
+			get {
+				return this._frameRateRange;
+			}
+			set {
+				this._frameRateRange = value;
+			}
+		}
+
+		/// <summary>
+		/// Supported encoding interval range.
+		/// </summary>
+		/// <remarks>reqired, order 3</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("EncodingIntervalRange", Namespace = "http://www.onvif.org/ver10/schema")]
+		public IntRange encodingIntervalRange {
+			get {
+				return this._encodingIntervalRange;
+			}
+			set {
+				this._encodingIntervalRange = value;
+			}
+		}
+
+		/// <summary>
+		/// List of supported H.265 profiles.
+		/// </summary>
+		/// <remarks>reqired, order 4</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("H265ProfilesSupported", Namespace = "http://www.onvif.org/ver10/schema")]
+		public H265Profile[] h265ProfilesSupported {
+			get {
+				return this._h265ProfilesSupported;
+			}
+			set {
+				this._h265ProfilesSupported = value;
+			}
+		}
+	}
+
+	[System.SerializableAttribute()]
 	[System.Xml.Serialization.XmlTypeAttribute(TypeName = "VideoEncoderOptionsExtension", Namespace = "http://www.onvif.org/ver10/schema")]
 	public partial class VideoEncoderOptionsExtension {
 
@@ -7030,6 +7115,132 @@ namespace onvif.services {
 			}
 			set {
 				this._h264ProfilesSupported = value;
+			}
+		}
+
+		/// <summary>
+		/// Supported range of encoded bitrate in kbps.
+		/// </summary>
+		/// <remarks>reqired, order 5</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("BitrateRange", Namespace = "http://www.onvif.org/ver10/schema")]
+		public IntRange bitrateRange {
+			get {
+				return this._bitrateRange;
+			}
+			set {
+				this._bitrateRange = value;
+			}
+		}
+
+		/// <remarks>optional, order 6, namespace ##any</remarks>
+		[System.Xml.Serialization.XmlAnyElementAttribute()]
+		public System.Xml.XmlElement[] any {
+			get {
+				return this._any;
+			}
+			set {
+				this._any = value;
+			}
+		}
+	}
+
+	[System.SerializableAttribute()]
+	[System.Xml.Serialization.XmlTypeAttribute(TypeName = "H265Options2", Namespace = "http://www.onvif.org/ver10/schema")]
+	public partial class H265Options2 {
+
+		private System.Xml.XmlAttribute[] _anyAttr;
+
+		private VideoResolution[] _resolutionsAvailable;
+
+		private IntRange _govLengthRange;
+
+		private IntRange _frameRateRange;
+
+		private IntRange _encodingIntervalRange;
+
+		private H265Profile[] _h265ProfilesSupported;
+
+		private IntRange _bitrateRange;
+
+		private System.Xml.XmlElement[] _any;
+
+		[System.Xml.Serialization.XmlAnyAttributeAttribute()]
+		public System.Xml.XmlAttribute[] anyAttr {
+			get {
+				return this._anyAttr;
+			}
+			set {
+				this._anyAttr = value;
+			}
+		}
+
+		/// <summary>
+		/// List of supported image sizes.
+		/// </summary>
+		/// <remarks>reqired, order 0</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("ResolutionsAvailable", Namespace = "http://www.onvif.org/ver10/schema")]
+		public VideoResolution[] resolutionsAvailable {
+			get {
+				return this._resolutionsAvailable;
+			}
+			set {
+				this._resolutionsAvailable = value;
+			}
+		}
+
+		/// <summary>
+		/// Supported group of Video frames length.
+		/// </summary>
+		/// <remarks>reqired, order 1</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("GovLengthRange", Namespace = "http://www.onvif.org/ver10/schema")]
+		public IntRange govLengthRange {
+			get {
+				return this._govLengthRange;
+			}
+			set {
+				this._govLengthRange = value;
+			}
+		}
+
+		/// <summary>
+		/// Supported frame rate in fps (frames per second).
+		/// </summary>
+		/// <remarks>reqired, order 2</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("FrameRateRange", Namespace = "http://www.onvif.org/ver10/schema")]
+		public IntRange frameRateRange {
+			get {
+				return this._frameRateRange;
+			}
+			set {
+				this._frameRateRange = value;
+			}
+		}
+
+		/// <summary>
+		/// Supported encoding interval range.
+		/// </summary>
+		/// <remarks>reqired, order 3</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("EncodingIntervalRange", Namespace = "http://www.onvif.org/ver10/schema")]
+		public IntRange encodingIntervalRange {
+			get {
+				return this._encodingIntervalRange;
+			}
+			set {
+				this._encodingIntervalRange = value;
+			}
+		}
+
+		/// <summary>
+		/// List of supported H.265 profiles.
+		/// </summary>
+		/// <remarks>reqired, order 4</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("H265ProfilesSupported", Namespace = "http://www.onvif.org/ver10/schema")]
+		public H265Profile[] h265ProfilesSupported {
+			get {
+				return this._h265ProfilesSupported;
+			}
+			set {
+				this._h265ProfilesSupported = value;
 			}
 		}
 
