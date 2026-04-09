@@ -66,6 +66,15 @@ module internal SslStreamHelpers =
                     pos <- dataStart + size + 2
         ms.ToArray()
 
+    let stripDoctype (data: byte[]) =
+        // Remove <!DOCTYPE ...> declarations to prevent XmlReader from loading external DTDs.
+        // Some cameras (e.g. Milesight Analytics) include DOCTYPE in SOAP response bodies,
+        // causing XmlReader to look for XMLSchema.dtd on disk and fail with FileNotFoundException.
+        let xml = Encoding.UTF8.GetString(data)
+        let cleaned = Regex.Replace(xml, @"<!DOCTYPE[^>]*(?:>|(?:\[.*?\]>))", "", RegexOptions.Singleline)
+        if cleaned.Length = xml.Length then data  // no DOCTYPE found, return original bytes
+        else Encoding.UTF8.GetBytes(cleaned)
+
     type HttpResponse = {
         StatusCode: int
         ContentType: string
@@ -84,10 +93,12 @@ module internal SslStreamHelpers =
             Int32.Parse(statusLine.Split(' ').[1])
 
         let body =
-            match getHeaderValue headerText "Transfer-Encoding" with
-            | Some te when te.IndexOf("chunked", StringComparison.OrdinalIgnoreCase) >= 0 ->
-                decodeChunked rawBody
-            | _ -> rawBody
+            let raw =
+                match getHeaderValue headerText "Transfer-Encoding" with
+                | Some te when te.IndexOf("chunked", StringComparison.OrdinalIgnoreCase) >= 0 ->
+                    decodeChunked rawBody
+                | _ -> rawBody
+            stripDoctype raw
 
         let contentType =
             match getHeaderValue headerText "Content-Type" with
@@ -133,7 +144,7 @@ module internal SslStreamHelpers =
 
 /// WCF IRequestChannel that sends SOAP via raw TcpClient + SslStream.
 type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncoder,
-                              address: EndpointAddress, via: Uri) =
+                              wsAddressing: bool, address: EndpointAddress, via: Uri) =
     inherit ChannelBase(factory)
 
     let bufMgr = BufferManager.CreateBufferManager(int64 (64 * 1024 * 1024), Int32.MaxValue)
@@ -162,21 +173,25 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         let rawBodyBytes = Array.init buf.Count (fun i -> buf.Array.[buf.Offset + i])
         bufMgr.ReturnBuffer(buf.Array)
 
-        // Strip <Action s:mustUnderstand="1"> from the outgoing SOAP header.
-        // WCF always emits this header even with MessageVersion.Soap12 (AddressingNone).
-        // gSOAP camera firmware (2.8.x) returns HTTP 500 with a MustUnderstand SOAP fault
-        // for any WS-Addressing header it does not recognise — Action is one such header.
+        // Strip <Action s:mustUnderstand="1"> from the outgoing SOAP header, but only
+        // for non-WS-Addressing channels. gSOAP camera firmware (2.8.x) returns HTTP 500
+        // with a MustUnderstand SOAP fault for any WS-Addressing header it does not recognise.
+        // However, WS-Addressing channels (Events/Metadata) use the Action header for
+        // operation dispatch — stripping it causes cameras to return a dispatch error.
         let bodyBytes =
-            let xml = Encoding.UTF8.GetString(rawBodyBytes)
-            // Match the Action open tag (which may span to >) then the content then the close tag.
-            // The open tag ends with >, the content is the action URI, the close tag follows.
-            // Pattern uses non-verbatim string: \" for quote in the pattern.
-            let actionPattern = "<(?:[a-zA-Z0-9_]+:)?Action\\s[^>]*mustUnderstand=\"1\"[^>]*>.*?</(?:[a-zA-Z0-9_]+:)?Action>"
-            let stripped = Regex.Replace(xml, actionPattern, "", RegexOptions.Singleline)
-            // If the header block is now empty, remove it entirely
-            let headerPattern = "<(?:[a-zA-Z0-9_]+:)?Header\\s*>\\s*</(?:[a-zA-Z0-9_]+:)?Header>"
-            let stripped2 = Regex.Replace(stripped, headerPattern, "", RegexOptions.Singleline)
-            Encoding.UTF8.GetBytes(stripped2)
+            if wsAddressing then
+                rawBodyBytes  // WS-Addressing channels need Action header for operation dispatch
+            else
+                let xml = Encoding.UTF8.GetString(rawBodyBytes)
+                // Match the Action open tag (which may span to >) then the content then the close tag.
+                // The open tag ends with >, the content is the action URI, the close tag follows.
+                // Pattern uses non-verbatim string: \" for quote in the pattern.
+                let actionPattern = "<(?:[a-zA-Z0-9_]+:)?Action\\s[^>]*mustUnderstand=\"1\"[^>]*>.*?</(?:[a-zA-Z0-9_]+:)?Action>"
+                let stripped = Regex.Replace(xml, actionPattern, "", RegexOptions.Singleline)
+                // If the header block is now empty, remove it entirely
+                let headerPattern = "<(?:[a-zA-Z0-9_]+:)?Header\\s*>\\s*</(?:[a-zA-Z0-9_]+:)?Header>"
+                let stripped2 = Regex.Replace(stripped, headerPattern, "", RegexOptions.Singleline)
+                Encoding.UTF8.GetBytes(stripped2)
 
         // Send via raw SslStream
         let resp = SslStreamHelpers.sslSend via bodyBytes contentType timeoutMs
@@ -192,10 +207,13 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         // gSOAP cameras include Action mustUnderstand="1" in their response envelope;
         // WCF's ServiceChannel.HandleReply throws a FaultException for any mustUnderstand
         // header that has not been explicitly acknowledged by the channel.
-        for i in 0 .. msg.Headers.Count - 1 do
-            let hdr = msg.Headers.[i]
-            if hdr.MustUnderstand then
-                try msg.Headers.UnderstoodHeaders.Add(hdr) with _ -> ()
+        // Use Seq.iter (enumerator) rather than index loop: msg.Headers.[i] creates a new
+        // wrapper object on each call, but UnderstoodHeaders.Add requires the exact same
+        // object reference WCF tracks internally. The enumerator yields those tracked refs.
+        msg.Headers
+        |> Seq.filter (fun hdr -> hdr.MustUnderstand)
+        |> Seq.iter (fun hdr ->
+            try msg.Headers.UnderstoodHeaders.Add(hdr) with _ -> ())
         msg
 
     interface IRequestChannel with
@@ -244,7 +262,7 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
 
 /// WCF ChannelFactory that creates SslStreamRequestChannel instances.
 type SslStreamChannelFactory(timeouts: IDefaultCommunicationTimeouts,
-                              encoderFactory: MessageEncoderFactory) =
+                              encoderFactory: MessageEncoderFactory, wsAddressing: bool) =
     inherit ChannelFactoryBase<IRequestChannel>(timeouts)
 
     let encoder = encoderFactory.Encoder
@@ -256,7 +274,7 @@ type SslStreamChannelFactory(timeouts: IDefaultCommunicationTimeouts,
         tcs.Task :> IAsyncResult
 
     override this.OnCreateChannel(address: EndpointAddress, via: Uri) : IRequestChannel =
-        new SslStreamRequestChannel(this, encoder, address, via) :> IRequestChannel
+        new SslStreamRequestChannel(this, encoder, wsAddressing, address, via) :> IRequestChannel
 
     override _.GetProperty<'T when 'T : not struct>() : 'T =
         if typeof<'T> = typeof<MessageVersion> then
@@ -300,4 +318,5 @@ type SslStreamTransportBindingElement() =
                     // No encoder in context — create a default Soap12 encoder
                     TextMessageEncodingBindingElement(MessageVersion.Soap12, System.Text.Encoding.UTF8)
                         .CreateMessageEncoderFactory()
-        new SslStreamChannelFactory(context.Binding, encoderFactory) :> obj :?> IChannelFactory<'TChannel>
+        let wsAddressing = encoderFactory.MessageVersion.Addressing <> AddressingVersion.None
+        new SslStreamChannelFactory(context.Binding, encoderFactory, wsAddressing) :> obj :?> IChannelFactory<'TChannel>
