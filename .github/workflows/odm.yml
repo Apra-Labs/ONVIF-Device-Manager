@@ -1,19 +1,17 @@
 name: ODM
 
 on:
-  push:
-    branches: [ "ak/rejuvinate" ]
   pull_request:
-    branches: [ "ak/rejuvinate" ]
+    branches: [ "development" ]
 
 jobs:
 
   build:
 
-    runs-on: windows-2019
+    runs-on: windows-2022
 
     env:
-      Solution_Name: odm.sln                         # Replace with your solution name, i.e. MyWpfApp.sln.
+      Solution_Name: odm.sln
 
     steps:
     - name: Checkout
@@ -22,16 +20,53 @@ jobs:
         fetch-depth: 0
 
     - name: Setup VS Dev Environment
-      uses: seanmiddleditch/gha-setup-vsdevenv@v4      
+      uses: seanmiddleditch/gha-setup-vsdevenv@v4
 
-    - name: build application
+    - name: Install .NET Framework targeting packs
+      shell: pwsh
+      run: |
+        # Install .NET 4.0 and 4.5 reference assemblies via NuGet packages
+        $nuget = "nuget"
+        $outDir = "$env:TEMP\netfx-ref"
+        & $nuget install Microsoft.NETFramework.ReferenceAssemblies.net40 -OutputDirectory $outDir -ExcludeVersion -NonInteractive
+        & $nuget install Microsoft.NETFramework.ReferenceAssemblies.net45 -OutputDirectory $outDir -ExcludeVersion -NonInteractive
+
+        $refRoot = "C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework"
+
+        # Copy .NET 4.0 reference assemblies
+        $src40 = "$outDir\Microsoft.NETFramework.ReferenceAssemblies.net40\build\.NETFramework\v4.0"
+        $dst40 = "$refRoot\v4.0"
+        if (-not (Test-Path $dst40)) { New-Item -ItemType Directory -Path $dst40 | Out-Null }
+        Copy-Item "$src40\*" $dst40 -Recurse -Force
+
+        # Copy .NET 4.5 reference assemblies
+        $src45 = "$outDir\Microsoft.NETFramework.ReferenceAssemblies.net45\build\.NETFramework\v4.5"
+        $dst45 = "$refRoot\v4.5"
+        if (-not (Test-Path $dst45)) { New-Item -ItemType Directory -Path $dst45 | Out-Null }
+        Copy-Item "$src45\*" $dst45 -Recurse -Force
+
+        Write-Host "Targeting packs installed."
+
+    - name: Build application
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
-    
-    - name: collect artifacts
+
+    - name: Restore tests
+      run: dotnet restore odm\odm.tests\odm.tests.csproj
+
+    - name: Build tests
+      run: msbuild odm\odm.tests\odm.tests.csproj /p:Configuration=Debug /p:Platform="Any CPU" /v:minimal
+
+    - name: Run tests
+      run: |
+        $vstest = "${{ env.DevEnvDir }}CommonExtensions\Microsoft\TestWindow\vstest.console.exe"
+        & $vstest "odm\odm.tests\bin\Any CPU\Debug\net48\odm.tests.dll" /logger:trx
+      shell: pwsh
+
+    - name: Collect artifacts
       run: .\package.bat
       shell: cmd
-    
-    - name: upload artifacts 
+
+    - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: odm-build-zip
@@ -42,13 +77,12 @@ jobs:
       run: .\DisableOutOfProcBuild.exe
       continue-on-error: true
 
-    - name: build installer
+    - name: Build installer
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
       shell: cmd
 
-    - name: upload installer 
+    - name: Upload installer
       uses: actions/upload-artifact@v4
       with:
-          name: odm-installer
-          path: odm.setup/Release/odm.setup.msi
-  
+        name: odm-installer
+        path: odm.setup/Release/odm.setup.msi

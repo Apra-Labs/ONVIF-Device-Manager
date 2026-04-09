@@ -63,6 +63,7 @@
     <Reference Include="System.Runtime.Serialization" />
     <Reference Include="System.ServiceModel" />
     <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Security" />
     <Reference Include="Microsoft.Expression.Interactions">
       <HintPath>..\..\packages\Prism.4.1.0.0\lib\NET40\Microsoft.Expression.Interactions.dll</HintPath>
     </Reference>
@@ -114,6 +115,9 @@
     <Compile Include="controls\BtnListBox.cs" />
     <Compile Include="controls\DateTimeControl.xaml.cs">
       <DependentUpon>DateTimeControl.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="controls\TogglePasswordBox.xaml.cs">
+      <DependentUpon>TogglePasswordBox.xaml</DependentUpon>
     </Compile>
     <Compile Include="controls\DeviceEngineControl.cs" />
     <Compile Include="controls\ExpressionDefaultEditor.xaml.cs">
@@ -254,6 +258,8 @@
       <DependentUpon>XmlViewer.xaml</DependentUpon>
     </Compile>
     <Compile Include="core\AccountManager.cs" />
+    <Compile Include="core\CredentialStore.cs" />
+    <Compile Include="core\LoginActionHelper.cs" />
     <Compile Include="core\CustomCommands.cs" />
     <Compile Include="core\DataProcessInfo.cs" />
     <Compile Include="core\DeviceDescriptionHolder.cs" />
@@ -287,6 +293,9 @@
     <Compile Include="viewmodels\ViewModelBase.cs" />
     <Compile Include="views\AuthView.xaml.cs">
       <DependentUpon>AuthView.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="views\CredentialManagerView.xaml.cs">
+      <DependentUpon>CredentialManagerView.xaml</DependentUpon>
     </Compile>
     <Compile Include="views\KeyValuePairsBlock.xaml.cs">
       <DependentUpon>KeyValuePairsBlock.xaml</DependentUpon>
@@ -579,6 +588,10 @@
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
+    <Page Include="controls\TogglePasswordBox.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="controls\ExpressionDefaultEditor.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
@@ -620,6 +633,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="views\AuthView.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="views\CredentialManagerView.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>
     </Page>
@@ -1166,6 +1183,24 @@
   </ItemGroup>
   <ItemGroup>
     <Activity Include="ErrorView.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="images\Delete16.png" />
+    <Resource Include="..\odm.ui.app\Resources\Images\eye.png">
+      <Link>images\eye.png</Link>
+    </Resource>
+    <Resource Include="..\odm.ui.app\Resources\Images\eye-off.png">
+      <Link>images\eye-off.png</Link>
+    </Resource>
+    <Resource Include="..\odm.ui.app\Resources\Images\square-arrow-up.png">
+      <Link>images\square-arrow-up.png</Link>
+    </Resource>
+    <Resource Include="..\odm.ui.app\Resources\Images\square-arrow-down.png">
+      <Link>images\square-arrow-down.png</Link>
+    </Resource>
+    <Resource Include="..\odm.ui.app\Resources\Images\square-plus.png">
+      <Link>images\square-plus.png</Link>
+    </Resource>
   </ItemGroup>
   <ItemGroup>
     <Resource Include="images\warning-icon-th.png" />

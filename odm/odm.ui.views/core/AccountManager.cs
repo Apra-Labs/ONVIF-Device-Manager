@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -10,7 +10,7 @@ using System.Xml.Serialization;
 namespace odm.ui.core
 {
     [XmlRootAttribute(ElementName = "Account", IsNullable = false)]
-    public struct Account 
+    public struct Account
     {
         string _password;
         public string Password { get { return _password ?? string.Empty; } set { _password = value; } }
@@ -26,7 +26,7 @@ namespace odm.ui.core
                 return false;
 
             Account another = (Account)obj;
-            return this.Name == another.Name;
+            return this.Name == another.Name && this.Password == another.Password;
         }
 
         public static bool operator == (Account that, Account another)
@@ -40,12 +40,15 @@ namespace odm.ui.core
 
         public override int GetHashCode()
         {
-            return this.Name.GetHashCode();
+            unchecked
+            {
+                return (this.Name.GetHashCode() * 397) ^ this.Password.GetHashCode();
+            }
         }
     }
 
 
-    
+
 
     public sealed class AccountManager
     {
@@ -55,20 +58,28 @@ namespace odm.ui.core
 
         private AccountManager()
         {
-            _currentAccount = Load();
+            // Load CurrentAccount from CredentialStore (first credential) or Anonymous
+            var all = CredentialStore.Instance.GetAll();
+            _currentAccount = all.Count > 0 ? all[0] : Account.Anonymous;
         }
+
+        /// <summary>
+        /// True after an explicit logout. Cleared whenever a real (non-anonymous) account
+        /// is set. Used by DeviceListViewModel to suppress the stored-credential fallback.
+        /// </summary>
+        public bool LoggedOutExplicitly { get; set; } = false;
 
         public event EventHandler CurrentAccountChanged;
         Account _currentAccount = Account.Anonymous;
         public Account CurrentAccount
         {
             get { return _currentAccount; }
-            private set 
+            private set
             {
                 if (_currentAccount == value)
                     return;
                 _currentAccount = value;
-                
+
                 if (this.CurrentAccountChanged != null)
                     this.CurrentAccountChanged(this, EventArgs.Empty);
             }
@@ -79,53 +90,50 @@ namespace odm.ui.core
             get { return Account.Anonymous != this.CurrentAccount; }
         }
 
+        /// <summary>
+        /// Returns all stored credentials from CredentialStore.
+        /// </summary>
+        public IList<Account> GetAllCredentials()
+        {
+            return CredentialStore.Instance.GetAll();
+        }
+
+        /// <summary>
+        /// Replaces the entire credential list in CredentialStore.
+        /// </summary>
+        public void SetCredentials(List<Account> credentials)
+        {
+            CredentialStore.Instance.SetAll(credentials);
+        }
+
+        /// <summary>
+        /// Sets the current active credential and optionally persists it.
+        /// When remember=true the credential is stored in the encrypted store
+        /// (added if not already present); when false the store is unchanged.
+        /// </summary>
         public void SetCurrentAccount(Account account, bool remember)
         {
+            if (!account.IsAnonymous)
+                LoggedOutExplicitly = false;
             this.CurrentAccount = account;
-            Save(remember ? account : Account.Anonymous);
-        }
-
-        private Account Load()
-        {
-            if (!File.Exists(settingsPath))
-                return Account.Anonymous;
-
-            try
+            if (remember && !account.IsAnonymous)
             {
-                using (var sr = File.OpenText(settingsPath))
+                var all = CredentialStore.Instance.GetAll();
+                // Only skip if exact (name, password) pair already stored.
+                // Same name with different password → add as new entry (BUG-1 fix).
+                bool exactMatch = false;
+                for (int i = 0; i < all.Count; i++)
                 {
-                    XmlSerializer deserializer = new XmlSerializer(typeof(Account));
-                    return (Account)deserializer.Deserialize(sr);
+                    if (string.Equals(all[i].Name, account.Name, StringComparison.OrdinalIgnoreCase)
+                        && all[i].Password == account.Password)
+                    {
+                        exactMatch = true;
+                        break;
+                    }
                 }
-            }
-            catch (Exception err)
-            {
-                dbg.Error(err);
-                return Account.Anonymous;
+                if (!exactMatch)
+                    CredentialStore.Instance.Add(account);
             }
         }
-
-        private void Save(Account account)
-        {
-            try
-            {
-                if (File.Exists(settingsPath))
-                    File.Delete(settingsPath);
-                
-                using (var sr = File.CreateText(settingsPath))
-                {
-                    XmlSerializer serializer = new XmlSerializer(typeof(Account));
-                    serializer.Serialize(sr, account);
-                }
-            }
-            catch (Exception err)
-            {
-                dbg.Error(err);
-            }
-        }
-        
-        readonly string settingsPath = AppDefaults.ConfigFolderPath + "account.def.xml";
-        
-        
     }
 }

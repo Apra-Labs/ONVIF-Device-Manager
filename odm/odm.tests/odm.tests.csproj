@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>odm.tests</AssemblyName>
+    <RootNamespace>odm.tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <Nullable>disable</Nullable>
+    <LangVersion>7.3</LangVersion>
+    <!-- Copy all referenced DLLs into the output directory -->
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest.TestAdapter" Version="1.4.0" />
+    <PackageReference Include="MSTest.TestFramework" Version="1.4.0" />
+  </ItemGroup>
+
+  <!--
+    Reference the pre-built assemblies from odm.ui.views (net40 Debug build).
+    .NET 4.8 is backward-compatible with .NET 4.0 assemblies.
+    All transitive dependencies live in the same bin\Debug folder.
+  -->
+  <PropertyGroup>
+    <OdmViewsBin>$(MSBuildThisFileDirectory)..\odm.ui.views\bin\Release\</OdmViewsBin>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="odm.ui.views">
+      <HintPath>$(OdmViewsBin)odm.ui.views.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="utils.diagnostics">
+      <HintPath>$(OdmViewsBin)utils.diagnostics.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="utils.common">
+      <HintPath>$(OdmViewsBin)utils.common.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Security" />
+  </ItemGroup>
+
+</Project>

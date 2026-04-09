@@ -1,4 +1,4 @@
-﻿<UserControl x:Class="odm.ui.views.AuthView"
+<UserControl x:Class="odm.ui.views.AuthView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -7,38 +7,48 @@
              xmlns:uiloc="clr-namespace:odm.ui;assembly=odm.localization"
              mc:Ignorable="d"
              d:DesignHeight="300" d:DesignWidth="300"
-             x:Name="root"
-             >
-    <Grid >
+             x:Name="root">
+    <UserControl.Resources>
+        <ObjectDataProvider x:Key="Strings" MethodName="GetInstance" ObjectType="{x:Type uiloc:LocalAccount}"/>
 
-        <Grid.Resources>
-            <ObjectDataProvider x:Key="Strings" MethodName="GetInstance" ObjectType="{x:Type uiloc:LocalAccount}"/>
-            <VisualBrush x:Key="NameWatermarkBrush" TileMode="None" Stretch="None" AlignmentX="Left" AlignmentY="Center" Viewbox="-5,7,0,0" ViewboxUnits="Absolute">
-                <VisualBrush.Visual>
-                    <TextBlock  Text="{Binding loginCaption, Source={StaticResource Strings}}" Foreground="Gray"  />
-                </VisualBrush.Visual>
-            </VisualBrush>
-            <VisualBrush x:Key="PasswordWatermarkBrush" TileMode="None" Stretch="None" AlignmentX="Left" AlignmentY="Center" Viewbox="-5,7,0,0" ViewboxUnits="Absolute">
-                <VisualBrush.Visual>
-                    <TextBlock  Text="{Binding passwordCaption, Source={StaticResource Strings}}" Foreground="Gray"  />
-                </VisualBrush.Visual>
-            </VisualBrush>
-            <ControlTemplate x:Key="LabelTextBoxTemplate" TargetType="{x:Type TextBox}">
-                <ControlTemplate.Resources>
+        <!-- White dotted focus ring — visible on dark toolbar backgrounds -->
+        <Style x:Key="DarkBgFocusVisual">
+            <Setter Property="Control.Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <Rectangle Margin="-2" StrokeThickness="1.5"
+                                   Stroke="White" StrokeDashArray="2 1"
+                                   SnapsToDevicePixels="True"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-                </ControlTemplate.Resources>
-                <Border BorderThickness="0" BorderBrush="{TemplateBinding Background}">
-                    <TextBox Text="{TemplateBinding Text}"/>
-                </Border>
-            </ControlTemplate>
+        <VisualBrush x:Key="NameWatermarkBrush" TileMode="None" Stretch="None"
+                     AlignmentX="Left" AlignmentY="Center" Viewbox="-5,7,0,0" ViewboxUnits="Absolute">
+            <VisualBrush.Visual>
+                <TextBlock Text="{Binding loginCaption, Source={StaticResource Strings}}" Foreground="Gray"/>
+            </VisualBrush.Visual>
+        </VisualBrush>
+        <VisualBrush x:Key="PasswordWatermarkBrush" TileMode="None" Stretch="None"
+                     AlignmentX="Left" AlignmentY="Center" Viewbox="-5,7,0,0" ViewboxUnits="Absolute">
+            <VisualBrush.Visual>
+                <TextBlock Text="{Binding passwordCaption, Source={StaticResource Strings}}" Foreground="Gray"/>
+            </VisualBrush.Visual>
+        </VisualBrush>
+    </UserControl.Resources>
 
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
 
-        </Grid.Resources>
-
-        <!--Anonymous mode-->
-        <StackPanel x:Name="panelEdit" Orientation="Horizontal" KeyboardNavigation.TabNavigation="Cycle">
-            <Border Background="White" BorderThickness="0" CornerRadius="2" Margin="3" VerticalAlignment="Center" >
-                <TextBox x:Name="username"  MinWidth="100" MaxWidth="300"  KeyboardNavigation.TabIndex="0">
+        <!-- Col 0: login panel (anonymous) or logged-in panel — mutually exclusive -->
+        <StackPanel x:Name="panelEdit" Grid.Column="0" Orientation="Horizontal">
+            <Border Background="White" BorderThickness="0" CornerRadius="2" Margin="3" VerticalAlignment="Center">
+                <TextBox x:Name="username" MinWidth="100" MaxWidth="300"
+                         KeyboardNavigation.TabIndex="0">
                     <TextBox.Style>
                         <Style TargetType="{x:Type TextBox}" BasedOn="{StaticResource {x:Type TextBox}}">
                             <Style.Triggers>
@@ -62,46 +72,84 @@
                 </TextBox>
             </Border>
 
+            <!-- TogglePasswordBox: Focusable=False on the UserControl means tab goes
+                 directly to PasswordBox (tab stop 1) then the eye toggle (tab stop 2) -->
             <Border Background="White" BorderThickness="0" CornerRadius="2" Margin="3" VerticalAlignment="Center">
-                <PasswordBox x:Name="password" l:PasswordBoxAssistant.BindPassword="true" Height="{Binding Path=ActualHeight, ElementName=username}" MinWidth="100" MaxWidth="300"  KeyboardNavigation.TabIndex="1">
-                    <PasswordBox.Style>
-                        <Style TargetType="{x:Type PasswordBox}" BasedOn="{StaticResource {x:Type PasswordBox}}">
-                            <Style.Triggers>
-                                <MultiTrigger>
-                                    <MultiTrigger.Conditions>
-                                        <Condition Property="l:PasswordBoxAssistant.BoundPassword" Value=""/>
-                                        <Condition Property="IsFocused" Value="False"/>
-                                    </MultiTrigger.Conditions>
-                                    <Setter Property="Background" Value="{StaticResource PasswordWatermarkBrush}"/>
-                                </MultiTrigger>
-                                <MultiTrigger>
-                                    <MultiTrigger.Conditions>
-                                        <Condition Property="l:PasswordBoxAssistant.BoundPassword" Value="{x:Null}"/>
-                                        <Condition Property="IsFocused" Value="False"/>
-                                    </MultiTrigger.Conditions>
-                                    <Setter Property="Background" Value="{StaticResource PasswordWatermarkBrush}"/>
-                                </MultiTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </PasswordBox.Style>
-                </PasswordBox>
+                <l:TogglePasswordBox x:Name="password"
+                                     Height="{Binding Path=ActualHeight, ElementName=username}"
+                                     MinWidth="100" MaxWidth="300"/>
             </Border>
 
+            <Border VerticalAlignment="Center" Margin="3" Padding="0"
+                    BorderThickness="1.5" CornerRadius="2"
+                    KeyboardNavigation.TabIndex="3">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="BorderBrush" Value="Transparent"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter Property="BorderBrush" Value="White"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Button x:Name="btLogin"
+                        Content="{Binding loginButton, Source={StaticResource Strings}}"
+                        FocusVisualStyle="{x:Null}"/>
+            </Border>
 
-
-            <Button x:Name="btLogin" Content="{Binding loginButton, Source={StaticResource Strings}}" Margin="3" VerticalAlignment="Center" KeyboardNavigation.TabIndex="2"/>
-            <CheckBox x:Name="remember" IsChecked="True" Margin="3" VerticalAlignment="Center" KeyboardNavigation.TabIndex="3">
-                <CheckBox.Content>
-                    <TextBlock Text="{Binding remember, Source={StaticResource Strings}}" Foreground="WhiteSmoke"/>
-                </CheckBox.Content>
-            </CheckBox>
+            <Border VerticalAlignment="Center" Margin="3" Padding="2,0"
+                    BorderThickness="1.5" CornerRadius="2"
+                    KeyboardNavigation.TabIndex="4">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="BorderBrush" Value="Transparent"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                <Setter Property="BorderBrush" Value="White"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <CheckBox x:Name="remember" IsChecked="True"
+                          FocusVisualStyle="{x:Null}">
+                    <CheckBox.Content>
+                        <TextBlock Text="{Binding remember, Source={StaticResource Strings}}" Foreground="WhiteSmoke"/>
+                    </CheckBox.Content>
+                </CheckBox>
+            </Border>
         </StackPanel>
 
-        <!-- Autorized mode -->
-        <StackPanel x:Name="panelView"  Orientation="Horizontal" Visibility="Collapsed">
-            <TextBlock Text="{Binding loggedAs, Source={StaticResource Strings}}" Margin="3" Foreground="WhiteSmoke" VerticalAlignment="Center" />
-            <TextBlock x:Name="loggedUsername" Margin="3"  Foreground="WhiteSmoke" FontWeight="Bold" VerticalAlignment="Center" />
-            <Button x:Name="btLogout" Content="{Binding logoutButton, Source={StaticResource Strings}}" Margin="3" VerticalAlignment="Center" />
+        <StackPanel x:Name="panelView" Grid.Column="0" Orientation="Horizontal" Visibility="Collapsed">
+            <TextBlock Text="{Binding loggedAs, Source={StaticResource Strings}}"
+                       Margin="3" Foreground="WhiteSmoke" VerticalAlignment="Center"/>
+            <TextBlock x:Name="loggedUsername" Margin="3" Foreground="WhiteSmoke"
+                       FontWeight="Bold" VerticalAlignment="Center"/>
+            <Button x:Name="btLogout"
+                    Content="{Binding logoutButton, Source={StaticResource Strings}}"
+                    Margin="3" VerticalAlignment="Center"
+                    FocusVisualStyle="{StaticResource DarkBgFocusVisual}"/>
         </StackPanel>
+
+        <!-- Col 1: Manage Credentials — always visible, white outline on focus -->
+        <Border Grid.Column="1" Margin="6,0,3,0" Padding="2,1" VerticalAlignment="Center"
+                BorderThickness="1" CornerRadius="2"
+                KeyboardNavigation.TabIndex="5">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="BorderBrush" Value="Transparent"/>
+                    <Style.Triggers>
+                        <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                            <Setter Property="BorderBrush" Value="White"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <TextBlock>
+                <Hyperlink x:Name="lnkManageCredentials">
+                    <Run Text="Manage Credentials" Foreground="LightGray"/>
+                </Hyperlink>
+            </TextBlock>
+        </Border>
     </Grid>
 </UserControl>

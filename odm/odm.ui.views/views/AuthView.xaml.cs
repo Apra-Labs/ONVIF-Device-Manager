@@ -28,11 +28,12 @@ namespace odm.ui.views
     {
 
         IEventAggregator eventAggregator;
+        DelegateCommand _loginCommand;
 
         public AuthView(IUnityContainer container)
         {
             eventAggregator = container.Resolve<IEventAggregator>();
-            
+
             InitializeComponent();
 
             Init();
@@ -68,15 +69,27 @@ namespace odm.ui.views
 
         #endregion Dependency Properties
 
+        bool CanLogin()
+        {
+            bool hasFields = !string.IsNullOrEmpty(username.Text)
+                          && !string.IsNullOrEmpty(password.Password);
+            bool hasStored = AccountManager.Instance.GetAllCredentials().Count > 0;
+            return hasFields || hasStored;
+        }
+
         void Init()
         {
-            btLogin.Command = new DelegateCommand(new Action(btLogin_Click));
+            _loginCommand = new DelegateCommand(btLogin_Click);
+            btLogin.Command = _loginCommand;
             btLogout.Command = new DelegateCommand(new Action(btLogout_Click));
+            lnkManageCredentials.Click += BtManageCredentials_Click;
+
             username.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             password.KeyDown += (s, e) => { if (e.Key == Key.Enter) btLogin_Click(); };
             this.Loaded += AuthView_Loaded;
 
             AccountManager.Instance.CurrentAccountChanged += delegate { Update(); };
+            AuthLog("AuthView.Init: startup — version timestamp " + System.Reflection.Assembly.GetExecutingAssembly().GetName().Version);
         }
 
         void Update()
@@ -84,21 +97,89 @@ namespace odm.ui.views
             Authorized = AccountManager.Instance.Autorized;
             var account = AccountManager.Instance.CurrentAccount;
             username.Text = account.Name;
-            password.Password = account.Password;
+            password.Password = account.Password ?? string.Empty;
             loggedUsername.Text = account.Name;
         }
 
         void AuthView_Loaded(object sender, RoutedEventArgs e)
         {
             Update();
+            if (AccountManager.Instance.GetAllCredentials().Count > 0
+                && !AccountManager.Instance.LoggedOutExplicitly)
+            {
+                eventAggregator.GetEvent<Refresh>().Publish(true);
+            }
+        }
+
+        void BtManageCredentials_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var win = new CredentialManagerView(eventAggregator);
+                win.Owner = Window.GetWindow(this);
+                win.ShowDialog();
+            }
+            catch (Exception err)
+            {
+                dbg.Error(err);
+            }
+        }
+
+        static string Safe(Account a) => $"name={a.Name}, pwd=[REDACTED]";
+
+        static void AuthLog(string msg)
+        {
+            try
+            {
+                string logPath = System.IO.Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "logs", "auth.log");
+                string line = DateTime.Now.ToString("HH:mm:ss.fff") + " " + msg + "\r\n";
+                System.IO.File.AppendAllText(logPath, line);
+            }
+            catch { }
         }
 
         void btLogin_Click()
         {
             try
             {
-                AccountManager.Instance.SetCurrentAccount(new Account() { Name=username.Text, Password=password.Password }, remember.IsChecked == true);
-                eventAggregator.GetEvent<Refresh>().Publish(true);
+                var name = username.Text;
+                var pwd  = password.Password;
+                int storeCount = AccountManager.Instance.GetAllCredentials().Count;
+
+                AuthLog("btLogin_Click: name=" + name + " storeCount=" + storeCount);
+
+                switch (LoginActionHelper.Determine(name, pwd, storeCount))
+                {
+                    case LoginAction.Case1SetAndRefresh:
+                        // Case 1: explicit credentials entered — save only if checkbox is checked.
+                        AccountManager.Instance.SetCurrentAccount(
+                            new Account { Name = name, Password = pwd },
+                            remember: remember.IsChecked == true);
+
+                        _loginCommand.RaiseCanExecuteChanged();
+
+                        eventAggregator.GetEvent<Refresh>().Publish(true);
+                        break;
+
+                    case LoginAction.Case2RefreshWithStored:
+                        // Case 2: no fields entered but store has entries — use first stored credential.
+                        var stored = AccountManager.Instance.GetAllCredentials();
+                        AccountManager.Instance.SetCurrentAccount(stored[0], remember: false);
+                        Update(); // force panel update even if CurrentAccount didn't change
+                        AuthLog("btLogin_Click Case2: " + Safe(stored[0]) + " Autorized=" + AccountManager.Instance.Autorized);
+                        eventAggregator.GetEvent<Refresh>().Publish(true);
+                        break;
+
+                    default: // Case3Block
+                        // Case 3: no fields and no stored credentials — block.
+                        MessageBox.Show(
+                            "No credentials available. Enter a username and password, or add entries via Manage Credentials.",
+                            "Credentials Required",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                        break;
+                }
             }
             catch (Exception err)
             {
@@ -110,11 +191,8 @@ namespace odm.ui.views
         {
             try
             {
-                var last = AccountManager.Instance.CurrentAccount;
-                AccountManager.Instance.SetCurrentAccount(Account.Anonymous, true);
-                //username.Text = last.Name;
-                //password.Password = last.Password;
-
+                AccountManager.Instance.LoggedOutExplicitly = true;
+                AccountManager.Instance.SetCurrentAccount(Account.Anonymous, remember: false);
                 eventAggregator.GetEvent<Refresh>().Publish(true);
             }
             catch (Exception err)

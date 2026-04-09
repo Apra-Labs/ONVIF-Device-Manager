@@ -471,6 +471,10 @@
     <Resource Include="Resources\Images\onvif.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Resource>
+    <Resource Include="Resources\Images\eye.png" />
+    <Resource Include="Resources\Images\eye-off.png" />
+    <Resource Include="Resources\Images\square-arrow-up.png" />
+    <Resource Include="Resources\Images\square-arrow-down.png" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
