@@ -22,7 +22,7 @@
       "id": "2",
       "title": "Upgrade Media Libraries",
       "tasks": [
-        {"id": "2.1", "title": "Upgrade FFmpeg to a version with HEVC decoder", "status": "pending", "type": "task", "notes": ""},
+        {"id": "2.1", "title": "Upgrade FFmpeg to a version with HEVC decoder", "status": "completed", "type": "task", "notes": "Downloaded FFmpeg n7.1 (libavcodec 61) from BtbN/FFmpeg-Builds: ffmpeg-n7.1-latest-win64-lgpl-shared-7.1.zip. Created libs/ffmpeg-n7.1-lgpl-shared/ with include/ (headers) and x64/lib/ (import .lib files). DLLs excluded from git (too large, ~120MB); README.txt in x64/bin/ documents download source. win32 builds not available from BtbN for FFmpeg 7.x (only x64 provided). Updated FFMpegDir in all 4 vcxproj files to reference new directory. Confirmed: AV_CODEC_ID_HEVC present in include/libavcodec/codec_id.h; avcodec_alloc_context3 and avcodec_open2 in avcodec.h; av_frame_alloc in frame.h. Note: avcodec_decode_video2 REMOVED in FFmpeg 4.0+; must update to avcodec_send_packet/avcodec_receive_frame in Task 2.2."},
         {"id": "2.2", "title": "Update FFmpeg API calls for new version", "status": "pending", "type": "task", "notes": ""},
         {"id": "2.3", "title": "Update CODEC_ID constants to AV_CODEC_ID", "status": "pending", "type": "task", "notes": ""},
         {"id": "2.4", "title": "Upgrade live555 to a version with H265VideoRTPSource", "status": "pending", "type": "task", "notes": ""},

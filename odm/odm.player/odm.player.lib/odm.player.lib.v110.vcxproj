@@ -49,7 +49,7 @@
     <IntDir>obj\$(Platform)\$(Configuration)\</IntDir>
     <TargetName>odm-player</TargetName>
     <Live555Dir>$(SolutionDir)libs/live555-2013.02.11/</Live555Dir>
-    <FFMpegDir>$(SolutionDir)libs/ffmpeg-git-a5c1a0c/</FFMpegDir>
+    <FFMpegDir>$(SolutionDir)libs/ffmpeg-n7.1-lgpl-shared/</FFMpegDir>
     <LinkIncremental Condition="'$(Configuration)'=='Debug'">true</LinkIncremental>
     <LinkIncremental Condition="'$(Configuration)'=='Release'">false</LinkIncremental>
   </PropertyGroup>
