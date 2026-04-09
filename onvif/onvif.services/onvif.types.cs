@@ -3786,6 +3786,20 @@ namespace onvif.services {
 	}
 
 	[System.SerializableAttribute()]
+	[System.Xml.Serialization.XmlTypeAttribute(TypeName = "H265Profile", Namespace = "http://www.onvif.org/ver10/schema")]
+	public enum H265Profile {
+
+		[System.Xml.Serialization.XmlEnumAttribute(Name = "Main")]
+		main,
+
+		[System.Xml.Serialization.XmlEnumAttribute(Name = "Main10")]
+		main10,
+
+		[System.Xml.Serialization.XmlEnumAttribute(Name = "MainStillPicture")]
+		mainStillPicture,
+	}
+
+	[System.SerializableAttribute()]
 	[System.Xml.Serialization.XmlTypeAttribute(TypeName = "MulticastConfiguration", Namespace = "http://www.onvif.org/ver10/schema")]
 	public partial class MulticastConfiguration {
 
