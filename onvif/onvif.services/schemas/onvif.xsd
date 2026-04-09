@@ -436,6 +436,11 @@ IN NO EVENT WILL THE CORPORATION OR ITS MEMBERS OR THEIR AFFILIATES BE LIABLE FO
 					<xs:documentation>Optional H.264 encoder settings ranges (See also Extension element).</xs:documentation>
 				</xs:annotation>
 			</xs:element>
+			<xs:element name="H265" type="tt:H265Options" minOccurs="0">
+				<xs:annotation>
+					<xs:documentation>Optional H.265 encoder settings ranges (See also Extension element).</xs:documentation>
+				</xs:annotation>
+			</xs:element>
 			<xs:element name="Extension" type="tt:VideoEncoderOptionsExtension" minOccurs="0"/>
 		</xs:sequence>
 		<xs:anyAttribute processContents="lax"/>
@@ -457,6 +462,11 @@ IN NO EVENT WILL THE CORPORATION OR ITS MEMBERS OR THEIR AFFILIATES BE LIABLE FO
 			<xs:element name="H264" type="tt:H264Options2" minOccurs="0">
 				<xs:annotation>
 					<xs:documentation>Optional H.264 encoder settings ranges.</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="H265" type="tt:H265Options2" minOccurs="0">
+				<xs:annotation>
+					<xs:documentation>Optional H.265 encoder settings ranges.</xs:documentation>
 				</xs:annotation>
 			</xs:element>
 			<xs:element name="Extension" type="tt:VideoEncoderOptionsExtension2" minOccurs="0"/>

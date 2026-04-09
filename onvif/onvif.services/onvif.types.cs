@@ -6331,6 +6331,8 @@ namespace onvif.services {
 
 		private H264Options _h264;
 
+		private H265Options _h265;
+
 		private VideoEncoderOptionsExtension _extension;
 
 		[System.Xml.Serialization.XmlAnyAttributeAttribute()]
@@ -6399,7 +6401,21 @@ namespace onvif.services {
 			}
 		}
 
+		/// <summary>
+		/// Optional H.265 encoder settings ranges (See also Extension element).
+		/// </summary>
 		/// <remarks>optional, order 4</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("H265", Namespace = "http://www.onvif.org/ver10/schema")]
+		public H265Options h265 {
+			get {
+				return this._h265;
+			}
+			set {
+				this._h265 = value;
+			}
+		}
+
+		/// <remarks>optional, order 5</remarks>
 		[System.Xml.Serialization.XmlElementAttribute("Extension", Namespace = "http://www.onvif.org/ver10/schema")]
 		public VideoEncoderOptionsExtension extension {
 			get {
@@ -6731,6 +6747,8 @@ namespace onvif.services {
 
 		private H264Options2 _h264;
 
+		private H265Options2 _h265;
+
 		private VideoEncoderOptionsExtension2 _extension;
 
 		/// <remarks>optional, order 0, namespace ##other</remarks>
@@ -6786,7 +6804,21 @@ namespace onvif.services {
 			}
 		}
 
+		/// <summary>
+		/// Optional H.265 encoder settings ranges.
+		/// </summary>
 		/// <remarks>optional, order 4</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("H265", Namespace = "http://www.onvif.org/ver10/schema")]
+		public H265Options2 h265 {
+			get {
+				return this._h265;
+			}
+			set {
+				this._h265 = value;
+			}
+		}
+
+		/// <remarks>optional, order 5</remarks>
 		[System.Xml.Serialization.XmlElementAttribute("Extension", Namespace = "http://www.onvif.org/ver10/schema")]
 		public VideoEncoderOptionsExtension2 extension {
 			get {
