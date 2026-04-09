@@ -394,6 +394,21 @@ IN NO EVENT WILL THE CORPORATION OR ITS MEMBERS OR THEIR AFFILIATES BE LIABLE FO
 		</xs:sequence>
 	</xs:complexType>
 	<!--===============================-->
+	<xs:complexType name="H265Configuration">
+		<xs:sequence>
+			<xs:element name="GovLength" type="xs:int">
+				<xs:annotation>
+					<xs:documentation>Group of Video frames length. Determines typically the interval in which the I-Frames will be coded.</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+			<xs:element name="H265Profile" type="tt:H265Profile">
+				<xs:annotation>
+					<xs:documentation>the H.265 profile, either Main, Main10 or MainStillPicture</xs:documentation>
+				</xs:annotation>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<!--===============================-->
 	<xs:complexType name="VideoEncoderConfigurationOptions">
 		<xs:sequence>
 			<xs:element name="QualityRange" type="tt:IntRange">

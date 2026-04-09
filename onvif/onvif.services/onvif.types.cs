@@ -3769,6 +3769,43 @@ namespace onvif.services {
 	}
 
 	[System.SerializableAttribute()]
+	[System.Xml.Serialization.XmlTypeAttribute(TypeName = "H265Configuration", Namespace = "http://www.onvif.org/ver10/schema")]
+	public partial class H265Configuration {
+
+		private int _govLength;
+
+		private H265Profile _h265Profile;
+
+		/// <summary>
+		/// Group of Video frames length. Determines typically the interval in which the I-Frames will be coded.
+		/// </summary>
+		/// <remarks>reqired, order 0</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("GovLength", Namespace = "http://www.onvif.org/ver10/schema", DataType = "int")]
+		public int govLength {
+			get {
+				return this._govLength;
+			}
+			set {
+				this._govLength = value;
+			}
+		}
+
+		/// <summary>
+		/// the H.265 profile, either Main, Main10 or MainStillPicture
+		/// </summary>
+		/// <remarks>reqired, order 1</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("H265Profile", Namespace = "http://www.onvif.org/ver10/schema")]
+		public H265Profile h265Profile {
+			get {
+				return this._h265Profile;
+			}
+			set {
+				this._h265Profile = value;
+			}
+		}
+	}
+
+	[System.SerializableAttribute()]
 	[System.Xml.Serialization.XmlTypeAttribute(TypeName = "H264Profile", Namespace = "http://www.onvif.org/ver10/schema")]
 	public enum H264Profile {
 
