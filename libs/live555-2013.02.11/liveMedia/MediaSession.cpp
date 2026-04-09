@@ -1284,7 +1284,7 @@ Boolean MediaSubsession::createSourceObjects(int useSpecialRTPoffset) {
 					  fRTPPayloadFormat,
 					  fRTPTimestampFrequency);
       } else if (strcmp(fCodecName, "H265") == 0) {
-	Boolean expectDONFields = attrVal_unsigned("sprop-depack-buf-nalus") > 0;
+	Boolean expectDONFields = False; // attrVal_unsigned not available in this live555 version; default to no DON fields
 	fReadSource = fRTPSource
 	  = H265VideoRTPSource::createNew(env(), fRTPSocket,
 					  fRTPPayloadFormat,
