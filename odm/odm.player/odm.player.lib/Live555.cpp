@@ -179,6 +179,8 @@ namespace onvifmp{
 				//create special sink to fix H264 payload format
 				sink = H264VirtualSink::CreateNew(*usageEnvironment);
 				//sink = VirtualSink::CreateNew(*usageEnvironment);
+			}else if(_stricmp(codecName, "H265")==0){
+				sink = H265VirtualSink::CreateNew(*usageEnvironment);
 			}else{
 				sink = VirtualSink::CreateNew(*usageEnvironment);
 			}
