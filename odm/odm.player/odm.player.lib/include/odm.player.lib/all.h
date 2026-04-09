@@ -130,6 +130,7 @@ namespace onvifmp{
 
 #include "odm.player.lib/VirtualSink.hpp"
 #include "odm.player.lib/H264VirtualSink.hpp"
+#include "odm.player.lib/H265VirtualSink.hpp"
 #include "odm.player.lib/VideoDecoder.hpp"
 #include "odm.player.lib/VideoRenderer.hpp"
 #include "odm.player.lib/VideoRecorder.hpp"
