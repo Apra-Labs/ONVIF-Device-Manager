@@ -1283,6 +1283,13 @@ Boolean MediaSubsession::createSourceObjects(int useSpecialRTPoffset) {
 	  = H264VideoRTPSource::createNew(env(), fRTPSocket,
 					  fRTPPayloadFormat,
 					  fRTPTimestampFrequency);
+      } else if (strcmp(fCodecName, "H265") == 0) {
+	Boolean expectDONFields = attrVal_unsigned("sprop-depack-buf-nalus") > 0;
+	fReadSource = fRTPSource
+	  = H265VideoRTPSource::createNew(env(), fRTPSocket,
+					  fRTPPayloadFormat,
+					  expectDONFields,
+					  fRTPTimestampFrequency);
       } else if (strcmp(fCodecName, "DV") == 0) {
 	fReadSource = fRTPSource
 	  = DVVideoRTPSource::createNew(env(), fRTPSocket,

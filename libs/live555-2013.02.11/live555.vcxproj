@@ -153,6 +153,7 @@
     <ClCompile Include="liveMedia\H264VideoMatroskaFileServerMediaSubsession.cpp" />
     <ClCompile Include="liveMedia\H264VideoRTPSink.cpp" />
     <ClCompile Include="liveMedia\H264VideoRTPSource.cpp" />
+    <ClCompile Include="liveMedia\H265VideoRTPSource.cpp" />
     <ClCompile Include="liveMedia\H264VideoStreamDiscreteFramer.cpp" />
     <ClCompile Include="liveMedia\H264VideoStreamFramer.cpp" />
     <ClCompile Include="liveMedia\InputFile.cpp" />
@@ -310,6 +311,7 @@
     <ClInclude Include="liveMedia\include\H264VideoFileSink.hh" />
     <ClInclude Include="liveMedia\include\H264VideoRTPSink.hh" />
     <ClInclude Include="liveMedia\include\H264VideoRTPSource.hh" />
+    <ClInclude Include="liveMedia\include\H265VideoRTPSource.hh" />
     <ClInclude Include="liveMedia\include\H264VideoStreamDiscreteFramer.hh" />
     <ClInclude Include="liveMedia\include\H264VideoStreamFramer.hh" />
     <ClInclude Include="liveMedia\include\InputFile.hh" />
