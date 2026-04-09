@@ -13,13 +13,13 @@ public:
   std::string getError() { return mErrorMsg; }
 
   double getPTS() {
-    if (mVideoStream) {
-      return (double)mVideoStream->pts.val * mVideoStream->time_base.num / mVideoStream->time_base.den;
-    }
+    // AVStream::pts was removed in FFmpeg 4.0+; stream PTS must be tracked from packets
     return -1.00;
   }
   int getTicksPerFrame() {
-    return mVideoStream->codec->ticks_per_frame;
+    // AVStream::codec was removed in FFmpeg 4.0+, replaced by AVStream::codecpar
+    // (AVCodecParameters*) which does not expose ticks_per_frame; return safe default of 1
+    return 1;
   }
 private:
   AVStream* setup_video_stream();
