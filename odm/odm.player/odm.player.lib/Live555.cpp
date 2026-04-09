@@ -140,15 +140,15 @@ namespace onvifmp{
 		}else if (_stricmp(codecName, "vnd.onvif.metadata")==0){
 			return InitMetadataSubsession(sprops);
 		}else if (_stricmp(codecName, "JPEG")==0){
-			return InitVideoSubsession(CODEC_ID_MJPEG, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_MJPEG, sprops);
 		}else if (_stricmp(codecName, "H264")==0){
-			return InitVideoSubsession(CODEC_ID_H264, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_H264, sprops);
 		}else if (_stricmp(codecName, "MPEG4")==0){
-			return InitVideoSubsession(CODEC_ID_MPEG4, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_MPEG4, sprops);
 		}else if (_stricmp(codecName, "MP4V-ES")==0){
-			return InitVideoSubsession(CODEC_ID_MPEG4, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_MPEG4, sprops);
 		}else if (_stricmp(codecName, "MPV") == 0){
-			return InitVideoSubsession(CODEC_ID_MPEG2VIDEO, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_MPEG2VIDEO, sprops);
 		}
 
 		return nullptr;
