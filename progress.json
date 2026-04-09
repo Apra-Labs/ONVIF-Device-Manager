@@ -11,7 +11,7 @@
         {"id": "1.2", "title": "Add H265 to VideoEncoding enum in generated C# types", "status": "completed", "type": "task", "notes": "Added h265 enum member with XmlEnumAttribute(Name=\"H265\") to VideoEncoding enum in onvif.types.cs"},
         {"id": "1.3", "title": "Add H265Profile enum", "status": "completed", "type": "task", "notes": "Added H265Profile simpleType to schemas/onvif.xsd and H265Profile enum to onvif.types.cs with Main/Main10/MainStillPicture members"},
         {"id": "1.4", "title": "Add H265Configuration class", "status": "completed", "type": "task", "notes": "Added H265Configuration complexType to schemas/onvif.xsd and H265Configuration partial class to onvif.types.cs with govLength and h265Profile properties"},
-        {"id": "1.5", "title": "Add H265 field to VideoEncoderConfiguration", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.5", "title": "Add H265 field to VideoEncoderConfiguration", "status": "completed", "type": "task", "notes": "Added H265 element to VideoEncoderConfiguration in XSD; added _h265 field and h265 property to VideoEncoderConfiguration class in onvif.types.cs"},
         {"id": "1.6", "title": "Add H265Options and H265Options2 classes", "status": "pending", "type": "task", "notes": ""},
         {"id": "1.7", "title": "Add H265 field to VideoEncoderConfigurationOptions", "status": "pending", "type": "task", "notes": ""},
         {"id": "1.8", "title": "Mirror XSD changes to Service References copy", "status": "pending", "type": "task", "notes": ""},

@@ -287,6 +287,11 @@ IN NO EVENT WILL THE CORPORATION OR ITS MEMBERS OR THEIR AFFILIATES BE LIABLE FO
 							<xs:documentation>Optional element to configure H.264 related parameters.</xs:documentation>
 						</xs:annotation>
 					</xs:element>
+					<xs:element name="H265" type="tt:H265Configuration" minOccurs="0">
+						<xs:annotation>
+							<xs:documentation>Optional element to configure H.265 related parameters.</xs:documentation>
+						</xs:annotation>
+					</xs:element>
 					<xs:element name="Multicast" type="tt:MulticastConfiguration">
 						<xs:annotation>
 							<xs:documentation>Defines the multicast settings that could be used for video streaming.</xs:documentation>

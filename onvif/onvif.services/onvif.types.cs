@@ -3430,6 +3430,8 @@ namespace onvif.services {
 
 		private H264Configuration _h264;
 
+		private H265Configuration _h265;
+
 		private MulticastConfiguration _multicast;
 
 		private XsDuration _sessionTimeout;
@@ -3570,6 +3572,20 @@ namespace onvif.services {
 			}
 			set {
 				this._h264 = value;
+			}
+		}
+
+		/// <summary>
+		/// Optional element to configure H.265 related parameters.
+		/// </summary>
+		/// <remarks>optional, order 8</remarks>
+		[System.Xml.Serialization.XmlElementAttribute("H265", Namespace = "http://www.onvif.org/ver10/schema")]
+		public H265Configuration h265 {
+			get {
+				return this._h265;
+			}
+			set {
+				this._h265 = value;
 			}
 		}
 
