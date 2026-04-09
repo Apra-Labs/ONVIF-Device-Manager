@@ -35,7 +35,7 @@ namespace onvifmp{
 			Cleanup();
 		}
 
-		bool Init(VirtualSink* sink, AVCodec* avCodec, const char* sprops){
+		bool Init(VirtualSink* sink, const AVCodec* avCodec, const char* sprops){
 			//if it has been initialized before, we should do cleanup first
 			Cleanup();
 
@@ -76,7 +76,7 @@ namespace onvifmp{
 				return false;
 			}
 			if (avCodecContext->codec_id == AV_CODEC_ID_H264 || avCodecContext->codec_id == AV_CODEC_ID_HEVC){
-				avCodecContext->flags2 |= CODEC_FLAG2_CHUNKS;
+				avCodecContext->flags2 |= AV_CODEC_FLAG2_CHUNKS;
 				//avCodecContext->flags2 |= CODEC_FLAG2_SHOW_ALL;
 			}
 			// av_frame_alloc replaces deprecated avcodec_alloc_frame (removed in FFmpeg 4.0)
@@ -117,7 +117,7 @@ namespace onvifmp{
 		}
 
 	protected:
-		AVCodec* avCodec;
+		const AVCodec* avCodec;
 		AVCodecContext* avCodecContext;
 		AVFrame* avFrame;
 		char* frameBuffer;
