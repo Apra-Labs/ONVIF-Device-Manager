@@ -8,7 +8,7 @@
       "title": "ONVIF Schema & Type Bindings",
       "tasks": [
         {"id": "1.1", "title": "Add H265 to VideoEncoding enum in XSD", "status": "completed", "type": "task", "notes": "Added <xs:enumeration value=\"H265\"/> after H264 entry in VideoEncoding simpleType in schemas/onvif.xsd"},
-        {"id": "1.2", "title": "Add H265 to VideoEncoding enum in generated C# types", "status": "pending", "type": "task", "notes": ""},
+        {"id": "1.2", "title": "Add H265 to VideoEncoding enum in generated C# types", "status": "completed", "type": "task", "notes": "Added h265 enum member with XmlEnumAttribute(Name=\"H265\") to VideoEncoding enum in onvif.types.cs"},
         {"id": "1.3", "title": "Add H265Profile enum", "status": "pending", "type": "task", "notes": ""},
         {"id": "1.4", "title": "Add H265Configuration class", "status": "pending", "type": "task", "notes": ""},
         {"id": "1.5", "title": "Add H265 field to VideoEncoderConfiguration", "status": "pending", "type": "task", "notes": ""},

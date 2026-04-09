@@ -3625,6 +3625,9 @@ namespace onvif.services {
 
 		[System.Xml.Serialization.XmlEnumAttribute(Name = "H264")]
 		h264,
+
+		[System.Xml.Serialization.XmlEnumAttribute(Name = "H265")]
+		h265,
 	}
 
 	[System.SerializableAttribute()]
