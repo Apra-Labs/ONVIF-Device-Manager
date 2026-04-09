@@ -1,4 +1,5 @@
 #pragma once
+#include <ctime>
 #include "odm.player.lib/all.h"
 
 namespace onvifmp{
