@@ -85,3 +85,24 @@ Issues 1–2 are direct Task 2.2 regressions (FFmpeg API update incomplete). Iss
 3. Request Phase 2 re-review
 
 ### Phase 2 Verdict: CHANGES NEEDED
+
+---
+
+## Phase 2 Re-review (2026-04-10)
+
+**Reviewer:** cicd-reviewer
+**Re-review SHA:** 05d6d217267e3676aee2923d2e3ecf036a9bb882
+**Fix commit verified:** 319c424
+
+All 4 required fixes from the Phase 2 initial review were verified against commit 319c424.
+
+| # | Issue | Status | Evidence |
+|---|-------|--------|----------|
+| 1 | `CODEC_FLAG2_CHUNKS` → `AV_CODEC_FLAG2_CHUNKS` in VideoDecoder.hpp | PASS | VideoDecoder.hpp:79 corrected. grep: 0 remaining legacy matches. |
+| 2 | `AVCodec*` → `const AVCodec*` in VideoDecoder.hpp | PASS | Both Init() parameter (line 38) and member field (line 120) carry `const` qualifier. |
+| 3 | `PixelFormat` → `AVPixelFormat` in core.h, VideoRenderer.hpp, VideoRecorder.hpp | PASS | Fixed at core.h:53, VideoRenderer.hpp:27, and all 4 occurrences in VideoRecorder.hpp. Only commented-out C# references remain — correct. |
+| 4 | `PIX_FMT_*` → `AV_PIX_FMT_*` in libapi.cpp | PASS | libapi.cpp:127–133 uses `AV_PIX_FMT_RGB24/ARGB/BGRA/BGR24`. grep: 0 remaining legacy matches. |
+
+No regressions introduced. Fix commit is purely type/constant renames; H264/MJPEG/MPEG4 codec paths are unaffected.
+
+### Phase 2 Re-review Verdict: APPROVED — proceed to Phase 3.
