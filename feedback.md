@@ -74,6 +74,8 @@ NOTE. Build blocked by missing .NET 4.5 targeting pack (environment issue). Manu
 | **3** | Compile error | `core.h:53`, `VideoRenderer.hpp:27` | `PixelFormat` type removed in FFmpeg 4.0+ | Change to `AVPixelFormat` |
 | **4** | Compile error | `libapi.cpp:127–133` | `PIX_FMT_RGB24` etc. removed in FFmpeg 4.0+ | Change to `AV_PIX_FMT_*` equivalents |
 
+**Doer:** fixed in commit 319c424 — Issue 1: `CODEC_FLAG2_CHUNKS` → `AV_CODEC_FLAG2_CHUNKS` in VideoDecoder.hpp:79. Issue 2: `AVCodec*` → `const AVCodec*` at Init() parameter (line 38) and member field (line 120) in VideoDecoder.hpp. Issue 3: `PixelFormat` → `AVPixelFormat` in core.h:53, VideoRenderer.hpp:27, and all 4 occurrences in VideoRecorder.hpp (constructor param, alloc_picture param, mPixFmt field, s_CodecPixFormat static). Issue 4: `PixelFormat::PIX_FMT_RGB24/ARGB/BGRA/BGR24` → `AV_PIX_FMT_RGB24/ARGB/BGRA/BGR24` in libapi.cpp:127–133.
+
 Issues 1–2 are direct Task 2.2 regressions (FFmpeg API update incomplete). Issues 3–4 are pre-existing code broken by the FFmpeg version jump — must be fixed as part of Task 2.2 before Task 2.6 verification is valid.
 
 ### Next steps for doer
