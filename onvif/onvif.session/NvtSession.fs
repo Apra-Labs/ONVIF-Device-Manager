@@ -193,8 +193,11 @@ namespace odm.core
                     new IClientMessageInspector with
                         override this.AfterReceiveReply(reply:byref<System.ServiceModel.Channels.Message>, correlationState:obj) = 
                             match reply.Headers |> Seq.tryFind(fun hdr->hdr.Name = "Security" && hdr.Namespace = wsse) with
-                            |Some secHdr -> 
-                                reply.Headers.UnderstoodHeaders.Add(secHdr)
+                            |Some secHdr ->
+                                // Guard against duplicate: SslStreamTransport pre-marks all mustUnderstand
+                                // headers (including Security) as understood before the message inspector
+                                // runs, so a second Add throws ArgumentException on HTTPS sessions.
+                                try reply.Headers.UnderstoodHeaders.Add(secHdr) with _ -> ()
                             |None -> ()
                         override this.BeforeSendRequest(request:byref<System.ServiceModel.Channels.Message>, channel:IClientChannel) = 
                             let header = CreateSecurityHeader(channel)
