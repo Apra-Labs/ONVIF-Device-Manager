@@ -315,8 +315,18 @@ type SslStreamTransportBindingElement() =
                 let fromProp = context.GetInnerProperty<MessageEncoderFactory>()
                 if fromProp <> null then fromProp
                 else
-                    // No encoder in context — create a default Soap12 encoder
-                    TextMessageEncodingBindingElement(MessageVersion.Soap12, System.Text.Encoding.UTF8)
+                    // No encoder in context — derive MessageVersion from the binding itself.
+                    // context.Binding.MessageVersion reads the TextMessageEncodingBindingElement
+                    // already in the binding, which is the same version WCF uses to create
+                    // outgoing operation messages.  Using a hardcoded Soap12 here would cause
+                    // a ProtocolException ("message version … does not match encoder") for
+                    // WS-Addressing channels (Events/Metadata) whose binding declares
+                    // Soap12WSAddressing10.
+                    let msgVer =
+                        let bv = context.Binding.MessageVersion
+                        if bv = MessageVersion.None then MessageVersion.Soap12WSAddressing10
+                        else bv
+                    TextMessageEncodingBindingElement(msgVer, System.Text.Encoding.UTF8)
                         .CreateMessageEncoderFactory()
         let wsAddressing = encoderFactory.MessageVersion.Addressing <> AddressingVersion.None
         new SslStreamChannelFactory(context.Binding, encoderFactory, wsAddressing) :> obj :?> IChannelFactory<'TChannel>
