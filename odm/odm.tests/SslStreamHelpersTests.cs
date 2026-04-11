@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using System.Text;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using odm.core;
@@ -9,65 +8,18 @@ namespace odm.tests
     /// <summary>
     /// Unit tests for the internal SslStreamHelpers module functions:
     /// decodeChunked, parseResponse, and stripDoctype.
-    /// These are accessed via reflection because the module is internal to onvif.session.
+    /// Accessible via InternalsVisibleTo declared in onvif.session AssemblyInfo.fs.
     /// </summary>
     [TestClass]
     public class SslStreamHelpersTests
     {
-        private static Type _helpersType;
-        private static MethodInfo _decodeChunked;
-        private static MethodInfo _parseResponse;
-        private static MethodInfo _stripDoctype;
-
-        [ClassInitialize]
-        public static void ClassInit(TestContext context)
-        {
-            var assembly = typeof(SslStreamTransportBindingElement).Assembly;
-            _helpersType = assembly.GetType("odm.core.SslStreamHelpers");
-            Assert.IsNotNull(_helpersType, "SslStreamHelpers type not found in onvif.session assembly");
-
-            _decodeChunked = _helpersType.GetMethod("decodeChunked",
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            _parseResponse = _helpersType.GetMethod("parseResponse",
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-            _stripDoctype = _helpersType.GetMethod("stripDoctype",
-                BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
-
-            Assert.IsNotNull(_decodeChunked, "decodeChunked method not found");
-            Assert.IsNotNull(_parseResponse, "parseResponse method not found");
-            Assert.IsNotNull(_stripDoctype, "stripDoctype method not found");
-        }
-
-        private static byte[] DecodeChunked(byte[] data)
-            => (byte[])_decodeChunked.Invoke(null, new object[] { data });
-
-        private static byte[] StripDoctype(byte[] data)
-            => (byte[])_stripDoctype.Invoke(null, new object[] { data });
-
-        private static object ParseResponse(byte[] data)
-            => _parseResponse.Invoke(null, new object[] { data });
-
-        // HttpResponse is nested inside the internal SslStreamHelpers module, so its
-        // properties are only visible via NonPublic binding flags in reflection.
-        private static readonly BindingFlags RecordProps =
-            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-
-        private static int GetStatusCode(object resp)
-            => (int)resp.GetType().GetProperty("StatusCode", RecordProps).GetValue(resp, null);
-
-        private static byte[] GetBody(object resp)
-            => (byte[])resp.GetType().GetProperty("Body", RecordProps).GetValue(resp, null);
-
-        private static string GetContentType(object resp)
-            => (string)resp.GetType().GetProperty("ContentType", RecordProps).GetValue(resp, null);
-
         // ── decodeChunked ──────────────────────────────────────────────────────────
 
         [TestMethod]
         public void DecodeChunked_SingleChunk_ReturnsChunkData()
         {
             var input = Encoding.ASCII.GetBytes("5\r\nHello\r\n0\r\n\r\n");
-            var result = DecodeChunked(input);
+            var result = SslStreamHelpers.decodeChunked(input);
             CollectionAssert.AreEqual(Encoding.ASCII.GetBytes("Hello"), result);
         }
 
@@ -75,7 +27,7 @@ namespace odm.tests
         public void DecodeChunked_TwoChunks_ReturnsConcatenated()
         {
             var input = Encoding.ASCII.GetBytes("5\r\nHello\r\n6\r\nWorld!\r\n0\r\n\r\n");
-            var result = DecodeChunked(input);
+            var result = SslStreamHelpers.decodeChunked(input);
             CollectionAssert.AreEqual(Encoding.ASCII.GetBytes("HelloWorld!"), result);
         }
 
@@ -83,7 +35,7 @@ namespace odm.tests
         public void DecodeChunked_TerminatorOnly_ReturnsEmpty()
         {
             var input = Encoding.ASCII.GetBytes("0\r\n\r\n");
-            var result = DecodeChunked(input);
+            var result = SslStreamHelpers.decodeChunked(input);
             Assert.AreEqual(0, result.Length);
         }
 
@@ -109,17 +61,16 @@ namespace odm.tests
                 "Content-Length: " + bodyBytes.Length + "\r\n",
                 bodyBytes);
 
-            var resp = ParseResponse(raw);
+            var resp = SslStreamHelpers.parseResponse(raw);
 
-            Assert.AreEqual(200, GetStatusCode(resp));
-            CollectionAssert.AreEqual(bodyBytes, GetBody(resp));
-            StringAssert.Contains(GetContentType(resp), "application/soap+xml");
+            Assert.AreEqual(200, resp.StatusCode);
+            CollectionAssert.AreEqual(bodyBytes, resp.Body);
+            StringAssert.Contains(resp.ContentType, "application/soap+xml");
         }
 
         [TestMethod]
         public void ParseResponse_ChunkedTransferEncoding_BodyDecodedCorrectly()
         {
-            // chunked body: one chunk carrying "<ok/>"
             var chunk = "<ok/>";
             var chunkSize = Encoding.UTF8.GetByteCount(chunk);
             var chunkedBody = Encoding.ASCII.GetBytes(
@@ -130,10 +81,10 @@ namespace odm.tests
                 "Content-Type: application/soap+xml\r\n",
                 chunkedBody);
 
-            var resp = ParseResponse(raw);
+            var resp = SslStreamHelpers.parseResponse(raw);
 
-            Assert.AreEqual(200, GetStatusCode(resp));
-            var decoded = Encoding.UTF8.GetString(GetBody(resp));
+            Assert.AreEqual(200, resp.StatusCode);
+            var decoded = Encoding.UTF8.GetString(resp.Body);
             Assert.AreEqual(chunk, decoded);
         }
 
@@ -146,10 +97,10 @@ namespace odm.tests
                 "Content-Length: " + bodyBytes.Length + "\r\n",
                 bodyBytes);
 
-            var resp = ParseResponse(raw);
+            var resp = SslStreamHelpers.parseResponse(raw);
 
-            Assert.AreEqual(401, GetStatusCode(resp));
-            Assert.IsTrue(GetBody(resp).Length > 0, "Body should be returned even for 401");
+            Assert.AreEqual(401, resp.StatusCode);
+            Assert.IsTrue(resp.Body.Length > 0, "Body should be returned even for 401");
         }
 
         // ── stripDoctype ───────────────────────────────────────────────────────────
@@ -159,7 +110,7 @@ namespace odm.tests
         {
             var input = Encoding.UTF8.GetBytes(
                 "<?xml version=\"1.0\"?><!DOCTYPE foo><root/>");
-            var result = StripDoctype(input);
+            var result = SslStreamHelpers.stripDoctype(input);
             var text = Encoding.UTF8.GetString(result);
             Assert.IsFalse(text.Contains("<!DOCTYPE"), "DOCTYPE should be removed");
             StringAssert.Contains(text, "<root/>");
@@ -169,8 +120,7 @@ namespace odm.tests
         public void StripDoctype_InputWithoutDoctype_SameBytesReturned()
         {
             var input = Encoding.UTF8.GetBytes("<root><child/></root>");
-            var result = StripDoctype(input);
-            // No DOCTYPE: original byte array reference is returned unchanged.
+            var result = SslStreamHelpers.stripDoctype(input);
             Assert.AreSame(input, result, "Original array should be returned when no DOCTYPE is present");
         }
 
@@ -179,7 +129,7 @@ namespace odm.tests
         {
             var input = Encoding.UTF8.GetBytes(
                 "<?xml version=\"1.0\"?><!DOCTYPE foo [<!ELEMENT foo ANY>]><root/>");
-            var result = StripDoctype(input);
+            var result = SslStreamHelpers.stripDoctype(input);
             var text = Encoding.UTF8.GetString(result);
             Assert.IsFalse(text.Contains("<!DOCTYPE"), "DOCTYPE with internal subset should be removed");
             StringAssert.Contains(text, "<root/>");
