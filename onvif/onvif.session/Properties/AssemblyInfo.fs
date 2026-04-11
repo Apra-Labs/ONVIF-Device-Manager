@@ -20,4 +20,5 @@ open System.Runtime.InteropServices
     
 // The following GUID is for the ID of the typelib if this project is exposed to COM
 [<assembly: Guid("14B2156A-D326-4E19-8F1F-B3E5AFAB37BA")>]
-()
+[<assembly: System.Runtime.CompilerServices.InternalsVisibleTo("odm.tests")>]
+do ()

@@ -17,15 +17,35 @@
   </ItemGroup>
 
   <!--
-    Reference the pre-built assemblies from odm.ui.views (net40 Debug build).
+    Reference the pre-built assemblies from odm.ui.views Release build.
     .NET 4.8 is backward-compatible with .NET 4.0 assemblies.
-    All transitive dependencies live in the same bin\Debug folder.
+    All transitive dependencies live in the same bin\Release folder.
   -->
   <PropertyGroup>
     <OdmViewsBin>$(MSBuildThisFileDirectory)..\odm.ui.views\bin\Release\</OdmViewsBin>
   </PropertyGroup>
 
   <ItemGroup>
+    <Reference Include="odm.ui.activities">
+      <HintPath>$(MSBuildThisFileDirectory)..\odm.ui.activities\bin\Release\odm.ui.activities.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="onvif.session">
+      <HintPath>$(OdmViewsBin)onvif.session.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="onvif.services">
+      <HintPath>$(OdmViewsBin)onvif.services.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="FSharp.Core">
+      <HintPath>$(OdmViewsBin)FSharp.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="utils.fsharp">
+      <HintPath>$(OdmViewsBin)utils.fsharp.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="odm.ui.views">
       <HintPath>$(OdmViewsBin)odm.ui.views.dll</HintPath>
       <Private>true</Private>
@@ -39,6 +59,7 @@
       <Private>true</Private>
     </Reference>
     <Reference Include="System.Security" />
+    <Reference Include="System.ServiceModel" />
   </ItemGroup>
 
 </Project>

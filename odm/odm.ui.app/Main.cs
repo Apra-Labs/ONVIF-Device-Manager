@@ -21,6 +21,7 @@ namespace odm.ui {
 
             log.WriteInfo(string.Format("\n== Program started at {0} ==\n", DateTime.Now));
 			ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+			ServicePointManager.Expect100Continue = false;
 			Bootstrapper.ScanSpecialFolders();
 			odm.ui.App app = new odm.ui.App();
 			app.InitializeComponent();

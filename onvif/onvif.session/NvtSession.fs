@@ -1,4 +1,4 @@
-﻿namespace odm.core
+namespace odm.core
 
     open System
     open System.Collections.Generic
@@ -193,8 +193,11 @@
                     new IClientMessageInspector with
                         override this.AfterReceiveReply(reply:byref<System.ServiceModel.Channels.Message>, correlationState:obj) = 
                             match reply.Headers |> Seq.tryFind(fun hdr->hdr.Name = "Security" && hdr.Namespace = wsse) with
-                            |Some secHdr -> 
-                                reply.Headers.UnderstoodHeaders.Add(secHdr)
+                            |Some secHdr ->
+                                // Guard against duplicate: SslStreamTransport pre-marks all mustUnderstand
+                                // headers (including Security) as understood before the message inspector
+                                // runs, so a second Add throws ArgumentException on HTTPS sessions.
+                                try reply.Headers.UnderstoodHeaders.Add(secHdr) with _ -> ()
                             |None -> ()
                         override this.BeforeSendRequest(request:byref<System.ServiceModel.Channels.Message>, channel:IClientChannel) = 
                             let header = CreateSecurityHeader(channel)
@@ -227,9 +230,9 @@
                 ()
         end
     end
-        
+
     type NvtSessionFactory(credentials: NetworkCredential) = class
-        
+
         static let AlternateImplementation (comp:Async<'T>) (altComp:Async<'T>):Async<'T> = 
             let tramp = new Trampoline()
             let useAlt = false
@@ -418,7 +421,7 @@
         static member private CreateChannelFactory<'T>(mtomEncoding:bool, wsAddressing:bool, securityToken: bool, useTls: bool):ChannelFactory<'T> =
             let binding = 
                 let bindingElements = seq{
-                    let msgVer = 
+                    let msgVer =
                         if wsAddressing then
                             MessageVersion.Soap12WSAddressing10
                         else
@@ -433,25 +436,22 @@
                         let encoding = new TextMessageEncodingBindingElement(msgVer, Encoding.UTF8)
                         encoding.ReaderQuotas.MaxStringContentLength <- Int32.MaxValue //100 * 1024 * 1024
                         yield encoding :> BindingElement
-                    
-                    let transport = 
-                        if useTls then 
-                            let transport = new HttpsTransportBindingElement()
-                            transport.RequireClientCertificate <- false
-                            transport :> HttpTransportBindingElement
-                        else
-                            new HttpTransportBindingElement()
-                    
-                    transport.MaxReceivedMessageSize <- int64(Int32.MaxValue) //100L * 1024L * 1024L
-                    transport.KeepAliveEnabled <- false
-                    transport.MaxBufferSize <- Int32.MaxValue
-                    transport.ProxyAddress <- null
-                    transport.BypassProxyOnLocal <- true
-                    //transport.ManualAddressing <- true
-                    transport.UseDefaultWebProxy <- false
-                    transport.TransferMode <-TransferMode.StreamedResponse
-                    //transport.TransferMode <- TransferMode.Buffered
-                    yield transport :> BindingElement
+
+                    if useTls then
+                        // SslStreamTransportBindingElement replaces HttpsTransportBindingElement.
+                        // It sends the request as a single TLS record, fixing gSOAP multi-record bug.
+                        yield new SslStreamTransportBindingElement() :> BindingElement
+                    else
+                        let transport = new HttpTransportBindingElement()
+                        transport.MaxReceivedMessageSize <- int64(Int32.MaxValue) //100L * 1024L * 1024L
+                        transport.KeepAliveEnabled <- false
+                        transport.MaxBufferSize <- Int32.MaxValue
+                        transport.ProxyAddress <- null
+                        transport.BypassProxyOnLocal <- true
+                        //transport.ManualAddressing <- true
+                        transport.UseDefaultWebProxy <- false
+                        transport.TransferMode <- TransferMode.StreamedResponse
+                        yield transport :> BindingElement
                 }
                 new CustomBinding(bindingElements)
             binding.CloseTimeout <- TimeSpan.FromSeconds(30.0)
@@ -465,114 +465,119 @@
                 factory.Endpoint.Behaviors.Add(new CustomBehavior())
             factory
 
-        member this.CreateSession(uris:Uri[]) = async{
-            let CheckConnectivity (host:string, port:int) = async{
-//                let ConectAsync(socket:Socket, host:string, port:int) = async{
-//                    do! Async.FromBeginEnd(
-//                        host, port, 
-//                        (fun (host:string, port:int, cb:AsyncCallback, o:obj)->
-//                            socket.BeginConnect(host, port, cb,o)
-//                        ),
-//                        socket.EndConnect,
-//                        (fun()->socket.Close())
-//                    )
-                    
-//                    return Disposable.Create(fun ()->
-//                        try socket.Close() with _->()
-//                    )
-//                }
-                use socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
-                socket.NoDelay <- true
-                //socket.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.DontRoute, 1)
-                socket.SendBufferSize <- 0
-                socket.SendTimeout <- 2000 //2 sec.
-                socket.ReceiveBufferSize <- 128
-                socket.ReceiveTimeout <- 2000 //2 sec.
-                socket.Bind(new IPEndPoint(IPAddress.Any, 0))
-//                use! connDisp = ConectAsync(socket, host, port)
-                let! res = async{
-                    try
-                        do! Async.FromBeginEnd(
-                            host, port, 
-                            (fun (host:string, port:int, cb:AsyncCallback, o:obj)->
-                                socket.BeginConnect(host, port, cb,o)
-                            ),
-                            socket.EndConnect,
-                            (fun()->socket.Close())
-                        )
-                        if System.Environment.OSVersion.Version.Major >= 6 then
-                            return true
-                        else
-                            log.WriteWarning( sprintf "operating system is XP or lower")
-                            let! bytesSent =  Async.FromBeginEnd(
-                                (fun (cb:AsyncCallback, o:obj)->
-                                    let tmp = [|0uy|]
-                                    socket.BeginSend(tmp, 0, 1, (SocketFlags.None), cb,o)
-                                ),
-                                (fun ar -> socket.EndSend(ar))
-                            )
-                            return (bytesSent > 0)
-                    finally
-                            socket.Close()
-                }
+        /// Upgrades an HTTP URL to HTTPS when the session's device was reached via HTTPS.
+        /// Maps port 80 -> 443; keeps other non-standard ports unchanged.
+        /// Publicly accessible for unit testing (mirrors the private UpgradeSchemeIfNeeded closure).
+        static member UpgradeScheme (deviceUri: Uri) (url: Uri) : Uri =
+            if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp then
+                let b = new UriBuilder(url)
+                b.Scheme <- Uri.UriSchemeHttps
+                if b.Port = 80 then b.Port <- 443
+                b.Uri
+            else
+                url
 
-                  //dbg.Info(pintfs "socket %s" );
-//                do! Async.FromBeginEnd(
-//                    (fun (cb:AsyncCallback, o:obj)->
-//                        let tmp = [|0uy|]
-//                        socket.BeginSend(tmp, 0, 0, (SocketFlags.None), cb,o)
-//                    ),
-//                    (fun ar -> socket.EndSend(ar) |> ignore)
-//                )
-//                do! Async.FromBeginEnd(
-//                    (fun (cb:AsyncCallback, o:obj)->
-//                        socket.BeginDisconnect(false, cb,o)
-//                    ),
-//                    socket.EndDisconnect
-//                )
-//                do! Async.FromBeginEnd(
-//                    (fun (cb:AsyncCallback, o:obj)->
-//                        let tmp = [|0uy|]
-//                        socket.BeginReceive(tmp, 0, 0, (SocketFlags.None), cb,o)
-//                    ),
-//                    (fun ar -> socket.EndReceive(ar) |> ignore)
-//                )
-                if res then
-                    return true
+        /// Generates HTTPS URI variants from HTTP URIs for scheme-upgrade fallback.
+        /// Called when all HTTP SOAP probes fail: some cameras advertise only http:// xAddrs
+        /// via WS-Discovery yet actually require HTTPS. Produces port-443 and port-8443 variants
+        /// for each HTTP URI; already-HTTPS inputs return empty (no upgrade needed).
+        /// Publicly accessible for unit testing.
+        static member GenerateHttpsVariants (uris: Uri[]) : Uri[] =
+            uris
+            |> Array.collect (fun uri ->
+                if uri.Scheme = Uri.UriSchemeHttp then
+                    let port = if uri.IsDefaultPort || uri.Port = 80 then 443 else uri.Port
+                    let builder443 = new UriBuilder(uri)
+                    builder443.Scheme <- Uri.UriSchemeHttps
+                    builder443.Port <- port
+                    let builder8443 = new UriBuilder(uri)
+                    builder8443.Scheme <- Uri.UriSchemeHttps
+                    builder8443.Port <- 8443
+                    if port = 8443 then
+                        [| builder443.Uri |]
+                    else
+                        [| builder443.Uri; builder8443.Uri |]
+                elif uri.Scheme = Uri.UriSchemeHttps then
+                    [||]  // Already HTTPS — no upgrade variants needed
                 else
+                    [||]
+            )
+            |> Seq.distinct |> Seq.toArray
+
+        member this.CreateSession(uris:Uri[]) = async{
+            /// SOAP-level probe: sends GetSystemDateAndTime (unauthenticated) to verify
+            /// the endpoint actually responds to ONVIF requests. TCP connectivity alone
+            /// is insufficient — some cameras bind port 80 but silently drop SOAP payloads.
+            let SoapProbe (uri:Uri) = async{
+                try
+                    do! Async.SwitchToThreadPool()
+                    let useTls = uri.Scheme = Uri.UriSchemeHttps
+                    let! factory = getDeviceUnsecureFactory(useTls)
+                    let endpointAddr = new EndpointAddress(uri)
+                    let proxy = factory.CreateChannel(endpointAddr)
+                    let dev = new DeviceAsync(proxy) :> IDeviceAsync
+                    let! _dateTime = dev.GetSystemDateAndTime()
+                    try (proxy :?> ICommunicationObject).Abort() with _ -> ()
+                    return true
+                with _ ->
                     return false
             }
-            let endpoints = uris |> Seq.map (fun uri->(uri.Host, uri.Port)) |> Seq.distinct |> Seq.toList
-            match endpoints with
-            | a::[] -> 
-                return this.CreateSession(
-                    uris |> Seq.find (fun uri-> 
-                        let h,p = endpoints.Head
-                        uri.Host = h && uri.Port = p
-                    )
-                )
-            | [] -> return failwith("no uri was passed")
-            | _ -> 
-                let! t = Async.Race(seq{
-                    for ep in endpoints do
-                        yield async{
-                            let! cr = CheckConnectivity(ep)
-                            let host, port = ep
-                            match cr with
-                            | true -> 
-                                log.WriteInfo(sprintf "connection test passed on %s:%d" host port)
-                                return this.CreateSession(
-                                    uris |> Seq.find (fun uri-> 
-                                        uri.Host = host && uri.Port = port
-                                    )
-                                )
-                            | false -> 
-                                return failwith("connectivity test failed")
-                        }
-                })
-                match t with
-                | Some s -> return s
-                | None -> return failwith("no uri was passed")
+
+            let soapProbeWithTimeout (uri:Uri) (timeoutMs:int) = async{
+                let! child = Async.StartChild(SoapProbe(uri), timeoutMs)
+                try
+                    let! result = child
+                    return result
+                with
+                | :? TimeoutException ->
+                    return false
+            }
+
+            // Sequential probe: tries each URI one at a time rather than in parallel.
+            // Some cameras (e.g. Hikvision) drop or reject connections when multiple
+            // simultaneous TCP connections arrive during negotiation.
+            let raceEndpoints (srcUris:Uri[]) = async {
+                let distinctUris = srcUris |> Seq.distinct |> Seq.toList
+                let probeOne (uri:Uri) = async {
+                    let! cr = soapProbeWithTimeout uri 5000
+                    if cr then
+                        log.WriteInfo(sprintf "SOAP probe passed on %s" (uri.ToString()))
+                        return Some uri
+                    else
+                        log.WriteInfo(sprintf "SOAP probe failed on %s" (uri.ToString()))
+                        return None
+                }
+                let rec tryFirst (uris:Uri list) = async {
+                    match uris with
+                    | [] -> return None
+                    | uri :: rest ->
+                        let! result = probeOne uri
+                        match result with
+                        | Some _ -> return result
+                        | None -> return! tryFirst rest
+                }
+                return! tryFirst distinctUris
+            }
+
+            if uris.Length = 0 then return failwith("no uri was passed")
+
+            // Try original URIs first (SOAP-level probe, not just TCP)
+            let! httpResult = raceEndpoints uris
+            match httpResult with
+            | Some uri ->
+                return this.CreateSession(uri)
+            | None ->
+                // SOAP probe failed on all original URIs — try HTTPS variants
+                let httpsUris = NvtSessionFactory.GenerateHttpsVariants uris
+                if httpsUris.Length = 0 then
+                    return failwith("SOAP probe failed for all URIs")
+                log.WriteInfo(sprintf "HTTP SOAP probe failed for %d URIs, retrying with HTTPS variants" uris.Length)
+                let! httpsResult = raceEndpoints httpsUris
+                match httpsResult with
+                | Some uri ->
+                    return this.CreateSession(uri)
+                | None ->
+                    return failwith("SOAP probe failed for all URIs (including HTTPS fallback)")
 
 //            let cts = new CancellationTokenSource()
 //            use! cancellation = Async.OnCancel(fun ()-> 
@@ -643,8 +648,9 @@
                 //return! TryCreateSession(uris2)
         }
 
-        member this.CreateSession(deviceUri:Uri) = 
+        member this.CreateSession(deviceUri:Uri) =
             log.WriteInfo(sprintf "creating session for %s" (deviceUri.ToString()))
+            ServicePointManager.FindServicePoint(deviceUri).Expect100Continue <- false
             let sessionId = obj()
             let GetDeviceUnsecureClient = 
                 let comp = Async.Memoize(async{
@@ -751,31 +757,49 @@
                 })
                 fun() -> comp
 
+            // Upgrade an HTTP URL to HTTPS when the device was reached via HTTPS.
+            // ONVIF cameras return capability xAddr values (e.g. PTZ, media, imaging service URLs)
+            // with http:// regardless of how they were connected to — the ONVIF spec does not
+            // mandate scheme-aware xAddr reporting, so cameras always advertise the HTTP address.
+            let UpgradeSchemeIfNeeded (url: Uri) =
+                if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp then
+                    let b = new UriBuilder(url)
+                    b.Scheme <- Uri.UriSchemeHttps
+                    // Map port 80 -> 443; keep other non-default ports (e.g. 8080 stays 8080)
+                    if b.Port = 80 then b.Port <- 443
+                    b.Uri
+                else
+                    url
+
             let FixUrl(url:Uri) = async{
-                if not(url.IsAbsoluteUri) then
-                    //return new Uri(deviceUri.GetBaseUri(), url)
-                    return new Uri(deviceUri, url)
-                elif not(deviceUri.Host = url.Host) then
-                    if url.HostNameType = UriHostNameType.IPv4 then
-                        let! caps = GetCapabilities()
-                        let internalDeviceUrl = new Uri(caps.device.xAddr)
-                        if internalDeviceUrl.Host = url.Host then
-                            if internalDeviceUrl.Port = url.Port && internalDeviceUrl.Scheme = url.Scheme then
-                                return url.Relocate(deviceUri.Host, deviceUri.Port)
-                            else
-                                return url.Relocate(deviceUri.Host)
-//                            let baseUrl = 
-//                                if url.Port < 0 then 
+                let! resolved =
+                    async{
+                        if not(url.IsAbsoluteUri) then
+                            //return new Uri(deviceUri.GetBaseUri(), url)
+                            return new Uri(deviceUri, url)
+                        elif not(deviceUri.Host = url.Host) then
+                            if url.HostNameType = UriHostNameType.IPv4 then
+                                let! caps = GetCapabilities()
+                                let internalDeviceUrl = new Uri(caps.device.xAddr)
+                                if internalDeviceUrl.Host = url.Host then
+                                    if internalDeviceUrl.Port = url.Port && internalDeviceUrl.Scheme = url.Scheme then
+                                        return url.Relocate(deviceUri.Host, deviceUri.Port)
+                                    else
+                                        return url.Relocate(deviceUri.Host)
+//                            let baseUrl =
+//                                if url.Port < 0 then
 //                                    new Uri(sprintf "%s://%s" (url.Scheme) (deviceUri.Host))
-//                                else 
+//                                else
 //                                    new Uri(sprintf "%s://%s:%d" (url.Scheme) (deviceUri.Host) (url.Port))
 //                            return new Uri(baseUrl, url.PathAndQuery)
+                                else
+                                    return url
+                            else
+                                return url
                         else
                             return url
-                    else
-                        return url
-                else
-                    return url
+                    }
+                return UpgradeSchemeIfNeeded resolved
             }
 
             let GetMediaClient = 
