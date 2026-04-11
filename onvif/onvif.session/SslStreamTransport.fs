@@ -197,6 +197,7 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         let resp = SslStreamHelpers.sslSend via bodyBytes contentType timeoutMs
         if resp.StatusCode >= 400 then
             System.Diagnostics.Debug.WriteLine(sprintf "SslStreamTransport: HTTP %d from %O" resp.StatusCode via)
+            raise (CommunicationException(sprintf "HTTP %d received from camera at %O" resp.StatusCode via))
 
         // Deserialize response
         let respBuf = bufMgr.TakeBuffer(resp.Body.Length)
