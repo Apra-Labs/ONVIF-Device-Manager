@@ -1,0 +1,57 @@
+{
+  "odm": {
+    "exePath": "C:\\akhil\\git\\ONVIF-Device-Manager\\build\\odm.exe",
+    "expectedVersion": "2.2.252.17",
+    "launchTimeoutSeconds": 30
+  },
+  "cameraProfiles": [
+    {
+      "classifyAs": "milesight",
+      "manufacturerContains": "Milesight",
+      "modelContains": null,
+      "username": "admin",
+      "password": "$env:ODM_MILESIGHT_PASS",
+      "httpPort": 80,
+      "httpsPort": 443,
+      "suites": ["HttpsTests", "LiveVideoTests", "DiscoveryTests"]
+    },
+    {
+      "classifyAs": "virtual",
+      "manufacturerContains": "Apra",
+      "modelContains": "Virtual",
+      "username": "admin",
+      "password": "$env:ODM_VIRTUAL_PASS",
+      "httpPort": 80,
+      "httpsPort": null,
+      "suites": ["DiscoveryTests", "LiveVideoTests"]
+    },
+    {
+      "classifyAs": "axis",
+      "manufacturerContains": "AXIS",
+      "modelContains": null,
+      "username": "root",
+      "password": "$env:ODM_AXIS_PASS",
+      "httpPort": 80,
+      "httpsPort": null,
+      "suites": ["DiscoveryTests", "LiveVideoTests"]
+    }
+  ],
+  "timeouts": {
+    "discoverySeconds": 30,
+    "connectionSeconds": 20,
+    "videoLoadSeconds": 15,
+    "progressSettleSeconds": 2
+  },
+  "capture": {
+    "resolution": {
+      "width": 1024,
+      "height": 768
+    },
+    "screenshotOutputDir": "C:\\odm-e2e-results\\screenshots",
+    "reportOutputDir": "C:\\odm-e2e-results\\reports"
+  },
+  "claude": {
+    "model": "claude-sonnet-4-6",
+    "maxTokens": 1024
+  }
+}
