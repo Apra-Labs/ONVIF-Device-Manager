@@ -1,8 +1,10 @@
-# ODM — End-to-End UI Smoke Test PoC Plan
+# ODM — Comprehensive End-to-End UI Test Suite Plan
 
 ## Overview
 
-Automated UI smoke tests that run after each ODM deployment on a dedicated Windows device. The tests drive the UI, capture screenshots at key points, and send them to Claude API for visual validation.
+Automated, comprehensive end-to-end UI tests that run after each ODM deployment on a dedicated Windows device. The test suite drives the UI against all discovered cameras, captures screenshots at key points, and sends them to Claude API for visual validation.
+
+The suite is **camera-type-aware**: it discovers cameras via ONVIF at runtime, classifies them by manufacturer/model, and dispatches the appropriate test suites per camera type. If a camera type is not present on the network, its tests are skipped — never failed.
 
 ---
 
@@ -25,29 +27,130 @@ Automated UI smoke tests that run after each ODM deployment on a dedicated Windo
 - Supports window manipulation (resize, focus, wait patterns) out of the box
 - `FlaUI.Core.Capturing.Capture` provides built-in screenshot support
 
+**One concern to note:** FlaUI depends on the Windows UI Automation (UIA) tree being well-populated. If any ODM views use custom-drawn content (e.g. the video player surface rendered via DirectShow/GStreamer), those regions will appear as opaque rectangles to UIA. The test suite handles this via screenshot + Claude vision analysis rather than element inspection for such areas.
+
 ---
 
-## 2. Test Architecture
+## 2. Camera-Type-Aware Dispatch Architecture
+
+### Runtime discovery and classification
+
+On test suite startup, before any UI tests run, the test harness performs ONVIF WS-Discovery to find all cameras on the local network. Each discovered device is queried for its `DeviceInfo` (manufacturer, model, firmware) and classified into a camera profile.
+
+**Discovery flow:**
+
+```
+1. Send WS-Discovery probe (multicast to 239.255.255.250:3702)
+2. Collect all responding ONVIF endpoints
+3. For each endpoint, call GetDeviceInformation()
+4. Match manufacturer/model against cameraProfiles in smoke-config.json
+5. Group cameras by classifyAs type
+6. Dispatch test suites per camera group
+```
+
+**Classification rules** (evaluated in order, first match wins):
+
+| Manufacturer/Model match | classifyAs | Transport | Credentials (from config) | Test suites |
+|---|---|---|---|---|
+| Manufacturer contains `Milesight` | `milesight` | HTTPS (port 443) | admin / (from config) | HttpsTests, LiveVideoTests, DiscoveryTests |
+| Manufacturer contains `Apra` OR model contains `Virtual` | `virtual` | HTTP (port 80) | admin / (from config) | DiscoveryTests, LiveVideoTests |
+| Manufacturer contains `AXIS` | `axis` | HTTP (port 80) | (from config) | DiscoveryTests, LiveVideoTests |
+| No match | `unknown` | HTTP (port 80) | — | DiscoveryTests only |
+
+### Dispatch logic
+
+```csharp
+[TestClass]
+public class CameraDispatcher
+{
+    private static List<DiscoveredCamera> _cameras;
+    private static SmokeConfig _config;
+
+    [AssemblyInitialize]
+    public static void DiscoverAndClassify(TestContext ctx)
+    {
+        _config = SmokeConfig.Load();
+        var discovered = OnvifDiscovery.Probe(TimeSpan.FromSeconds(10));
+
+        _cameras = discovered.Select(endpoint =>
+        {
+            var info = endpoint.GetDeviceInformation();
+            var profile = _config.CameraProfiles.FirstOrDefault(p =>
+                (!string.IsNullOrEmpty(p.ManufacturerContains)
+                    && info.Manufacturer.Contains(p.ManufacturerContains, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrEmpty(p.ModelContains)
+                    && info.Model.Contains(p.ModelContains, StringComparison.OrdinalIgnoreCase)));
+
+            return new DiscoveredCamera
+            {
+                Endpoint = endpoint,
+                DeviceInfo = info,
+                Profile = profile  // null if no match → skip most suites
+            };
+        }).ToList();
+
+        ctx.Properties["DiscoveredCameras"] = _cameras;
+    }
+}
+```
+
+### Per-camera test execution
+
+Each test class checks whether a camera of the required type was discovered. If not, the test is marked as **Inconclusive** (skipped), not Failed:
+
+```csharp
+[TestClass]
+public class MilesightHttpsTests : SmokeTestBase
+{
+    private DiscoveredCamera _camera;
+
+    [TestInitialize]
+    public void FindMilesight()
+    {
+        _camera = DiscoveredCameras
+            .FirstOrDefault(c => c.Profile?.ClassifyAs == "milesight");
+
+        if (_camera == null)
+            Assert.Inconclusive("No Milesight camera discovered — skipping HTTPS test suite.");
+    }
+
+    [TestMethod]
+    public void HttpsConnection_Succeeds()
+    {
+        // Uses _camera.Profile.Username, _camera.Profile.Password,
+        // _camera.Profile.HttpsPort from config
+    }
+}
+```
+
+---
+
+## 3. Test Architecture
 
 ### Project structure
 
 ```
-odm/odm.smoke-tests/
-  odm.smoke-tests.csproj      # .NET 4.8 class library, MSTest + FlaUI.UIA3
+odm/odm.e2e-tests/
+  odm.e2e-tests.csproj           # .NET 4.8 class library, MSTest + FlaUI.UIA3
   Config/
-    smoke-config.json          # Parameterized test configuration
+    smoke-config.json             # Parameterized test configuration (camera profiles, timeouts)
+  Discovery/
+    OnvifDiscovery.cs             # WS-Discovery probe + GetDeviceInformation
+    CameraClassifier.cs           # Match discovered cameras to config profiles
+    DiscoveredCamera.cs           # Data class: endpoint + device info + matched profile
   Helpers/
-    OdmApp.cs                  # App lifecycle: launch, attach, close
-    WaitHelpers.cs             # Progress bar / spinner wait logic
-    ScreenshotCapture.cs       # Capture + save screenshot
-    ClaudeAnalyzer.cs          # Send screenshot to Claude API, parse response
+    OdmApp.cs                     # App lifecycle: launch, attach, close
+    WaitHelpers.cs                # Progress bar / spinner wait logic
+    ScreenshotCapture.cs          # Capture + save screenshot
+    ClaudeAnalyzer.cs             # Send screenshot to Claude API, parse response
   Tests/
-    LaunchTests.cs             # Scenario 1: app launches, correct version
-    AuthTests.cs               # Scenario 2: login flow
-    DiscoveryTests.cs          # Scenario 3: device discovery
-    LiveVideoTests.cs          # Scenario 4: live video stream
-    HttpsTests.cs              # Scenario 5: HTTPS connectivity
-    ErrorDetectionTests.cs     # Scenario 6: no error dialogs present
+    SmokeTestBase.cs              # Base class: config loading, camera list, shared helpers
+    LaunchTests.cs                # Scenario 1: app launches, correct version
+    AuthTests.cs                  # Scenario 2: login flow
+    DiscoveryTests.cs             # Scenario 3: device discovery (all camera types)
+    LiveVideoTests.cs             # Scenario 4: live video stream (per camera type)
+    HttpsTests.cs                 # Scenario 5: HTTPS connectivity (Milesight only)
+    ErrorDetectionTests.cs        # Scenario 6: no error dialogs present
 ```
 
 ### App lifecycle helper (`OdmApp.cs`)
@@ -65,7 +168,7 @@ public class OdmApp : IDisposable
         _automation = new UIA3Automation();
         _app = Application.Launch(exePath);
         MainWindow = _app.GetMainWindow(_automation, TimeSpan.FromSeconds(30));
-        // Resize to standard resolution
+        // Resize to standard resolution for consistent screenshots
         MainWindow.Move(0, 0);
         MainWindow.SetSize(1024, 768);
     }
@@ -91,11 +194,12 @@ ODM uses progress bars and spinners during device discovery and connection. The 
        {
            var progressBars = window.FindAllDescendants(cf =>
                cf.ByControlType(ControlType.ProgressBar));
-           
-           // No progress bars, or all are at 100% / hidden
-           if (progressBars.All(p => !p.IsEnabled || !p.IsOffscreen == false))
+
+           // Done when: no progress bars exist, or all are either disabled or offscreen (hidden)
+           var activeBars = progressBars.Where(p => p.IsEnabled && !p.IsOffscreen);
+           if (!activeBars.Any())
                return;
-           
+
            Thread.Sleep(500);
        }
        // Timeout — capture screenshot anyway (test may still pass visually)
@@ -115,6 +219,7 @@ All test parameters come from `smoke-config.json` loaded at test init:
 public class SmokeTestBase
 {
     protected static SmokeConfig Config;
+    protected static List<DiscoveredCamera> DiscoveredCameras;
 
     [AssemblyInitialize]
     public static void Init(TestContext ctx)
@@ -128,7 +233,7 @@ public class SmokeTestBase
 
 ---
 
-## 3. Screenshot + Claude Analysis Flow
+## 4. Screenshot + Claude Analysis Flow
 
 ### Capture
 
@@ -225,7 +330,7 @@ public bool DeterminePassFail(AnalysisResult result)
 
 ---
 
-## 4. Test Scenarios for PoC
+## 5. Test Scenarios
 
 ### Scenario 1: Launch and Version Check
 
@@ -239,24 +344,30 @@ public bool DeterminePassFail(AnalysisResult result)
 | Step | Action | Screenshot | Expected |
 |---|---|---|---|
 | 1 | Locate auth controls | Before login | `username` and `password` fields visible, `btLogin` button present |
-| 2 | Enter credentials | After filling fields | Fields populated, no validation errors |
+| 2 | Enter credentials (from matched camera profile) | After filling fields | Fields populated, no validation errors |
 | 3 | Click Login | After login completes | Login panel shows authenticated state (logout button visible), no error dialogs |
 
-### Scenario 3: Device Discovery
+### Scenario 3: Device Discovery (per camera type)
+
+Runs for each camera type discovered on the network.
 
 | Step | Action | Screenshot | Expected |
 |---|---|---|---|
 | 1 | Wait for device list to populate | After discovery settles (progress bar gone) | Device list panel shows at least one device |
-| 2 | Verify expected device | After list populated | Expected device name/IP visible in device list |
+| 2 | Verify expected device | After list populated | Discovered camera's name/IP visible in device list |
 
-### Scenario 4: Connect and View Live Video
+### Scenario 4: Connect and View Live Video (per camera type)
+
+Runs for each discovered camera whose profile includes `LiveVideoTests`.
 
 | Step | Action | Screenshot | Expected |
 |---|---|---|---|
 | 1 | Click on discovered camera | After navigation | Device detail view loads |
 | 2 | Navigate to live video | After video view loads and progress completes | Video player area (`player` element) is visible, video feed is not a black rectangle, no connection error messages |
 
-### Scenario 5: HTTPS Connectivity Verification
+### Scenario 5: HTTPS Connectivity Verification (Milesight cameras only)
+
+Only runs when a Milesight camera (or other profile with `HttpsTests` in its suites) is discovered.
 
 | Step | Action | Screenshot | Expected |
 |---|---|---|---|
@@ -271,7 +382,7 @@ public bool DeterminePassFail(AnalysisResult result)
 
 ---
 
-## 5. Parameterization Schema
+## 6. Configuration Schema
 
 `smoke-config.json`:
 
@@ -282,14 +393,38 @@ public bool DeterminePassFail(AnalysisResult result)
     "expectedVersion": "2.2.252.17",
     "launchTimeoutSeconds": 30
   },
-  "camera": {
-    "ip": "192.168.1.190",
-    "httpPort": 80,
-    "httpsPort": 443,
-    "username": "admin",
-    "password": "...",
-    "expectedDeviceName": "AXIS"
-  },
+  "cameraProfiles": [
+    {
+      "classifyAs": "milesight",
+      "manufacturerContains": "Milesight",
+      "modelContains": null,
+      "username": "admin",
+      "password": "$env:ODM_MILESIGHT_PASS",
+      "httpPort": 80,
+      "httpsPort": 443,
+      "suites": ["HttpsTests", "LiveVideoTests", "DiscoveryTests"]
+    },
+    {
+      "classifyAs": "virtual",
+      "manufacturerContains": "Apra",
+      "modelContains": "Virtual",
+      "username": "admin",
+      "password": "$env:ODM_VIRTUAL_PASS",
+      "httpPort": 80,
+      "httpsPort": null,
+      "suites": ["DiscoveryTests", "LiveVideoTests"]
+    },
+    {
+      "classifyAs": "axis",
+      "manufacturerContains": "AXIS",
+      "modelContains": null,
+      "username": "root",
+      "password": "...",
+      "httpPort": 80,
+      "httpsPort": null,
+      "suites": ["DiscoveryTests", "LiveVideoTests"]
+    }
+  ],
   "timeouts": {
     "discoverySeconds": 30,
     "connectionSeconds": 20,
@@ -301,8 +436,8 @@ public bool DeterminePassFail(AnalysisResult result)
       "width": 1024,
       "height": 768
     },
-    "screenshotOutputDir": "C:\\odm-smoke-results\\screenshots",
-    "reportOutputDir": "C:\\odm-smoke-results\\reports"
+    "screenshotOutputDir": "C:\\odm-e2e-results\\screenshots",
+    "reportOutputDir": "C:\\odm-e2e-results\\reports"
   },
   "claude": {
     "model": "claude-sonnet-4-6",
@@ -313,61 +448,80 @@ public bool DeterminePassFail(AnalysisResult result)
 
 **Notes:**
 - `claude.apiKey` is read from environment variable `ANTHROPIC_API_KEY` (never stored in config)
-- `camera.password` can also be sourced from `ODM_TEST_PASS` env var as a fallback
-- All timeouts have sensible defaults; config values override
+- Credentials in `cameraProfiles` are stored in the config file which should be excluded from version control (add to `.gitignore`). For CI, source from environment variables or a secrets manager.
+- `manufacturerContains` and `modelContains` are case-insensitive substring matches. Either or both can be set; if both are set, either matching classifies the camera.
+- A camera matching no profile is classified as `unknown` and only gets `DiscoveryTests`.
+- All timeouts have sensible defaults; config values override.
 
 ---
 
-## 6. Integration with Deploy Flow
+## 7. Integration with Deploy Flow
 
 Add as **Step 7** in `docs/deploy.md`:
 
 ```markdown
-### Step 7 — Smoke test (automated)
+### Step 7 — End-to-end test suite (automated)
 
-After launch (Step 5), run the smoke test suite:
+After launch (Step 5), run the e2e test suite:
 
-    powershell -Command "& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Extensions\TestPlatform\vstest.console.exe' 'C:\akhil\git\ONVIF-Device-Manager\odm\odm.smoke-tests\bin\Release\net48\odm.smoke-tests.dll'"
+    powershell -Command "& 'C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\Extensions\TestPlatform\vstest.console.exe' 'C:\akhil\git\ONVIF-Device-Manager\odm\odm.e2e-tests\bin\Release\net48\odm.e2e-tests.dll'"
 
-Results are written to `C:\odm-smoke-results\`:
+Results are written to `C:\odm-e2e-results\`:
 - `screenshots\` — captured PNGs from each scenario
 - `reports\` — JSON report with pass/fail per scenario and Claude analysis
 
 If any scenario fails, review the screenshot + Claude analysis before proceeding.
 ```
 
-**Future automation:** The deploy one-liner can be extended to chain smoke tests:
+**Future automation:** The deploy one-liner can be extended to chain the e2e test suite:
 
 ```powershell
-schtasks /Run /TN 'ODM-kill'; Start-Sleep 2; & deploy.ps1; schtasks /Run /TN 'ODM-dev'; Start-Sleep 10; & run-smoke-tests.ps1
+schtasks /Run /TN 'ODM-kill'; Start-Sleep 2; & deploy.ps1; schtasks /Run /TN 'ODM-dev'; Start-Sleep 10; & run-e2e-tests.ps1
 ```
 
 The 10-second sleep gives ODM time to launch and render before tests attach. The actual tests use FlaUI's `GetMainWindow` with a 30-second timeout, so this is a soft lower bound.
 
 ---
 
-## 7. Success Criteria for PoC
+## 8. Success Criteria
 
-The PoC is "working" when all of the following are true:
+The test suite PoC is "working" when all of the following are true:
 
 | # | Criterion | How to verify |
 |---|---|---|
 | 1 | **FlaUI can launch and attach to ODM** | `OdmApp.Launch()` succeeds, `MainWindow` is non-null, window title contains version string |
 | 2 | **Window resize works** | Screenshot dimensions are 1024x768 |
 | 3 | **Element discovery works** | Tests can find `username`, `password`, `btLogin` by AutomationId |
-| 4 | **Wait-for-progress works** | Discovery test waits for progress bar to complete before capturing, does not timeout on a normal run |
-| 5 | **Screenshots capture correctly** | PNG files saved to output dir, non-zero size, visually show the ODM window (not a blank/black image) |
-| 6 | **Claude API analysis returns structured results** | API call succeeds, response parses into the expected JSON schema, `pass`/`confidence` fields present |
-| 7 | **At least 4 of 6 scenarios pass** | Scenarios 1-4 (launch, auth, discovery, live video) pass on a clean run with a reachable camera |
-| 8 | **End-to-end run completes in under 5 minutes** | Total wall time from test start to report generation < 300 seconds |
-| 9 | **Report generated** | JSON report written with per-scenario pass/fail, screenshot paths, and Claude analysis summaries |
+| 4 | **ONVIF camera discovery works** | At least one camera discovered and classified against config profiles |
+| 5 | **Camera-type dispatch works** | Tests for discovered camera types run; tests for absent camera types are skipped (Inconclusive), not failed |
+| 6 | **Wait-for-progress works** | Discovery test waits for progress bar to complete before capturing, does not timeout on a normal run |
+| 7 | **Screenshots capture correctly** | PNG files saved to output dir, non-zero size, visually show the ODM window (not a blank/black image) |
+| 8 | **Claude API analysis returns structured results** | API call succeeds, response parses into the expected JSON schema, `pass`/`confidence` fields present |
+| 9 | **At least 4 of 6 scenarios pass** | Scenarios 1-4 (launch, auth, discovery, live video) pass on a clean run with at least one reachable camera |
+| 10 | **End-to-end run completes in under 5 minutes** | Total wall time from test start to report generation < 300 seconds |
+| 11 | **Report generated** | JSON report written with per-scenario pass/fail, screenshot paths, and Claude analysis summaries |
 
 ---
 
-## Dependencies and Prerequisites
+## 9. Dependencies and Prerequisites
 
 - **NuGet packages:** `FlaUI.UIA3`, `FlaUI.Core`, `Newtonsoft.Json`, `MSTest.TestFramework`, `MSTest.TestAdapter`
+- **ONVIF library:** The existing ODM ONVIF stack (or a lightweight WS-Discovery client) for runtime camera discovery
 - **Environment:** `ANTHROPIC_API_KEY` set on the test machine
-- **Network:** Test machine must reach the camera (192.168.1.190) and Claude API (api.anthropic.com)
+- **Network:** Test machine must be on the same subnet as cameras (for WS-Discovery multicast) and must reach Claude API (api.anthropic.com)
+- **Configuration:** `smoke-config.json` populated with camera profiles matching the test network's cameras
 - **Scheduled tasks:** `ODM-dev` and `ODM-kill` registered (per deploy.md one-time setup)
-- **ODM built and deployed:** `build\odm.exe` must be current before running smoke tests
+- **ODM built and deployed:** `build\odm.exe` must be current before running the test suite
+- **.gitignore:** `smoke-config.json` should be gitignored since it contains credentials (provide a `smoke-config.example.json` template in the repo)
+
+---
+
+## Review Notes
+
+**FlaUI choice: Confirmed.** FlaUI remains the right choice. The only real alternative (WinAppDriver) is archived. The UIA3 backend handles WPF well. The main risk — opaque video player surfaces — is mitigated by the Claude vision analysis approach.
+
+**WaitHelpers bug (fixed above).** The original condition `progressBars.All(p => !p.IsEnabled || !p.IsOffscreen == false)` had a confusing double negation. Due to C# operator precedence, `!p.IsOffscreen == false` evaluates as `(!p.IsOffscreen) == false`, which is `p.IsOffscreen` — the code happened to work by accident, but was misleading and fragile. The revised version uses an explicit `activeBars` filter (`p.IsEnabled && !p.IsOffscreen`) which is clear and correct: return when no active (enabled + visible) progress bars remain.
+
+**Claude API analysis flow: Sound.** The structured prompt with JSON response schema is a good approach. One recommendation for implementation: add retry logic (1-2 retries with backoff) for transient API failures, and consider caching screenshots with their analysis results so re-runs don't re-analyze unchanged states.
+
+**Test scenario coverage: Adequate for PoC.** The 6 scenarios cover the critical user journey (launch → auth → discover → view video → HTTPS → error check). For post-PoC expansion, consider adding: credential manager tests (add/edit/delete stored credentials), multi-camera switching, and window resize/layout persistence.
