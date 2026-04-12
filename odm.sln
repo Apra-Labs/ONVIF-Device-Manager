@@ -81,6 +81,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{54435603-DBB4-11D2-8724-00A0C9A8B90C}") = "odm.setup", "odm.setup\odm.setup.vdproj", "{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "odm.e2e-tests", "odm\odm.e2e-tests\odm.e2e-tests.csproj", "{9B2D987E-4F6C-4C31-A731-8F7241C2C1F1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -207,6 +209,10 @@ Global
 		{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}.Debug|x64.Build.0 = Debug
 		{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}.Release|x64.ActiveCfg = Release
 		{F7BE536C-2868-458C-A3F4-94DB6FEDC0DE}.Release|x64.Build.0 = Release
+		{9B2D987E-4F6C-4C31-A731-8F7241C2C1F1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{9B2D987E-4F6C-4C31-A731-8F7241C2C1F1}.Debug|x64.Build.0 = Debug|Any CPU
+		{9B2D987E-4F6C-4C31-A731-8F7241C2C1F1}.Release|x64.ActiveCfg = Release|Any CPU
+		{9B2D987E-4F6C-4C31-A731-8F7241C2C1F1}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
