@@ -125,7 +125,7 @@ module internal SslStreamHelpers =
         let hostHeader = if port = 443 then host else sprintf "%s:%d" host port
         let path = if String.IsNullOrEmpty(uri.PathAndQuery) then "/" else uri.PathAndQuery
         let headerStr =
-            sprintf "POST %s HTTP/1.1\r\nHost: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: keep-alive\r\n\r\n"
+            sprintf "POST %s HTTP/1.1\r\nHost: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n"
                 path hostHeader contentType bodyBytes.Length
         let headerBytes = Encoding.ASCII.GetBytes(headerStr)
         // Single ssl.Write() call: headers and body must arrive in one TLS record.
@@ -146,7 +146,7 @@ module internal SslStreamHelpers =
         let mutable headerEnd = -1
         while headerEnd < 0 do
             let n = ssl.Read(readBuf, 0, readBuf.Length)
-            if n <= 0 then failwith "SSL connection closed before HTTP headers received"
+            if n <= 0 then raise (IOException("SSL connection closed before HTTP headers received"))
             accum.Write(readBuf, 0, n)
             let sep = findCrLfCrLf (accum.ToArray())
             if sep >= 0 then headerEnd <- sep
@@ -187,7 +187,7 @@ module internal SslStreamHelpers =
                             if lineEnd < 0 && buffer.[i] = 0x0Duy && buffer.[i+1] = 0x0Auy then
                                 lineEnd <- i
                         if lineEnd < 0 then
-                            if not (readMore()) then failwith "Connection closed in chunked body"
+                            if not (readMore()) then raise (IOException("Connection closed reading chunked body"))
                     let line = Encoding.ASCII.GetString(buffer.ToArray(), 0, lineEnd)
                     buffer.RemoveRange(0, lineEnd + 2)
                     line
@@ -195,7 +195,7 @@ module internal SslStreamHelpers =
                 // Read exactly n bytes from buffer, fetching more bytes as needed
                 let readBytes (n: int) =
                     while buffer.Count < n do
-                        if not (readMore()) then failwith "Connection closed reading chunk data"
+                        if not (readMore()) then raise (IOException("Connection closed reading chunk data"))
                     let data = Array.sub (buffer.ToArray()) 0 n
                     buffer.RemoveRange(0, n)
                     data
@@ -231,7 +231,7 @@ module internal SslStreamHelpers =
                         while remaining > 0 do
                             let toRead = min remaining tmp.Length
                             let n = ssl.Read(tmp, 0, toRead)
-                            if n <= 0 then failwith "Connection closed before body complete"
+                            if n <= 0 then raise (IOException("Connection closed before body complete"))
                             ms.Write(tmp, 0, n)
                             remaining <- remaining - n
                         ms.ToArray()
