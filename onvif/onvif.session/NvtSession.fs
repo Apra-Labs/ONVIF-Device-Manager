@@ -1196,12 +1196,13 @@ namespace odm.core
                                 // because WCF cannot deserialize VideoEncoderConfiguration[] across the
                                 // ver20/media/wsdl (wrapper) / ver10/schema (type) namespace boundary.
                                 // response is a raw WCF Message — read body with LINQ to XML.
-                                // All prior approaches (MessageContract IsWrapped=true/false with typed
-                                // arrays or XmlElement fields) returned empty; returning Message directly
-                                // is the only reliable way to read a ver20/media/wsdl response body.
+                                // Use ReadOuterXml() to consume the full element as a string before
+                                // WCF closes the reader; XDocument.Load(reader) alone leaves the reader
+                                // short of EndOfFile and WCF throws on Message disposal.
                                 use response = response
-                                let reader = response.GetReaderAtBodyContents()
-                                let doc = System.Xml.Linq.XDocument.Load(reader)
+                                let bodyReader = response.GetReaderAtBodyContents()
+                                let bodyXml = bodyReader.ReadOuterXml()
+                                let doc = System.Xml.Linq.XDocument.Parse(bodyXml)
                                 let log = fun (s:string) -> try System.IO.File.AppendAllText(@"C:\odm_media2_debug.txt", System.DateTime.Now.ToString("HH:mm:ss") + " " + s + "\n") with _ -> ()
                                 let nsTr2 = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver20/media/wsdl")
                                 let nsTt  = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver10/schema")
