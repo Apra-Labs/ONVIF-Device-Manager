@@ -624,6 +624,9 @@ namespace onvif.services {
 	// This is needed for cameras that report Encoding=H264 via Media1 but actually
 	// encode H265 — they expose the true encoding only through Media2.
 
+	// IMedia2: EndGetVideoEncoderConfigurations returns a raw System.ServiceModel.Channels.Message
+	// so that WCF never attempts to deserialize the response body. NvtSession.fs reads the
+	// body via GetReaderAtBodyContents() and parses with LINQ to XML.
 	[ServiceContract(Namespace = "http://www.onvif.org/ver20/media/wsdl")]
 	public interface IMedia2 {
 		[OperationContract(AsyncPattern = true,
@@ -632,7 +635,7 @@ namespace onvif.services {
 		IAsyncResult BeginGetVideoEncoderConfigurations(
 			Media2GetVideoEncoderConfigurationsRequest request,
 			AsyncCallback callback, object asyncState);
-		Media2GetVideoEncoderConfigurationsResponse EndGetVideoEncoderConfigurations(
+		System.ServiceModel.Channels.Message EndGetVideoEncoderConfigurations(
 			IAsyncResult result);
 	}
 
@@ -640,19 +643,5 @@ namespace onvif.services {
 		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
 	public partial class Media2GetVideoEncoderConfigurationsRequest {
 		public Media2GetVideoEncoderConfigurationsRequest() { }
-	}
-
-	// IsWrapped=false: capture the entire <GetVideoEncoderConfigurationsResponse> element
-	// as a single raw XmlElement. IsWrapped=true with typed arrays failed — WCF's
-	// XmlSerializerMessageFormatter does not populate body-member arrays when the wrapper
-	// namespace (ver20/media/wsdl) differs from the element type namespace (ver10/schema).
-	// NvtSession.fs parses <Configurations> children from Body manually.
-	[MessageContract(IsWrapped = false)]
-	public partial class Media2GetVideoEncoderConfigurationsResponse {
-		[MessageBodyMember(Name = "GetVideoEncoderConfigurationsResponse",
-			Namespace = "http://www.onvif.org/ver20/media/wsdl")]
-		public System.Xml.XmlElement Body;
-
-		public Media2GetVideoEncoderConfigurationsResponse() { }
 	}
 }

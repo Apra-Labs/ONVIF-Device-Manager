@@ -1195,40 +1195,37 @@ namespace odm.core
                                 // response.Configurations is XmlElement[] — parse token and Encoding manually
                                 // because WCF cannot deserialize VideoEncoderConfiguration[] across the
                                 // ver20/media/wsdl (wrapper) / ver10/schema (type) namespace boundary.
-                                // response.Body is the raw <GetVideoEncoderConfigurationsResponse> element.
-                                // Select <Configurations> children and parse token + Encoding manually.
-                                let body = response.Body
-                                if body |> IsNull then
-                                    return [||]
-                                else
-                                    let log = fun (s:string) -> try System.IO.File.AppendAllText(@"C:\odm_media2_debug.txt", System.DateTime.Now.ToString("HH:mm:ss") + " " + s + "\n") with _ -> ()
-                                    let nsMgr = new System.Xml.XmlNamespaceManager(body.OwnerDocument.NameTable)
-                                    nsMgr.AddNamespace("tr2", "http://www.onvif.org/ver20/media/wsdl")
-                                    let nodes = body.SelectNodes("tr2:Configurations", nsMgr)
-                                    log (sprintf "body=%s nodes=%d" body.LocalName (if nodes |> IsNull then -1 else nodes.Count))
-                                    if nodes |> IsNull then
-                                        return [||]
-                                    else
-                                        return [|
-                                            for i in 0 .. nodes.Count - 1 do
-                                                let el = nodes.[i] :?> System.Xml.XmlElement
-                                                let token = el.GetAttribute("token")
-                                                if token |> NotNull && token.Length > 0 then
-                                                    let encEl = el.SelectSingleNode("*[local-name()='Encoding']")
-                                                    let enc =
-                                                        if encEl |> NotNull then
-                                                            match encEl.InnerText.Trim().ToUpperInvariant() with
-                                                            | "H265"  -> VideoEncoding.h265
-                                                            | "JPEG"  -> VideoEncoding.jpeg
-                                                            | "MPEG4" -> VideoEncoding.mpeg4
-                                                            | _       -> VideoEncoding.h264
-                                                        else VideoEncoding.h264
-                                                    log (sprintf "  token=%s enc=%A" token enc)
-                                                    let cfg = new VideoEncoderConfiguration()
-                                                    cfg.token    <- token
-                                                    cfg.encoding <- enc
-                                                    yield cfg
-                                        |]
+                                // response is a raw WCF Message — read body with LINQ to XML.
+                                // All prior approaches (MessageContract IsWrapped=true/false with typed
+                                // arrays or XmlElement fields) returned empty; returning Message directly
+                                // is the only reliable way to read a ver20/media/wsdl response body.
+                                use response = response
+                                let reader = response.GetReaderAtBodyContents()
+                                let doc = System.Xml.Linq.XDocument.Load(reader)
+                                let log = fun (s:string) -> try System.IO.File.AppendAllText(@"C:\odm_media2_debug.txt", System.DateTime.Now.ToString("HH:mm:ss") + " " + s + "\n") with _ -> ()
+                                let nsTr2 = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver20/media/wsdl")
+                                let nsTt  = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver10/schema")
+                                let cfgEls = doc.Root.Elements(nsTr2 + "Configurations") |> Seq.toArray
+                                log (sprintf "root=%s cfgs=%d" doc.Root.Name.LocalName cfgEls.Length)
+                                return [|
+                                    for el in cfgEls do
+                                        let tokenAttr = el.Attribute(System.Xml.Linq.XName.Get("token"))
+                                        if tokenAttr |> NotNull && tokenAttr.Value.Length > 0 then
+                                            let encEl = el.Element(nsTt + "Encoding")
+                                            let enc =
+                                                if encEl |> NotNull then
+                                                    match encEl.Value.Trim().ToUpperInvariant() with
+                                                    | "H265"  -> VideoEncoding.h265
+                                                    | "JPEG"  -> VideoEncoding.jpeg
+                                                    | "MPEG4" -> VideoEncoding.mpeg4
+                                                    | _       -> VideoEncoding.h264
+                                                else VideoEncoding.h264
+                                            log (sprintf "  token=%s enc=%A" tokenAttr.Value enc)
+                                            let cfg = new VideoEncoderConfiguration()
+                                            cfg.token    <- tokenAttr.Value
+                                            cfg.encoding <- enc
+                                            yield cfg
+                                |]
                         with err ->
                             try System.IO.File.AppendAllText(@"C:\odm_media2_debug.txt", System.DateTime.Now.ToString("HH:mm:ss") + " EXC:" + err.Message + "\n") with _ -> ()
                             dbg.Error(err)
