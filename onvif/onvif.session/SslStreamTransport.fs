@@ -269,6 +269,9 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
     // Persistent SSL connection — reused across SOAP calls to avoid per-call TLS handshakes.
     let mutable persistentConn: (TcpClient * SslStream) option = None
     let connLock = obj()
+    // Serializes the entire send/receive cycle so that concurrent BeginRequest calls
+    // on the same channel do not race on the shared SslStream.
+    let requestLock = obj()
 
     /// Returns the existing connection if the TCP socket still reports connected;
     /// otherwise disposes the stale connection and creates a fresh TLS session.
@@ -328,10 +331,17 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
             | Some i -> message.Headers.RemoveAt(i)
             | None -> ()
 
-        // Serialize
-        let buf = encoder.WriteMessage(message, Int32.MaxValue, bufMgr, 0)
-        let bodyBytes = Array.init buf.Count (fun i -> buf.Array.[buf.Offset + i])
-        bufMgr.ReturnBuffer(buf.Array)
+        // Serialize — lock on encoder because it is shared across all channels from the same
+        // SslStreamChannelFactory (the factory holds one MessageEncoder instance and passes
+        // it to every channel it creates).  Without this lock, concurrent RequestCore calls
+        // from different channels race on the encoder's internal XmlDictionaryWriter pool,
+        // producing "The Write method cannot be called when another write operation is pending."
+        let bodyBytes =
+            lock encoder (fun () ->
+                let buf = encoder.WriteMessage(message, Int32.MaxValue, bufMgr, 0)
+                let bytes = Array.init buf.Count (fun i -> buf.Array.[buf.Offset + i])
+                bufMgr.ReturnBuffer(buf.Array)
+                bytes)
 
         // Send via persistent SslStream; retry once on I/O failure (connection may have
         // gone stale between calls — one reconnect is enough).
@@ -359,7 +369,8 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         let respBuf = bufMgr.TakeBuffer(resp.Body.Length)
         Buffer.BlockCopy(resp.Body, 0, respBuf, 0, resp.Body.Length)
         let msg =
-            encoder.ReadMessage(ArraySegment<byte>(respBuf, 0, resp.Body.Length), bufMgr, resp.ContentType)
+            lock encoder (fun () ->
+                encoder.ReadMessage(ArraySegment<byte>(respBuf, 0, resp.Body.Length), bufMgr, resp.ContentType))
         // Mark all mustUnderstand response headers as understood before returning to WCF.
         // gSOAP cameras include Action mustUnderstand="1" in their response envelope;
         // WCF's ServiceChannel.HandleReply throws a FaultException for any mustUnderstand
