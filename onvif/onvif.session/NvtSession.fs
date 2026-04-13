@@ -85,6 +85,7 @@ namespace odm.core
         abstract credentials:NetworkCredential
         abstract deviceUri:Uri
         abstract GetAllCapabilities: unit -> Async<Capabilities>
+        abstract GetVideoEncoderConfigurationsMedia2: unit -> Async<VideoEncoderConfiguration[]>
     end
     
     type SecurityUserNameToken(userName:string, password:string, deviceTime:System.DateTime) = class
@@ -410,14 +411,21 @@ namespace odm.core
             }))
             fun(useTls)->comp(useTls)
 
-        let getSubManFactory = 
+        let getSubManFactory =
             let comp = factory_wrapper (fun(useTls)-> Async.Memoize(async{
                 do! Async.SwitchToThreadPool()
                 return NvtSessionFactory.CreateChannelFactory<ISubscriptionManager>(false, true, credentials |> NotNull, useTls)
             }))
             fun(useTls)->comp(useTls)
-        
-        
+
+        let getMedia2Factory =
+            let comp = factory_wrapper (fun(useTls)-> Async.Memoize(async{
+                do! Async.SwitchToThreadPool()
+                return NvtSessionFactory.CreateChannelFactory<IMedia2>(false, false, credentials |> NotNull, useTls)
+            }))
+            fun(useTls)->comp(useTls)
+
+
         static member private CreateChannelFactory<'T>(mtomEncoding:bool, wsAddressing:bool, securityToken: bool, useTls: bool):ChannelFactory<'T> =
             let binding = 
                 let bindingElements = seq{
@@ -1012,15 +1020,39 @@ namespace odm.core
                 })
                 fun()->comp
 
-            let GetMediaServiceCabalities = 
+            let GetMediaServiceCabalities =
                 let comp = Async.Memoize(async{
                     let! media = GetMediaClient()
-                    if media |> NotNull then 
+                    if media |> NotNull then
                         return! media.GetServiceCapabilities()
                     else
                         return null
                 })
                 fun() -> comp
+
+            // Client for the ONVIF Media2 service (ver20/media/wsdl).
+            // Discovered via GetServices(); returns null if the camera does not advertise Media2.
+            let GetMedia2Client =
+                let comp = Async.Memoize(async{
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetMedia2Client")
+                    let! services = GetServices()
+                    if services |> IsNull then
+                        return null
+                    else
+                        let service = services.FirstOrDefault(fun (s:Service) -> s.Namespace = "http://www.onvif.org/ver20/media/wsdl")
+                        if service |> IsNull then
+                            return null
+                        else
+                            do! Async.SwitchToThreadPool()
+                            let! url = FixUrl(new Uri(service.XAddr, UriKind.RelativeOrAbsolute))
+                            let useTls = url.Scheme = Uri.UriSchemeHttps
+                            let! factory = getMedia2Factory(useTls)
+                            let endpointAddr = new EndpointAddress(url)
+                            let proxy = factory.CreateChannel(endpointAddr)
+                            do! SetupUserNameToken(proxy :?> IClientChannel)
+                            return proxy
+                })
+                fun()->comp
 
             let MediaGetVideoSources = 
                 let comp = Async.Memoize(async{
@@ -1149,8 +1181,22 @@ namespace odm.core
                         return new SubscriptionManagerAsync(proxy) :> ISubscriptionManagerAsync
                     }
 
-                    member this.GetAllCapabilities() = 
+                    member this.GetAllCapabilities() =
                         GetAllCapabilities()
+
+                    member this.GetVideoEncoderConfigurationsMedia2(): Async<VideoEncoderConfiguration[]> = async{
+                        try
+                            let! med2 = GetMedia2Client()
+                            if med2 |> IsNull then
+                                return [||]
+                            else
+                                let request = new Media2GetVideoEncoderConfigurationsRequest()
+                                let! response = Async.FromBeginEnd(request, med2.BeginGetVideoEncoderConfigurations, med2.EndGetVideoEncoderConfigurations)
+                                return response.Configurations |> SuppressNull [||]
+                        with err ->
+                            dbg.Error(err)
+                            return [||]
+                    }
 
                 end
 
