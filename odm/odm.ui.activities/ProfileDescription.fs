@@ -170,7 +170,13 @@
         yield CreateProp("name", vec.name, null)
         yield CreateProp("token", vec.token, null)
         yield CreateProp("use count", vec.useCount, null)
-        yield CreateProp("encoding", vec.encoding, null)
+        // Fix: infer H265 when camera reports H264 but provides H265 sub-config
+        let effectiveEncoding =
+            if vec.encoding = VideoEncoding.h264 && vec.h265 |> NotNull then
+                VideoEncoding.h265
+            else
+                vec.encoding
+        yield CreateProp("encoding", effectiveEncoding, null)
         yield CreateProp("resolution", vec.resolution, null)
         yield CreateProp("session timeout", vec.sessionTimeout, null)
         yield CreateProp("quality", vec.quality, null)

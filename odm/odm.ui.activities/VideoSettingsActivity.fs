@@ -52,7 +52,16 @@ namespace odm.ui.activities
             
             let vec  = profile.videoEncoderConfiguration
             let! options = session.GetVideoEncoderConfigurationOptions(vec.token, profile.token)
-            
+
+            // Fix: some cameras report Encoding=H264 for ONVIF 1.x compatibility even
+            // when actually encoding H265, signalled by a populated H265 sub-configuration.
+            // Infer the real encoding from the sub-config so the UI shows the correct codec.
+            let effectiveEncoding =
+                if vec.encoding = VideoEncoding.h264 && NotNull(vec.h265) then
+                    VideoEncoding.h265
+                else
+                    vec.encoding
+
             let resolution = vec.resolution
             let framerate = 
                 if vec.rateControl |> NotNull then
@@ -97,7 +106,7 @@ namespace odm.ui.activities
                     yield options.jpeg.frameRateRange
                 if options.mpeg4 |> NotNull then
                     yield options.mpeg4.frameRateRange
-                if options.h265 |> NotNull then
+                if options.h265 |> NotNull && options.h265.frameRateRange |> NotNull then
                     yield options.h265.frameRateRange
             })
 
@@ -108,7 +117,7 @@ namespace odm.ui.activities
                     yield options.jpeg.encodingIntervalRange
                 if options.mpeg4 |> NotNull then
                     yield options.mpeg4.encodingIntervalRange
-                if options.h265 |> NotNull then
+                if options.h265 |> NotNull && options.h265.encodingIntervalRange |> NotNull then
                     yield options.h265.encodingIntervalRange
             })
             
@@ -117,15 +126,15 @@ namespace odm.ui.activities
                     yield options.h264.govLengthRange
                 if options.mpeg4 |> NotNull then
                     yield options.mpeg4.govLengthRange
-                if options.h265 |> NotNull then
+                if options.h265 |> NotNull && options.h265.govLengthRange |> NotNull then
                     yield options.h265.govLengthRange
             })
             let govLength =
-                if vec.encoding = VideoEncoding.h264 && NotNull(vec.h264) then
+                if effectiveEncoding = VideoEncoding.h264 && NotNull(vec.h264) then
                     vec.h264.govLength
-                elif vec.encoding = VideoEncoding.mpeg4 && NotNull(vec.mpeg4) then
+                elif effectiveEncoding = VideoEncoding.mpeg4 && NotNull(vec.mpeg4) then
                     vec.mpeg4.govLength
-                elif vec.encoding = VideoEncoding.h265 && NotNull(vec.h265) then
+                elif effectiveEncoding = VideoEncoding.h265 && NotNull(vec.h265) then
                     vec.h265.govLength
                 else
                     -1
@@ -196,7 +205,7 @@ namespace odm.ui.activities
                 profToken = profToken
             )
             
-            model.encoder <- vec.encoding
+            model.encoder <- effectiveEncoding
             model.resolution <- resolution
             model.frameRate <- float(framerate)
             model.govLength <- govLength
