@@ -33,12 +33,14 @@
                     Source="/odm.ui.views;component/images/alert3-th.png" 
                     Width="42" Stretch="Uniform"
                     Margin="0" VerticalAlignment="Top"/>
-                <TextBlock 
-                    Grid.Row="0" Grid.Column="2" 
+                <TextBox
+                    Grid.Row="0" Grid.Column="2"
                     x:Name="message"
-                    Text="{Binding ErrorMessage}" 
+                    Text="{Binding ErrorMessage}"
                     Margin="0" Padding="0"
-                    TextWrapping="Wrap" VerticalAlignment="Center"/>
+                    TextWrapping="Wrap" VerticalAlignment="Center"
+                    IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                    IsTabStop="False" Cursor="IBeam"/>
                 <!--<Expander Header="Details" Visibility="Visible">
 			<WebBrowser/>
 		</Expander>-->

@@ -41,7 +41,9 @@
 			<Border Visibility="{Binding ErrorVisibility}" DockPanel.Dock="Top" BorderBrush="Gray" Margin="3" BorderThickness="1" CornerRadius="4">
                 <StackPanel Orientation="Vertical">
                     <TextBlock Margin="3" Text="Error during events subscription:" FontWeight="Bold" Foreground="Red"/>
-                    <TextBlock Margin="3" Text="{Binding ErrorMsg}" Name="errorText" TextWrapping="Wrap"/>
+                    <TextBox Margin="3" Text="{Binding ErrorMsg}" Name="errorText" TextWrapping="Wrap"
+                             IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                             IsTabStop="False" Cursor="IBeam"/>
                 </StackPanel>
             </Border>
             <Border Visibility="{Binding EventsVisibility}" BorderBrush="Gray" Margin="3" BorderThickness="1" CornerRadius="4">

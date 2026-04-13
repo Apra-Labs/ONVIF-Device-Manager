@@ -37,12 +37,14 @@
 					Source="/odm.ui.views;component/images/alert3-th.png" 
 					Width="42" Stretch="Uniform"
 					Margin="0" VerticalAlignment="Top"/>
-				<TextBlock 
+				<TextBox
 					x:Name="ErrorMessage"
-					Grid.Row="0" Grid.Column="2" 
-					Text="some message" 
+					Grid.Row="0" Grid.Column="2"
+					Text="some message"
 					Margin="0" Padding="0"
-					TextWrapping="Wrap" VerticalAlignment="Center"/>
+					TextWrapping="Wrap" VerticalAlignment="Center"
+					IsReadOnly="True" Background="Transparent" BorderThickness="0"
+					IsTabStop="False" Cursor="IBeam"/>
 			</Grid>
 			<StackPanel Orientation="Horizontal" Margin="0">
 				<TextBlock 

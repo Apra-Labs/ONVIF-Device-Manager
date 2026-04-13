@@ -24,19 +24,23 @@
 			Source="/odm.ui.views;component/images/alert3-th.png" 
 			Width="42" Stretch="Uniform"
 			Margin="0" VerticalAlignment="Top"/>
-		<TextBlock 
-			Grid.Row="0" Grid.Column="2" 
+		<TextBox
+			Grid.Row="0" Grid.Column="2"
 			x:Name="message"
-			Text="some message" 
+			Text="some message"
 			Margin="0" Padding="0"
-			TextWrapping="Wrap" VerticalAlignment="Center"/>
-		
-		<TextBlock 
-            Name="valueDetails" 
-            Visibility="Collapsed" 
-            Grid.Row="1" 
+			TextWrapping="Wrap" VerticalAlignment="Center"
+			IsReadOnly="True" Background="Transparent" BorderThickness="0"
+			IsTabStop="False" Cursor="IBeam"/>
+
+		<TextBox
+            Name="valueDetails"
+            Visibility="Collapsed"
+            Grid.Row="1"
             Grid.Column="2"
             TextWrapping="Wrap"
+            IsReadOnly="True" Background="Transparent" BorderThickness="0"
+            IsTabStop="False" Cursor="IBeam"
             />
 		
 		<StackPanel 
