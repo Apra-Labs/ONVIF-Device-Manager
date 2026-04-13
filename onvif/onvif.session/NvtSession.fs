@@ -1203,11 +1203,9 @@ namespace odm.core
                                 let bodyReader = response.GetReaderAtBodyContents()
                                 let bodyXml = bodyReader.ReadOuterXml()
                                 let doc = System.Xml.Linq.XDocument.Parse(bodyXml)
-                                let log = fun (s:string) -> try System.IO.File.AppendAllText(@"C:\odm_media2_debug.txt", System.DateTime.Now.ToString("HH:mm:ss") + " " + s + "\n") with _ -> ()
                                 let nsTr2 = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver20/media/wsdl")
                                 let nsTt  = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver10/schema")
                                 let cfgEls = doc.Root.Elements(nsTr2 + "Configurations") |> Seq.toArray
-                                log (sprintf "root=%s cfgs=%d" doc.Root.Name.LocalName cfgEls.Length)
                                 return [|
                                     for el in cfgEls do
                                         let tokenAttr = el.Attribute(System.Xml.Linq.XName.Get("token"))
@@ -1221,14 +1219,12 @@ namespace odm.core
                                                     | "MPEG4" -> VideoEncoding.mpeg4
                                                     | _       -> VideoEncoding.h264
                                                 else VideoEncoding.h264
-                                            log (sprintf "  token=%s enc=%A" tokenAttr.Value enc)
                                             let cfg = new VideoEncoderConfiguration()
                                             cfg.token    <- tokenAttr.Value
                                             cfg.encoding <- enc
                                             yield cfg
                                 |]
                         with err ->
-                            try System.IO.File.AppendAllText(@"C:\odm_media2_debug.txt", System.DateTime.Now.ToString("HH:mm:ss") + " EXC:" + err.Message + "\n") with _ -> ()
                             dbg.Error(err)
                             return [||]
                     }
