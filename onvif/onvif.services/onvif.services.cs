@@ -617,4 +617,38 @@ namespace onvif.services {
 				.AddMinutes(dateTime.time.minute);
 		}
 	}
+
+	// --- ONVIF Media2 service proxy (ver20/media/wsdl) ---
+	// Used to query GetVideoEncoderConfigurations from cameras that advertise
+	// the Media2 service endpoint (ver20/media/wsdl) via WS-Discovery / GetServices.
+	// This is needed for cameras that report Encoding=H264 via Media1 but actually
+	// encode H265 — they expose the true encoding only through Media2.
+
+	[ServiceContract(Namespace = "http://www.onvif.org/ver20/media/wsdl")]
+	public interface IMedia2 {
+		[OperationContract(AsyncPattern = true,
+			Action = "http://www.onvif.org/ver20/media/wsdl/GetVideoEncoderConfigurations",
+			ReplyAction = "*")]
+		IAsyncResult BeginGetVideoEncoderConfigurations(
+			Media2GetVideoEncoderConfigurationsRequest request,
+			AsyncCallback callback, object asyncState);
+		Media2GetVideoEncoderConfigurationsResponse EndGetVideoEncoderConfigurations(
+			IAsyncResult result);
+	}
+
+	[MessageContract(WrapperName = "GetVideoEncoderConfigurations",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2GetVideoEncoderConfigurationsRequest {
+		public Media2GetVideoEncoderConfigurationsRequest() { }
+	}
+
+	[MessageContract(WrapperName = "GetVideoEncoderConfigurationsResponse",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2GetVideoEncoderConfigurationsResponse {
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
+		[XmlElement("Configurations", Namespace = "http://www.onvif.org/ver20/media/wsdl")]
+		public VideoEncoderConfiguration[] Configurations;
+
+		public Media2GetVideoEncoderConfigurationsResponse() { }
+	}
 }
