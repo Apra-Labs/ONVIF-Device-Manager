@@ -1,7 +1,7 @@
 {
   "project": "H265 ODM Support",
   "branch": "feat/h265-support",
-  "updated_at": "2026-04-10",
+  "updated_at": "2026-04-13",
   "phases": [
     {
       "id": "1",
@@ -49,6 +49,16 @@
         {"id": "4.1", "title": "Handle H265 in VideoSettingsActivity encoder match", "status": "completed", "type": "task", "notes": "Added |VideoEncoding.h265 -> validateConfig(options.h265) to the isVecConfigured match expression in apply_changes(), before the |_ default case. Mirrors the h264/jpeg/mpeg4 pattern exactly."},
         {"id": "4.2", "title": "Handle H265 govLength and configuration in VideoSettingsActivity", "status": "completed", "type": "task", "notes": "Added h265 branches in 6 locations in VideoSettingsActivity.fs: (1) frameRateRanges seq — options.h265.frameRateRange; (2) encIntervalRanges seq — options.h265.encodingIntervalRange; (3) govLengthRanges seq — options.h265.govLengthRange; (4) govLength if/elif — vec.h265.govLength when encoding=h265; (5) bitrateRanges seq — H265Options2 deserialization for x.Name=H265; (6) validateConfig govLength assignment — creates H265Configuration and sets govLength. ProfileDescription.fs and ConfigureProfileActivity.fs reviewed — no H265-specific branching needed (display is generic)."},
         {"id": "4.3", "title": "VERIFY: full solution builds", "status": "completed", "type": "verify", "notes": "msbuild/dotnet unavailable (.NET Framework 4.5 targeting pack not installed). Manual review performed on VideoSettingsActivity.fs: (1) isVecConfigured match covers h264/jpeg/mpeg4/h265 and |_ fallback — no incomplete match; (2) All H265 seq branches (frameRateRanges, encIntervalRanges, govLengthRanges, bitrateRanges) mirror H264 pattern exactly with correct indentation; (3) govLength read uses elif vec.encoding = VideoEncoding.h265 && NotNull(vec.h265) — correct; (4) validateConfig govLength write uses elif model.encoder = VideoEncoding.h265 with new H265Configuration() and vec.h265.govLength — correct; (5) H265Options has resolutionsAvailable/govLengthRange/frameRateRange/encodingIntervalRange properties matching all SRTP constraints in validateConfig/CoerceGovLength — confirmed in onvif.types.cs; (6) H265Configuration has govLength property — confirmed; (7) VideoEncoderConfiguration has h265 property of type H265Configuration — confirmed; (8) ProfileDescription.fs and ConfigureProfileActivity.fs reviewed — no H265-specific changes needed. No F# syntax issues identified."}
+      ]
+    },
+    {
+      "id": "6",
+      "title": "ONVIF Media2 H265 Support",
+      "tasks": [
+        {"id": "6.1", "title": "Add IMedia2 WCF proxy interface to onvif.services.cs", "status": "completed", "type": "task", "notes": "Defined IMedia2 service contract (Namespace=http://www.onvif.org/ver20/media/wsdl) with async Begin/End GetVideoEncoderConfigurations. Added Media2GetVideoEncoderConfigurationsRequest (empty wrapper) and Media2GetVideoEncoderConfigurationsResponse (Configurations: VideoEncoderConfiguration[]) message types. Commit cbac850."},
+        {"id": "6.2", "title": "Add GetVideoEncoderConfigurationsMedia2 to NvtSession.fs", "status": "completed", "type": "task", "notes": "Added abstract GetVideoEncoderConfigurationsMedia2 to INvtSession interface. Added getMedia2Factory (CreateChannelFactory<IMedia2>) and memoized GetMedia2Client that uses GetServices() to discover ver20/media/wsdl endpoint. Implemented session method that calls Media2, swallows all errors and returns [] if service absent. Commit cbe6209."},
+        {"id": "6.3", "title": "Update GetVecDetails in ProfileDescription.fs for Media2 override", "status": "completed", "type": "task", "notes": "Removed debug System.IO.File.AppendAllText(@C:\\odm_h265_debug.txt,...) block. Added optional ?media2Encoding:VideoEncoding parameter — when supplied with a non-H264 value it overrides the Media1 effective encoding. Existing callers unaffected (optional param). Commit 5438d2e."},
+        {"id": "6.4", "title": "Apply Media2 H265 override in VideoSettingsActivity.fs load()", "status": "completed", "type": "task", "notes": "In load(), after computing media1Encoding via existing multi-case anyH265 logic, calls session.GetVideoEncoderConfigurationsMedia2() (non-blocking, returns [] on any error). If Media2 returns a config matching vec.token with encoding != h264, uses that as effectiveEncoding. Fixes cameras like 10.102.10.7 that advertise ver20/media/wsdl but report H264 via Media1. Commit 3756f28."}
       ]
     },
     {
