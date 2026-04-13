@@ -170,7 +170,7 @@
     /// Pass media2Encoding to override the effective encoding when the caller has already
     /// fetched the true encoding from the ONVIF Media2 service (ver20/media/wsdl).
     ///</summary>
-    let GetVecDetails(vec:VideoEncoderConfiguration, ?media2Encoding:VideoEncoding) = Seq.toList(seq{
+    let GetVecDetails(vec:VideoEncoderConfiguration, media2Encoding:VideoEncoding option) = Seq.toList(seq{
         yield CreateProp("name", vec.name, null)
         yield CreateProp("token", vec.token, null)
         yield CreateProp("use count", vec.useCount, null)
@@ -292,7 +292,7 @@
 
         if profile.videoEncoderConfiguration |> NotNull then
             let vec = profile.videoEncoderConfiguration
-            let childs = GetVecDetails(vec)
+            let childs = GetVecDetails(vec, None)
             yield CreateProp("Video Encoder Configuration", vec.GetName(), childs |> List.toArray)
 
         if profile.audioEncoderConfiguration |> NotNull then
@@ -352,5 +352,5 @@
                     else
                         videoInput.token
 
-                yield CreateProp("video input", videoInputName, GetVecDetails(videoInput) |> List.toArray)
+                yield CreateProp("video input", videoInputName, GetVecDetails(videoInput, None) |> List.toArray)
     })
