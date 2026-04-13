@@ -1,0 +1,12 @@
+{
+  "sprint": "h265-odm",
+  "tasks": [
+    {
+      "id": "ffmpeg-dll-fix",
+      "title": "Deploy FFmpeg n7.1 DLLs to fix odm.player.net.dll load failure",
+      "status": "completed",
+      "completed_at": "2026-04-14",
+      "notes": "Downloaded ffmpeg-n7.1-latest-win64-lgpl-shared-7.1.zip from BtbN/FFmpeg-Builds (latest release). All 7 DLLs placed in libs/ffmpeg-n7.1-lgpl-shared/x64/bin/ and deployed to Release/x64 output root. csproj updated: ffmpegDir x64 now points to n7.1 dir; 8 old Content items (avcodec-54 etc with 3rd\\ prefix) replaced with 7 new ones (avcodec-61 etc, no postproc, no 3rd\\ prefix so DLLs land in exe root). postproc-52 dropped — not in LGPL build."
+    }
+  ]
+}
