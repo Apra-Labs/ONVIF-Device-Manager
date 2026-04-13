@@ -645,9 +645,13 @@ namespace onvif.services {
 	[MessageContract(WrapperName = "GetVideoEncoderConfigurationsResponse",
 		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
 	public partial class Media2GetVideoEncoderConfigurationsResponse {
+		// Use XmlElement[] to capture raw XML — deserializing directly into
+		// VideoEncoderConfiguration[] fails because the wrapper element namespace
+		// (ver20/media/wsdl) doesn't match the XmlType namespace (ver10/schema).
+		// NvtSession.fs parses token and Encoding from the raw elements instead.
 		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
 		[XmlElement("Configurations", Namespace = "http://www.onvif.org/ver20/media/wsdl")]
-		public VideoEncoderConfiguration[] Configurations;
+		public System.Xml.XmlElement[] Configurations;
 
 		public Media2GetVideoEncoderConfigurationsResponse() { }
 	}

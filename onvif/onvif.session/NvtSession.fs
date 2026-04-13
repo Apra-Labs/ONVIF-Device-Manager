@@ -1192,7 +1192,30 @@ namespace odm.core
                             else
                                 let request = new Media2GetVideoEncoderConfigurationsRequest()
                                 let! response = Async.FromBeginEnd(request, med2.BeginGetVideoEncoderConfigurations, med2.EndGetVideoEncoderConfigurations)
-                                return response.Configurations |> SuppressNull [||]
+                                // response.Configurations is XmlElement[] — parse token and Encoding manually
+                                // because WCF cannot deserialize VideoEncoderConfiguration[] across the
+                                // ver20/media/wsdl (wrapper) / ver10/schema (type) namespace boundary.
+                                let rawEls = response.Configurations |> SuppressNull [||]
+                                return rawEls |> Array.choose (fun el ->
+                                    if el |> IsNull then None
+                                    else
+                                        let token = el.GetAttribute("token")
+                                        if token |> IsNull then None
+                                        else
+                                            let encEl = el.SelectSingleNode("*[local-name()='Encoding']")
+                                            let enc =
+                                                if encEl |> NotNull then
+                                                    match encEl.InnerText.Trim().ToUpperInvariant() with
+                                                    | "H265"  -> VideoEncoding.h265
+                                                    | "JPEG"  -> VideoEncoding.jpeg
+                                                    | "MPEG4" -> VideoEncoding.mpeg4
+                                                    | _       -> VideoEncoding.h264
+                                                else VideoEncoding.h264
+                                            let cfg = new VideoEncoderConfiguration()
+                                            cfg.token    <- token
+                                            cfg.encoding <- enc
+                                            Some cfg
+                                )
                         with err ->
                             dbg.Error(err)
                             return [||]
