@@ -642,16 +642,16 @@ namespace onvif.services {
 		public Media2GetVideoEncoderConfigurationsRequest() { }
 	}
 
-	[MessageContract(WrapperName = "GetVideoEncoderConfigurationsResponse",
-		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	// IsWrapped=false: capture the entire <GetVideoEncoderConfigurationsResponse> element
+	// as a single raw XmlElement. IsWrapped=true with typed arrays failed — WCF's
+	// XmlSerializerMessageFormatter does not populate body-member arrays when the wrapper
+	// namespace (ver20/media/wsdl) differs from the element type namespace (ver10/schema).
+	// NvtSession.fs parses <Configurations> children from Body manually.
+	[MessageContract(IsWrapped = false)]
 	public partial class Media2GetVideoEncoderConfigurationsResponse {
-		// Use XmlElement[] to capture raw XML — deserializing directly into
-		// VideoEncoderConfiguration[] fails because the wrapper element namespace
-		// (ver20/media/wsdl) doesn't match the XmlType namespace (ver10/schema).
-		// NvtSession.fs parses token and Encoding from the raw elements instead.
-		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
-		[XmlElement("Configurations", Namespace = "http://www.onvif.org/ver20/media/wsdl")]
-		public System.Xml.XmlElement[] Configurations;
+		[MessageBodyMember(Name = "GetVideoEncoderConfigurationsResponse",
+			Namespace = "http://www.onvif.org/ver20/media/wsdl")]
+		public System.Xml.XmlElement Body;
 
 		public Media2GetVideoEncoderConfigurationsResponse() { }
 	}
