@@ -17,7 +17,9 @@
     SnapsToDevicePixels="true">
 
     <DockPanel Margin="3">
-        <TextBlock Text="{Binding Message}" HorizontalAlignment="Left" DockPanel.Dock="Top"/>
+        <TextBox Text="{Binding Message}" HorizontalAlignment="Left" DockPanel.Dock="Top"
+                 IsReadOnly="True" TextWrapping="Wrap" Background="Transparent" BorderThickness="0"
+                 IsTabStop="False" Cursor="IBeam"/>
         <Button HorizontalAlignment="Right" Content="{Binding ButtonName}" DockPanel.Dock="Bottom" Click="Button_Click"/>
         <ProgressBar Visibility="{Binding IsProgressVisible}" Height="16" IsIndeterminate="True" Margin="0,10,0,10"/>
     </DockPanel>

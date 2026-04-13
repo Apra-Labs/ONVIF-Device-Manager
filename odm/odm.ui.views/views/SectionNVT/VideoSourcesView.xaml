@@ -43,7 +43,9 @@
                         <my:DeviceChannelControl HorizontalAlignment="Stretch" Title="{Binding Name}">
                             <Grid>
                                 <DockPanel Margin="6" Visibility="{Binding StateError}" HorizontalAlignment="Stretch"  VerticalAlignment="Top">
-                                    <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" DockPanel.Dock="Top"/>
+                                    <TextBox Text="{Binding ErrorMessage}" TextWrapping="Wrap" DockPanel.Dock="Top"
+                                             IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                                             IsTabStop="False" Cursor="IBeam"/>
                                 </DockPanel>
                                 <DockPanel Margin="6" Visibility="{Binding StateLoading}" HorizontalAlignment="Left" VerticalAlignment="Top">
                                     <Label Content="{Binding AppStrings.loading}" DockPanel.Dock="Top"/>

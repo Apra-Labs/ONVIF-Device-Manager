@@ -213,7 +213,7 @@ namespace odm.ui.activities {
 			//valuePresetsList.CreateBinding(ListBox.SelectedItemProperty, this, x => x.SelectedPreset, (m, v) => m.SelectedPreset = v);
 			//ReloadPresets();
 
-			captionErrorMessage.CreateBinding(TextBlock.TextProperty, this, x => x.ErrorMessage);
+			captionErrorMessage.CreateBinding(TextBox.TextProperty, this, x => x.ErrorMessage);
 
 			// setup controls for absolute movements
 
