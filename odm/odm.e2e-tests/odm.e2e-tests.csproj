@@ -39,6 +39,9 @@
     <Reference Include="FlaUI.UIA3">
       <HintPath>$(MSBuildProjectDirectory)\..\..\packages\FlaUI.UIA3.4.0.0\lib\net48\FlaUI.UIA3.dll</HintPath>
     </Reference>
+    <Reference Include="Interop.UIAutomationClient">
+      <HintPath>$(MSBuildProjectDirectory)\..\..\packages\Interop.UIAutomationClient\lib\net48\Interop.UIAutomationClient.dll</HintPath>
+    </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(MSBuildProjectDirectory)\..\..\packages\Newtonsoft.Json.13.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
@@ -50,6 +53,8 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="UIAutomationClient" />
+    <Reference Include="UIAutomationTypes" />
     <Reference Include="System.Net.Http" />
     <Reference Include="System.ServiceModel" />
     <Reference Include="System.Xml" />
@@ -68,6 +73,7 @@
     <Compile Include="Tests\AuthTests.cs" />
     <Compile Include="Tests\DiscoveryTests.cs" />
     <Compile Include="Tests\ErrorDetectionTests.cs" />
+    <Compile Include="Tests\HttpsIdentificationTests.cs" />
     <Compile Include="Tests\HttpsTests.cs" />
     <Compile Include="Tests\LaunchTests.cs" />
     <Compile Include="Tests\LiveVideoTests.cs" />
