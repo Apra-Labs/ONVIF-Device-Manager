@@ -170,12 +170,26 @@
         yield CreateProp("name", vec.name, null)
         yield CreateProp("token", vec.token, null)
         yield CreateProp("use count", vec.useCount, null)
-        // Fix: infer H265 when camera reports H264 but provides H265 sub-config
+        // Determine effective encoding for cameras that report H265 via one of several
+        // ONVIF conventions:
+        //  (a) Encoding=H265 directly — XmlEnum("H265") handles this automatically.
+        //  (b) Encoding=H264 + H265 sub-config in vec.h265 (ONVIF 1.x compat mode).
+        //  (c) Encoding=H264 + H265 element WITHOUT the ONVIF namespace — the element
+        //      misses the [XmlElement(...Namespace=...)] match and falls into vec.any.
+        //      Check vec.any by LocalName to recover from this namespace mismatch.
+        let anyH265 =
+            vec.any |> NotNull &&
+            vec.any |> Array.exists (fun (e:System.Xml.XmlElement) -> e.LocalName = "H265")
         let effectiveEncoding =
-            if vec.encoding = VideoEncoding.h264 && vec.h265 |> NotNull then
+            if vec.encoding = VideoEncoding.h264 && (vec.h265 |> NotNull || anyH265) then
                 VideoEncoding.h265
             else
                 vec.encoding
+        // Debug: shows raw deserialized values — visible in DEBUG builds via trace listeners.
+        // Check logs/soap_debug.txt (SslStreamTransport) for the raw camera XML.
+        dbg.Info(sprintf "[H265-DBG] VEC token=%s enc=%A h265Present=%b anyH265=%b anyCount=%d"
+            vec.token vec.encoding (vec.h265 |> NotNull) anyH265
+            (if vec.any |> NotNull then vec.any.Length else 0))
         yield CreateProp("encoding", effectiveEncoding, null)
         yield CreateProp("resolution", vec.resolution, null)
         yield CreateProp("session timeout", vec.sessionTimeout, null)

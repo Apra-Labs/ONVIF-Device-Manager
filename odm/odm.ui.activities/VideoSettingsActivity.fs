@@ -53,11 +53,14 @@ namespace odm.ui.activities
             let vec  = profile.videoEncoderConfiguration
             let! options = session.GetVideoEncoderConfigurationOptions(vec.token, profile.token)
 
-            // Fix: some cameras report Encoding=H264 for ONVIF 1.x compatibility even
-            // when actually encoding H265, signalled by a populated H265 sub-configuration.
-            // Infer the real encoding from the sub-config so the UI shows the correct codec.
+            // Fix: infer effective H265 encoding using the same multi-case logic as
+            // ProfileDescription.GetVecDetails (see comments there for full rationale).
+            // Also checks vec.any for cameras whose H265 sub-element lacks the ONVIF namespace.
+            let anyH265 =
+                NotNull(vec.any) &&
+                vec.any |> Array.exists (fun (e:System.Xml.XmlElement) -> e.LocalName = "H265")
             let effectiveEncoding =
-                if vec.encoding = VideoEncoding.h264 && NotNull(vec.h265) then
+                if vec.encoding = VideoEncoding.h264 && (NotNull(vec.h265) || anyH265) then
                     VideoEncoding.h265
                 else
                     vec.encoding
