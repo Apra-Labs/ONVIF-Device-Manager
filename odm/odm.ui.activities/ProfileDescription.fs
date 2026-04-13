@@ -165,8 +165,12 @@
             yield CreateProp("audio source token", asc.sourceToken, null)
     })
 
-    ///<summary></summary>
-    let GetVecDetails(vec:VideoEncoderConfiguration) = Seq.toList(seq{
+    ///<summary>
+    /// Returns display properties for a VideoEncoderConfiguration.
+    /// Pass media2Encoding to override the effective encoding when the caller has already
+    /// fetched the true encoding from the ONVIF Media2 service (ver20/media/wsdl).
+    ///</summary>
+    let GetVecDetails(vec:VideoEncoderConfiguration, ?media2Encoding:VideoEncoding) = Seq.toList(seq{
         yield CreateProp("name", vec.name, null)
         yield CreateProp("token", vec.token, null)
         yield CreateProp("use count", vec.useCount, null)
@@ -177,19 +181,20 @@
         //  (c) Encoding=H264 + H265 element WITHOUT the ONVIF namespace — the element
         //      misses the [XmlElement(...Namespace=...)] match and falls into vec.any.
         //      Check vec.any by LocalName to recover from this namespace mismatch.
+        //  (d) media2Encoding override — caller verified via Media2 GetVideoEncoderConfigurations
+        //      that the true encoding differs from what Media1 reports (e.g. H264 vs H265).
         let anyH265 =
             vec.any |> NotNull &&
             vec.any |> Array.exists (fun (e:System.Xml.XmlElement) -> e.LocalName = "H265")
-        let effectiveEncoding =
+        let media1Encoding =
             if vec.encoding = VideoEncoding.h264 && (vec.h265 |> NotNull || anyH265) then
                 VideoEncoding.h265
             else
                 vec.encoding
-        // Debug: shows raw deserialized values — visible in DEBUG builds via trace listeners.
-        // Check logs/soap_debug.txt (SslStreamTransport) for the raw camera XML.
-        dbg.Info(sprintf "[H265-DBG] VEC token=%s enc=%A h265Present=%b anyH265=%b anyCount=%d"
-            vec.token vec.encoding (vec.h265 |> NotNull) anyH265
-            (if vec.any |> NotNull then vec.any.Length else 0))
+        let effectiveEncoding =
+            match media2Encoding with
+            | Some enc when enc <> VideoEncoding.h264 -> enc
+            | _ -> media1Encoding
         yield CreateProp("encoding", effectiveEncoding, null)
         yield CreateProp("resolution", vec.resolution, null)
         yield CreateProp("session timeout", vec.sessionTimeout, null)
