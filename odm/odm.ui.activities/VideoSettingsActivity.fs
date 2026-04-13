@@ -59,11 +59,24 @@ namespace odm.ui.activities
             let anyH265 =
                 NotNull(vec.any) &&
                 vec.any |> Array.exists (fun (e:System.Xml.XmlElement) -> e.LocalName = "H265")
-            let effectiveEncoding =
+            let media1Encoding =
                 if vec.encoding = VideoEncoding.h264 && (NotNull(vec.h265) || anyH265) then
                     VideoEncoding.h265
                 else
                     vec.encoding
+
+            // Override with Media2 result for cameras that advertise ver20/media/wsdl but
+            // still report Encoding=H264 via Media1 (e.g. the confirmed case at 10.102.10.7).
+            let! media2Cfgs =
+                async{
+                    try return! session.GetVideoEncoderConfigurationsMedia2()
+                    with _ -> return [||]
+                }
+            let effectiveEncoding =
+                let m2match = media2Cfgs |> Array.tryFind (fun c -> NotNull(c) && c.token = vec.token)
+                match m2match with
+                | Some m2cfg when m2cfg.encoding <> VideoEncoding.h264 -> m2cfg.encoding
+                | _ -> media1Encoding
 
             let resolution = vec.resolution
             let framerate = 
