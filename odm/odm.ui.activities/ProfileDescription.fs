@@ -264,7 +264,7 @@
     })
 
     ///<summary></summary>
-    let GetProfileDetails(profile:Profile, videoSources:seq<VideoSource>, audioSources:seq<AudioSource>, ptzNodes:seq<PTZNode>) = Seq.toList(seq{
+    let GetProfileDetails(profile:Profile, videoSources:seq<VideoSource>, audioSources:seq<AudioSource>, ptzNodes:seq<PTZNode>, media2Cfgs:VideoEncoderConfiguration[]) = Seq.toList(seq{
         yield CreateProp("name", profile.name, null)
         yield CreateProp("token", profile.token, null)
         if profile.fixedSpecified then
@@ -292,7 +292,13 @@
 
         if profile.videoEncoderConfiguration |> NotNull then
             let vec = profile.videoEncoderConfiguration
-            let childs = GetVecDetails(vec, None)
+            let media2Encoding =
+                if media2Cfgs |> NotNull then
+                    media2Cfgs
+                    |> Array.tryFind (fun c -> NotNull(c) && c.token = vec.token)
+                    |> Option.bind (fun c -> if c.encoding <> VideoEncoding.h264 then Some c.encoding else None)
+                else None
+            let childs = GetVecDetails(vec, media2Encoding)
             yield CreateProp("Video Encoder Configuration", vec.GetName(), childs |> List.toArray)
 
         if profile.audioEncoderConfiguration |> NotNull then

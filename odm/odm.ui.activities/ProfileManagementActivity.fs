@@ -126,9 +126,13 @@
         member private this.ShowForm(model, selectedProfile) = async{
             let! cont = async{
                 try
+                    let! media2Cfgs = async{
+                        try return! session.GetVideoEncoderConfigurationsMedia2()
+                        with _ -> return [||]
+                    }
                     let profItems = Seq.toList(seq{
                         for prof in model.profiles do
-                            let details = GetProfileDetails(prof, model.videoSources, model.audioSources, model.ptzNodes)
+                            let details = GetProfileDetails(prof, model.videoSources, model.audioSources, model.ptzNodes, media2Cfgs)
                             let flags = 
                                 if prof.videoSourceConfiguration |> NotNull then
                                     ItemSelectorView.ItemFlags.AllOperationsAvailable
