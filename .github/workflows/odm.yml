@@ -49,22 +49,14 @@ jobs:
 
         Write-Host "Targeting packs installed."
 
-    - name: Build native player (C++/CLI + live555 + FFmpeg)
-      # Build the native player solution explicitly before the managed solution.
-      # devenv /Project does not reliably trigger C++/CLI transitive builds on CI
-      # runners, which was the root cause of issue #1 (odm.player.net.dll missing
-      # or stale in release artifacts). Building it first guarantees the DLL is
-      # present when odm.ui.app copies its project references to its output dir.
-      run: |
-        msbuild odm\odm.player\odm.player.sln `
-          /p:Configuration=Release `
-          /p:Platform=x64 `
-          /p:SolutionDir="${{ github.workspace }}\" `
-          /m /nologo /v:minimal
-      shell: pwsh
-
     - name: Build application
-      run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
+      # Build the full solution (all projects except the installer, which requires
+      # DisableOutOfProcBuild and is handled separately at the end).
+      # Building the full solution ensures the native C++/CLI player projects
+      # (live555, odm.player.lib, odm.player.net) are always compiled fresh —
+      # this was the root cause of issue #1 where /Project odm.ui.app could
+      # silently skip them, leaving a stale or absent odm.player.net.dll.
+      run: msbuild ${{ env.Solution_Name }} /p:Configuration=Release /p:Platform=x64 /p:DeployExtension=false /m /nologo /v:minimal
 
     - name: Restore tests
       run: dotnet restore odm\odm.tests\odm.tests.csproj
