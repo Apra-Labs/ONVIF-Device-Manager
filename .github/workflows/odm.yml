@@ -49,6 +49,20 @@ jobs:
 
         Write-Host "Targeting packs installed."
 
+    - name: Build native player (C++/CLI + live555 + FFmpeg)
+      # Build the native player solution explicitly before the managed solution.
+      # devenv /Project does not reliably trigger C++/CLI transitive builds on CI
+      # runners, which was the root cause of issue #1 (odm.player.net.dll missing
+      # or stale in release artifacts). Building it first guarantees the DLL is
+      # present when odm.ui.app copies its project references to its output dir.
+      run: |
+        msbuild odm\odm.player\odm.player.sln `
+          /p:Configuration=Release `
+          /p:Platform=x64 `
+          /p:SolutionDir="${{ github.workspace }}\" `
+          /m /nologo /v:minimal
+      shell: pwsh
+
     - name: Build application
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
 
@@ -67,6 +81,27 @@ jobs:
     - name: Collect artifacts
       run: .\package.bat
       shell: cmd
+
+    - name: Verify required DLLs present
+      shell: pwsh
+      run: |
+        $required = @(
+          "build\odm.exe",
+          "build\odm.player.net.dll",
+          "build\odm.player.host.exe",
+          "build\odm.player.media.dll",
+          "build\avcodec-61.dll",
+          "build\avformat-61.dll",
+          "build\avutil-59.dll",
+          "build\swscale-8.dll",
+          "build\swresample-5.dll"
+        )
+        $missing = $required | Where-Object { -not (Test-Path $_) }
+        if ($missing) {
+          Write-Error "Missing required artifacts:`n$($missing -join "`n")"
+          exit 1
+        }
+        Write-Host "All required DLLs present."
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
