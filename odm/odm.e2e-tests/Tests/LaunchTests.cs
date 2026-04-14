@@ -46,6 +46,7 @@ namespace odm.e2e_tests.Tests
                 $"Window title '{title}' should contain expected version '{Config.Odm.ExpectedVersion}'.");
         }
 
+        [Ignore("Claude CLI integration broken — '--image' flag no longer supported. Re-enable once ClaudeAnalyzer is updated.")]
         [TestMethod]
         [TestCategory("Scenario1")]
         public void Launch_ScreenshotCapturedAndAnalyzed()

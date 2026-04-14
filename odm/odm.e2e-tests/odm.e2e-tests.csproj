@@ -74,6 +74,7 @@
     <Compile Include="Tests\DiscoveryTests.cs" />
     <Compile Include="Tests\ErrorDetectionTests.cs" />
     <Compile Include="Tests\HttpsIdentificationTests.cs" />
+    <Compile Include="Tests\HttpsNavigationTests.cs" />
     <Compile Include="Tests\HttpsTests.cs" />
     <Compile Include="Tests\LaunchTests.cs" />
     <Compile Include="Tests\LiveVideoTests.cs" />
