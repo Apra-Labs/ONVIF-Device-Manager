@@ -137,9 +137,6 @@ namespace onvifmp{
 		}
 
 		virtual void ProcessFrame(unsigned char* framePtr, int frameSize, struct timeval presentationTime, unsigned duration){
-			static int frame_num = 0;
-			auto started = clock();
-
 			// New send/receive API replaces deprecated avcodec_decode_video2 (removed in FFmpeg 3.1+)
 			AVPacket* avpkt = av_packet_alloc();
 			if (!avpkt) {
@@ -169,7 +166,6 @@ namespace onvifmp{
 					videoRenderer->RenderFrame(avCodecContext, avFrame);
 				}
 			}
-			printf("processed in %ldms\n", clock()-started);
 			//dbg::Info(sys::String::Format("processed in {0}ms",clock()-started));
 		}
 		virtual void Dispose(){

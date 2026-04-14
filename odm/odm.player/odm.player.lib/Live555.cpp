@@ -243,8 +243,6 @@ namespace onvifmp{
 		//rtspClient->fCurrentAuthenticator = mediaStreamInfo->authenticator;
 		auto options = rtspClient->sendOptionsCmd(mediaStreamInfo->url, nullptr, nullptr, mediaStreamInfo->authenticator, 5/*timeout in seconds*/);
 		rtspOptions.getParamSupported = (options!= nullptr && strstr(options, "GET_PARAMETER")!=nullptr);
-		
-		//fprintf(stderr, "options : %s\n", options);
 
 		//should we take care of release sdp string???
 		auto sdp = rtspClient->describeURL(mediaStreamInfo->url, mediaStreamInfo->authenticator,0U, 5/*timeout in seconds*/);
@@ -254,7 +252,7 @@ namespace onvifmp{
 			Cleanup();
 			return false;
 		}
-		
+
 		mediaSession = MediaSession::createNew(*usageEnvironment, sdp);
 		if(mediaSession == NULL){
 			//TODO: log error
