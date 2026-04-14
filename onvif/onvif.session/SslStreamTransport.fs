@@ -345,18 +345,23 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
 
         // Send via persistent SslStream; retry once on I/O failure (connection may have
         // gone stale between calls — one reconnect is enough).
+        // Serialize the entire send/receive cycle on requestLock: SslStream permits only one
+        // pending write and one pending read at a time, so concurrent channels sharing this
+        // persistent connection must not overlap here or SslStream throws
+        // "The Read/Write method cannot be called when another ... operation is pending."
         let mutable retried = false
         let mutable respOpt: SslStreamHelpers.HttpResponse option = None
-        while respOpt.IsNone do
-            let (_, ssl) = getOrCreateConnection timeoutMs
-            try
-                SslStreamHelpers.sendOnSslStream ssl via bodyBytes contentType
-                respOpt <- Some (SslStreamHelpers.readHttpResponse ssl)
-            with
-            | ex when (ex :? IOException || ex :? SocketException) ->
-                clearConnection()
-                if retried then raise ex
-                retried <- true
+        lock requestLock (fun () ->
+            while respOpt.IsNone do
+                let (_, ssl) = getOrCreateConnection timeoutMs
+                try
+                    SslStreamHelpers.sendOnSslStream ssl via bodyBytes contentType
+                    respOpt <- Some (SslStreamHelpers.readHttpResponse ssl)
+                with
+                | ex when (ex :? IOException || ex :? SocketException) ->
+                    clearConnection()
+                    if retried then raise ex
+                    retried <- true)
 
         let resp = respOpt.Value
         if resp.StatusCode >= 400 then
