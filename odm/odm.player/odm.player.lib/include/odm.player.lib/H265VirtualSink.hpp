@@ -17,7 +17,7 @@ namespace onvifmp{
 		static H265VirtualSink* CreateNew(UsageEnvironment& usageEnvironment, unsigned bufferSize = (4*1024*1024)){
 			try{
 				return new H265VirtualSink(usageEnvironment, bufferSize);
-			}catch(void*){
+			}catch(...){
 				return nullptr;
 			}
 		}

@@ -56,7 +56,7 @@ namespace onvifmp{
 						AddExtraData(startCode, sizeof(startCode));
 						AddExtraData(spropRecords[i].sPropBytes, spropRecords[i].sPropLength);
 					}
-				}catch(void*){
+				}catch(...){
 					//extradata exceeds size limit
 					delete[] spropRecords;
 					Cleanup();
@@ -69,16 +69,17 @@ namespace onvifmp{
 			}
 			AddExtraData(startCode, sizeof(startCode));
 			avCodecContext->flags = 0;
+			// AV_CODEC_FLAG2_CHUNKS must be set before avcodec_open2 so the codec's
+			// init callback can enable its internal NAL-chunk parser (affects HEVC).
+			if (avCodec->id == AV_CODEC_ID_H264 || avCodec->id == AV_CODEC_ID_HEVC){
+				avCodecContext->flags2 |= AV_CODEC_FLAG2_CHUNKS;
+			}
 
 			// avcodec_open2 replaces deprecated avcodec_open (removed in FFmpeg 4.0)
 			if (avcodec_open2(avCodecContext, avCodec, NULL) < 0) {
 				//failed to open codec
 				Cleanup();
 				return false;
-			}
-			if (avCodecContext->codec_id == AV_CODEC_ID_H264 || avCodecContext->codec_id == AV_CODEC_ID_HEVC){
-				avCodecContext->flags2 |= AV_CODEC_FLAG2_CHUNKS;
-				//avCodecContext->flags2 |= CODEC_FLAG2_SHOW_ALL;
 			}
 			// av_frame_alloc replaces deprecated avcodec_alloc_frame (removed in FFmpeg 4.0)
 			avFrame = av_frame_alloc();
@@ -144,6 +145,9 @@ namespace onvifmp{
 			}
 			avpkt->data = framePtr;
 			avpkt->size = frameSize;
+			// Make a ref-counted copy so the HEVC frame-threaded decoder can safely
+			// hold a reference past this call without aliasing live555's receive buffer.
+			av_packet_make_refcounted(avpkt);
 
 			int ret = avcodec_send_packet(avCodecContext, avpkt);
 			av_packet_free(&avpkt);

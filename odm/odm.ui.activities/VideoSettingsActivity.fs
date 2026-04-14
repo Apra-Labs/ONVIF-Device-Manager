@@ -239,19 +239,26 @@ namespace odm.ui.activities
             //let profile = profiles |> Seq.find (fun p-> p.token = profToken)
             let! profile = session.GetProfile(profToken)
             let vec = profile.videoEncoderConfiguration
-//            
+//
 //            do! session.RemoveVideoEncoderConfiguration(profile.token)
 //            profile.VideoEncoderConfiguration <- null
 
             //let! vecs = session.GetCompatibleVideoEncoderConfigurations(profile.token)
-            
+
             let! options = session.GetVideoEncoderConfigurationOptions(vec.token, null)
             let qualityMin = float32(options.qualityRange.min)
             let qualityMax = float32(options.qualityRange.max)
             //let quality = Math.Min(qualityMax, Math.Max(model.quality, qualityMin))
             let quality = model.quality |> Math.Coerce qualityMin qualityMax
-            
-            vec.encoding <- model.encoder
+
+            // Detect Media2-only H265: the model reports h265 (via Media2 override) but
+            // Media1 reports h264. Sending encoding=h265 to the Media1 endpoint causes a
+            // SOAP fault. Preserve the Media1 encoding so we can still apply rate/quality
+            // settings; H265-specific config (govLength) will be skipped below.
+            let isMedia2OnlyH265 =
+                model.encoder = VideoEncoding.h265 && vec.encoding = VideoEncoding.h264
+
+            vec.encoding <- if isMedia2OnlyH265 then vec.encoding else model.encoder
             vec.quality <- quality
             vec.resolution <- model.resolution
                 
@@ -301,7 +308,13 @@ namespace odm.ui.activities
                 |VideoEncoding.h264 -> validateConfig(options.h264)
                 |VideoEncoding.jpeg -> validateConfig(options.jpeg)
                 |VideoEncoding.mpeg4 -> validateConfig(options.mpeg4)
-                |VideoEncoding.h265 -> validateConfig(options.h265)
+                |VideoEncoding.h265 ->
+                    if isMedia2OnlyH265 then
+                        // Media1 doesn't understand H265 config — apply h264 rate settings
+                        // instead. H265-specific govLength cannot be set via Media1.
+                        validateConfig(options.h264)
+                    else
+                        validateConfig(options.h265)
                 |_ -> raise (new ArgumentException(LocalVideoSettings.instance.errorEncoder))
             
             if isVecConfigured then 

@@ -170,6 +170,13 @@ namespace onvifmp{
 		auto streamUsingTcp = mediaStreamInfo->transport != StreamTransport::Udp;
 		//rtspClient->setupMediaSubsession(*subsession, false, false, false);
 		auto codecName = subsession->codecName();
+		// H264: fmtp_spropparametersets() carries SPS/PPS as base64 pairs.
+		// H265: RFC 7798 uses sprop-vps, sprop-sps, sprop-pps instead, which
+		//       live555-2013 does not expose via MediaSubsession accessors.
+		//       TODO(#20): add fmtp_spropvps/sps/pps to live555 MediaSubsession and
+		//       combine them into the sprops string here.  Until then, cameras that
+		//       do not inline VPS/SPS/PPS in-band before the first IDR will produce
+		//       a black frame until the next keyframe.
 		auto sprops = subsession->fmtp_spropparametersets();
 		auto frameProcessorFactory = InitSubsession(codecName, sprops);
 		if(frameProcessorFactory!=nullptr){

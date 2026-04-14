@@ -46,6 +46,10 @@ namespace onvif.services {
 	}
 	public partial class H264Options2 : IBaseVideoEncoderOptions {
 	}
+	public partial class H265Options : IBaseVideoEncoderOptions {
+	}
+	public partial class H265Options2 : IBaseVideoEncoderOptions {
+	}
 
 
 	public interface IBaseVideoDecoderOptions {
