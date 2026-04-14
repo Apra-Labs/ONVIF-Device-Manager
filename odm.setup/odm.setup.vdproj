@@ -1764,8 +1764,8 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_2CDAF3F0106E421DA5C030442A905C92"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-git-a5c1a0c\\x64\\bin\\avcodec-54.dll"
-            "TargetName" = "8:avcodec-54.dll"
+            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avcodec-61.dll"
+            "TargetName" = "8:avcodec-61.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
             "Condition" = "8:"
@@ -1855,8 +1855,8 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_3640BD65043441978868F3D70DCEAB6B"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-git-a5c1a0c\\x64\\bin\\avutil-51.dll"
-            "TargetName" = "8:avutil-51.dll"
+            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avutil-59.dll"
+            "TargetName" = "8:avutil-59.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
             "Condition" = "8:"
@@ -2502,8 +2502,8 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_9A70378409594260B0386E2486C62473"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-git-a5c1a0c\\x64\\bin\\avformat-54.dll"
-            "TargetName" = "8:avformat-54.dll"
+            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avformat-61.dll"
+            "TargetName" = "8:avformat-61.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
             "Condition" = "8:"
@@ -2779,8 +2779,8 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_BEDBE29F090F476C830F5CEC8531A00A"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-git-a5c1a0c\\x64\\bin\\swscale-2.dll"
-            "TargetName" = "8:swscale-2.dll"
+            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\swscale-8.dll"
+            "TargetName" = "8:swscale-8.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
             "Condition" = "8:"
@@ -2799,8 +2799,8 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_C196C5D899024375A3A274430E3EA422"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-git-a5c1a0c\\x64\\bin\\avfilter-2.dll"
-            "TargetName" = "8:avfilter-2.dll"
+            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avfilter-10.dll"
+            "TargetName" = "8:avfilter-10.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
             "Condition" = "8:"
@@ -2879,30 +2879,10 @@
             "IsDependency" = "11:TRUE"
             "IsolateTo" = "8:"
             }
-            "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_CE01E27F0D7C4A25963664E66356A0F5"
-            {
-            "SourcePath" = "8:..\\libs\\ffmpeg-git-a5c1a0c\\x64\\bin\\postproc-52.dll"
-            "TargetName" = "8:postproc-52.dll"
-            "Tag" = "8:"
-            "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
-            "Condition" = "8:"
-            "Transitive" = "11:FALSE"
-            "Vital" = "11:TRUE"
-            "ReadOnly" = "11:FALSE"
-            "Hidden" = "11:FALSE"
-            "System" = "11:FALSE"
-            "Permanent" = "11:FALSE"
-            "SharedLegacy" = "11:FALSE"
-            "PackageAs" = "3:1"
-            "Register" = "3:1"
-            "Exclude" = "11:FALSE"
-            "IsDependency" = "11:FALSE"
-            "IsolateTo" = "8:"
-            }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_D44025FE925440EC845FF26065AAFCE9"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-git-a5c1a0c\\x64\\bin\\avdevice-54.dll"
-            "TargetName" = "8:avdevice-54.dll"
+            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avdevice-61.dll"
+            "TargetName" = "8:avdevice-61.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
             "Condition" = "8:"
@@ -3065,8 +3045,8 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_DE8F4DEF5ABB45C4BF36716ADAF4866C"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-git-a5c1a0c\\x64\\bin\\swresample-0.dll"
-            "TargetName" = "8:swresample-0.dll"
+            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\swresample-5.dll"
+            "TargetName" = "8:swresample-5.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
             "Condition" = "8:"
