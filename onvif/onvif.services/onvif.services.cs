@@ -628,7 +628,7 @@ namespace onvif.services {
 	// This is needed for cameras that report Encoding=H264 via Media1 but actually
 	// encode H265 — they expose the true encoding only through Media2.
 
-	// IMedia2: EndGetVideoEncoderConfigurations returns a raw System.ServiceModel.Channels.Message
+	// IMedia2: All End methods return raw System.ServiceModel.Channels.Message
 	// so that WCF never attempts to deserialize the response body. NvtSession.fs reads the
 	// body via GetReaderAtBodyContents() and parses with LINQ to XML.
 	[ServiceContract(Namespace = "http://www.onvif.org/ver20/media/wsdl")]
@@ -641,11 +641,131 @@ namespace onvif.services {
 			AsyncCallback callback, object asyncState);
 		System.ServiceModel.Channels.Message EndGetVideoEncoderConfigurations(
 			IAsyncResult result);
+
+		[OperationContract(AsyncPattern = true,
+			Action = "http://www.onvif.org/ver20/media/wsdl/GetProfiles",
+			ReplyAction = "*")]
+		IAsyncResult BeginGetProfiles(
+			Media2GetProfilesRequest request,
+			AsyncCallback callback, object asyncState);
+		System.ServiceModel.Channels.Message EndGetProfiles(
+			IAsyncResult result);
+
+		[OperationContract(AsyncPattern = true,
+			Action = "http://www.onvif.org/ver20/media/wsdl/GetStreamUri",
+			ReplyAction = "*")]
+		IAsyncResult BeginGetStreamUri(
+			Media2GetStreamUriRequest request,
+			AsyncCallback callback, object asyncState);
+		System.ServiceModel.Channels.Message EndGetStreamUri(
+			IAsyncResult result);
+
+		[OperationContract(AsyncPattern = true,
+			Action = "http://www.onvif.org/ver20/media/wsdl/GetVideoEncoderConfigurationOptions",
+			ReplyAction = "*")]
+		IAsyncResult BeginGetVideoEncoderConfigurationOptions(
+			Media2GetVideoEncoderConfigurationOptionsRequest request,
+			AsyncCallback callback, object asyncState);
+		System.ServiceModel.Channels.Message EndGetVideoEncoderConfigurationOptions(
+			IAsyncResult result);
+
+		[OperationContract(AsyncPattern = true,
+			Action = "http://www.onvif.org/ver20/media/wsdl/SetVideoEncoderConfigurations",
+			ReplyAction = "*")]
+		IAsyncResult BeginSetVideoEncoderConfigurations(
+			Media2SetVideoEncoderConfigurationsRequest request,
+			AsyncCallback callback, object asyncState);
+		System.ServiceModel.Channels.Message EndSetVideoEncoderConfigurations(
+			IAsyncResult result);
+
+		[OperationContract(AsyncPattern = true,
+			Action = "http://www.onvif.org/ver20/media/wsdl/GetVideoSourceConfigurations",
+			ReplyAction = "*")]
+		IAsyncResult BeginGetVideoSourceConfigurations(
+			Media2GetVideoSourceConfigurationsRequest request,
+			AsyncCallback callback, object asyncState);
+		System.ServiceModel.Channels.Message EndGetVideoSourceConfigurations(
+			IAsyncResult result);
+
+		[OperationContract(AsyncPattern = true,
+			Action = "http://www.onvif.org/ver20/media/wsdl/GetSnapshotUri",
+			ReplyAction = "*")]
+		IAsyncResult BeginGetSnapshotUri(
+			Media2GetSnapshotUriRequest request,
+			AsyncCallback callback, object asyncState);
+		System.ServiceModel.Channels.Message EndGetSnapshotUri(
+			IAsyncResult result);
 	}
 
 	[MessageContract(WrapperName = "GetVideoEncoderConfigurations",
 		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
 	public partial class Media2GetVideoEncoderConfigurationsRequest {
 		public Media2GetVideoEncoderConfigurationsRequest() { }
+	}
+
+	[MessageContract(WrapperName = "GetProfiles",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2GetProfilesRequest {
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
+		public string Token;
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 1)]
+		public string Type;
+		public Media2GetProfilesRequest() { }
+	}
+
+	[MessageContract(WrapperName = "GetStreamUri",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2GetStreamUriRequest {
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
+		public string ProfileToken;
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 1)]
+		public string Protocol;
+		public Media2GetStreamUriRequest() { }
+	}
+
+	[MessageContract(WrapperName = "GetVideoEncoderConfigurationOptions",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2GetVideoEncoderConfigurationOptionsRequest {
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
+		public string ConfigurationToken;
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 1)]
+		public string ProfileToken;
+		public Media2GetVideoEncoderConfigurationOptionsRequest() { }
+	}
+
+	[MessageContract(WrapperName = "SetVideoEncoderConfigurations",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2SetVideoEncoderConfigurationsRequest {
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
+		public System.Xml.Linq.XElement Configuration;
+		public Media2SetVideoEncoderConfigurationsRequest() { }
+	}
+
+	[MessageContract(WrapperName = "GetVideoSourceConfigurations",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2GetVideoSourceConfigurationsRequest {
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
+		public string ConfigurationToken;
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 1)]
+		public string ProfileToken;
+		public Media2GetVideoSourceConfigurationsRequest() { }
+	}
+
+	[MessageContract(WrapperName = "GetSnapshotUri",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2GetSnapshotUriRequest {
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
+		public string ProfileToken;
+		public Media2GetSnapshotUriRequest() { }
+	}
+
+	// Plain data class populated by LINQ-to-XML parser in NvtSession.fs
+	// Represents per-encoding options returned by Media2 GetVideoEncoderConfigurationOptions.
+	public class Media2EncoderOptions {
+		public string Encoding { get; set; }
+		public VideoResolution[] ResolutionsAvailable { get; set; }
+		public IntRange GovLengthRange { get; set; }   // nullable — not all encodings have it
+		public IntRange FrameRateRange { get; set; }
+		public IntRange BitrateRange { get; set; }
 	}
 }
