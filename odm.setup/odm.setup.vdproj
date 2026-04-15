@@ -1764,7 +1764,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_2CDAF3F0106E421DA5C030442A905C92"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avcodec-61.dll"
+            "SourcePath" = "8:..\\build\\avcodec-61.dll"
             "TargetName" = "8:avcodec-61.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
@@ -1855,7 +1855,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_3640BD65043441978868F3D70DCEAB6B"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avutil-59.dll"
+            "SourcePath" = "8:..\\build\\avutil-59.dll"
             "TargetName" = "8:avutil-59.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
@@ -2502,7 +2502,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_9A70378409594260B0386E2486C62473"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avformat-61.dll"
+            "SourcePath" = "8:..\\build\\avformat-61.dll"
             "TargetName" = "8:avformat-61.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
@@ -2779,7 +2779,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_BEDBE29F090F476C830F5CEC8531A00A"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\swscale-8.dll"
+            "SourcePath" = "8:..\\build\\swscale-8.dll"
             "TargetName" = "8:swscale-8.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
@@ -2799,7 +2799,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_C196C5D899024375A3A274430E3EA422"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avfilter-10.dll"
+            "SourcePath" = "8:..\\build\\avfilter-10.dll"
             "TargetName" = "8:avfilter-10.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
@@ -2881,7 +2881,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_D44025FE925440EC845FF26065AAFCE9"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\avdevice-61.dll"
+            "SourcePath" = "8:..\\build\\avdevice-61.dll"
             "TargetName" = "8:avdevice-61.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"
@@ -3045,7 +3045,7 @@
             }
             "{1FB2D0AE-D3B9-43D4-B9DD-F88EC61E35DE}:_DE8F4DEF5ABB45C4BF36716ADAF4866C"
             {
-            "SourcePath" = "8:..\\libs\\ffmpeg-n7.1-lgpl-shared\\x64\\bin\\swresample-5.dll"
+            "SourcePath" = "8:..\\build\\swresample-5.dll"
             "TargetName" = "8:swresample-5.dll"
             "Tag" = "8:"
             "Folder" = "8:_7F9B86A2F7E94DD1837F017D96CF3DB2"

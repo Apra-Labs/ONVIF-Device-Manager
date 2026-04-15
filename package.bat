@@ -1,12 +1,14 @@
 @echo off
 rem Collect release artifacts after building odm.sln (Release|x64).
 rem
-rem Prerequisites:
-rem   1. odm\odm.player\odm.player.sln must be built first (Release|x64) so
-rem      odm.player.net.dll is present — see .github/workflows/odm.yml.
-rem   2. odm.ui.app must be built (Release|x64), which copies project references
-rem      (odm.player.net.dll, odm.player.host.exe, odm.player.media.dll) into
-rem      its output directory via CopyToOutputDirectory.
+rem Prerequisite: odm.sln must be built (Release|x64) — see .github/workflows/odm.yml.
+rem The full solution build compiles the native C++/CLI player projects
+rem (live555, odm.player.lib, odm.player.net) and copies all project references
+rem into the odm.ui.app output directory via CopyToOutputDirectory.
+rem
+rem The build\ folder produced here is consumed by BOTH:
+rem   - the odm-build-zip CI artifact (portable run-from-folder)
+rem   - the installer (odm.setup.vdproj references all DLLs from build\)
 
 if not exist build mkdir build
 
