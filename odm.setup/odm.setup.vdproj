@@ -3276,7 +3276,7 @@
         {
         "Name" = "8:Microsoft Visual Studio"
         "ProductName" = "8:ONVIF Device Manager"
-        "ProductCode" = "8:{5D168595-01C7-4457-A213-4D1E703F12B5}"
+        "ProductCode" = "8:{92DDABEF-49AF-4EAE-A6A9-D76B106B1E8A}"
         "PackageCode" = "8:{110FA7FB-0C2D-4F28-88AC-FAF80409ECA0}"
         "UpgradeCode" = "8:{FA8AD70A-97A7-484E-B2A0-A4A3BAE9BA35}"
         "AspNetVersion" = "8:2.0.50727.0"
@@ -3284,7 +3284,7 @@
         "RemovePreviousVersions" = "11:TRUE"
         "DetectNewerInstalledVersion" = "11:TRUE"
         "InstallAllUsers" = "11:FALSE"
-        "ProductVersion" = "8:2.2.252"
+        "ProductVersion" = "8:2.2.253"
         "Manufacturer" = "8:Synesis"
         "ARPHELPTELEPHONE" = "8:"
         "ARPHELPLINK" = "8:"
