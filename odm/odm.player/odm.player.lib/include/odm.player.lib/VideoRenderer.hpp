@@ -24,7 +24,7 @@ namespace onvifmp{
 
 	protected:
 		shared_ptr<VideoBuffer> videoBuffer;
-		PixelFormat videoBufferPixelFormat;
+		AVPixelFormat videoBufferPixelFormat;
 		virtual void RenderFrame(AVCodecContext* avCodecContext, AVFrame* avFrame){
 			if(videoBuffer == nullptr){
 				return;

@@ -165,12 +165,37 @@
             yield CreateProp("audio source token", asc.sourceToken, null)
     })
 
-    ///<summary></summary>
-    let GetVecDetails(vec:VideoEncoderConfiguration) = Seq.toList(seq{
+    ///<summary>
+    /// Returns display properties for a VideoEncoderConfiguration.
+    /// Pass media2Encoding to override the effective encoding when the caller has already
+    /// fetched the true encoding from the ONVIF Media2 service (ver20/media/wsdl).
+    ///</summary>
+    let GetVecDetails(vec:VideoEncoderConfiguration, media2Encoding:VideoEncoding option) = Seq.toList(seq{
         yield CreateProp("name", vec.name, null)
         yield CreateProp("token", vec.token, null)
         yield CreateProp("use count", vec.useCount, null)
-        yield CreateProp("encoding", vec.encoding, null)
+        // Determine effective encoding for cameras that report H265 via one of several
+        // ONVIF conventions:
+        //  (a) Encoding=H265 directly — XmlEnum("H265") handles this automatically.
+        //  (b) Encoding=H264 + H265 sub-config in vec.h265 (ONVIF 1.x compat mode).
+        //  (c) Encoding=H264 + H265 element WITHOUT the ONVIF namespace — the element
+        //      misses the [XmlElement(...Namespace=...)] match and falls into vec.any.
+        //      Check vec.any by LocalName to recover from this namespace mismatch.
+        //  (d) media2Encoding override — caller verified via Media2 GetVideoEncoderConfigurations
+        //      that the true encoding differs from what Media1 reports (e.g. H264 vs H265).
+        let anyH265 =
+            vec.any |> NotNull &&
+            vec.any |> Array.exists (fun (e:System.Xml.XmlElement) -> e.LocalName = "H265")
+        let media1Encoding =
+            if vec.encoding = VideoEncoding.h264 && (vec.h265 |> NotNull || anyH265) then
+                VideoEncoding.h265
+            else
+                vec.encoding
+        let effectiveEncoding =
+            match media2Encoding with
+            | Some enc when enc <> VideoEncoding.h264 -> enc
+            | _ -> media1Encoding
+        yield CreateProp("encoding", effectiveEncoding, null)
         yield CreateProp("resolution", vec.resolution, null)
         yield CreateProp("session timeout", vec.sessionTimeout, null)
         yield CreateProp("quality", vec.quality, null)
@@ -239,7 +264,7 @@
     })
 
     ///<summary></summary>
-    let GetProfileDetails(profile:Profile, videoSources:seq<VideoSource>, audioSources:seq<AudioSource>, ptzNodes:seq<PTZNode>) = Seq.toList(seq{
+    let GetProfileDetails(profile:Profile, videoSources:seq<VideoSource>, audioSources:seq<AudioSource>, ptzNodes:seq<PTZNode>, media2Cfgs:VideoEncoderConfiguration[]) = Seq.toList(seq{
         yield CreateProp("name", profile.name, null)
         yield CreateProp("token", profile.token, null)
         if profile.fixedSpecified then
@@ -267,7 +292,13 @@
 
         if profile.videoEncoderConfiguration |> NotNull then
             let vec = profile.videoEncoderConfiguration
-            let childs = GetVecDetails(vec)
+            let media2Encoding =
+                if media2Cfgs |> NotNull then
+                    media2Cfgs
+                    |> Array.tryFind (fun c -> NotNull(c) && c.token = vec.token)
+                    |> Option.bind (fun c -> if c.encoding <> VideoEncoding.h264 then Some c.encoding else None)
+                else None
+            let childs = GetVecDetails(vec, media2Encoding)
             yield CreateProp("Video Encoder Configuration", vec.GetName(), childs |> List.toArray)
 
         if profile.audioEncoderConfiguration |> NotNull then
@@ -327,5 +358,5 @@
                     else
                         videoInput.token
 
-                yield CreateProp("video input", videoInputName, GetVecDetails(videoInput) |> List.toArray)
+                yield CreateProp("video input", videoInputName, GetVecDetails(videoInput, None) |> List.toArray)
     })

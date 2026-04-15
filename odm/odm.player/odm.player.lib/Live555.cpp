@@ -105,7 +105,7 @@ namespace onvifmp{
 	}
 
 
-	IFrameProcessorFactory Live555::InitVideoSubsession(CodecID codecId, const char* sprops){
+	IFrameProcessorFactory Live555::InitVideoSubsession(AVCodecID codecId, const char* sprops){
 		//dbg::Info(sys::String::Format("processing subsession for {0}",gcnew sys::String(codecName)));
 		if(videoBuffer == nullptr || videoSubsessionInitialized){
 			return nullptr;
@@ -140,15 +140,17 @@ namespace onvifmp{
 		}else if (_stricmp(codecName, "vnd.onvif.metadata")==0){
 			return InitMetadataSubsession(sprops);
 		}else if (_stricmp(codecName, "JPEG")==0){
-			return InitVideoSubsession(CODEC_ID_MJPEG, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_MJPEG, sprops);
 		}else if (_stricmp(codecName, "H264")==0){
-			return InitVideoSubsession(CODEC_ID_H264, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_H264, sprops);
+		}else if (_stricmp(codecName, "H265")==0){
+			return InitVideoSubsession(AV_CODEC_ID_HEVC, sprops);
 		}else if (_stricmp(codecName, "MPEG4")==0){
-			return InitVideoSubsession(CODEC_ID_MPEG4, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_MPEG4, sprops);
 		}else if (_stricmp(codecName, "MP4V-ES")==0){
-			return InitVideoSubsession(CODEC_ID_MPEG4, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_MPEG4, sprops);
 		}else if (_stricmp(codecName, "MPV") == 0){
-			return InitVideoSubsession(CODEC_ID_MPEG2VIDEO, sprops);
+			return InitVideoSubsession(AV_CODEC_ID_MPEG2VIDEO, sprops);
 		}
 
 		return nullptr;
@@ -168,6 +170,13 @@ namespace onvifmp{
 		auto streamUsingTcp = mediaStreamInfo->transport != StreamTransport::Udp;
 		//rtspClient->setupMediaSubsession(*subsession, false, false, false);
 		auto codecName = subsession->codecName();
+		// H264: fmtp_spropparametersets() carries SPS/PPS as base64 pairs.
+		// H265: RFC 7798 uses sprop-vps, sprop-sps, sprop-pps instead, which
+		//       live555-2013 does not expose via MediaSubsession accessors.
+		//       TODO(#20): add fmtp_spropvps/sps/pps to live555 MediaSubsession and
+		//       combine them into the sprops string here.  Until then, cameras that
+		//       do not inline VPS/SPS/PPS in-band before the first IDR will produce
+		//       a black frame until the next keyframe.
 		auto sprops = subsession->fmtp_spropparametersets();
 		auto frameProcessorFactory = InitSubsession(codecName, sprops);
 		if(frameProcessorFactory!=nullptr){
@@ -177,6 +186,8 @@ namespace onvifmp{
 				//create special sink to fix H264 payload format
 				sink = H264VirtualSink::CreateNew(*usageEnvironment);
 				//sink = VirtualSink::CreateNew(*usageEnvironment);
+			}else if(_stricmp(codecName, "H265")==0){
+				sink = H265VirtualSink::CreateNew(*usageEnvironment);
 			}else{
 				sink = VirtualSink::CreateNew(*usageEnvironment);
 			}
@@ -239,8 +250,6 @@ namespace onvifmp{
 		//rtspClient->fCurrentAuthenticator = mediaStreamInfo->authenticator;
 		auto options = rtspClient->sendOptionsCmd(mediaStreamInfo->url, nullptr, nullptr, mediaStreamInfo->authenticator, 5/*timeout in seconds*/);
 		rtspOptions.getParamSupported = (options!= nullptr && strstr(options, "GET_PARAMETER")!=nullptr);
-		
-		//fprintf(stderr, "options : %s\n", options);
 
 		//should we take care of release sdp string???
 		auto sdp = rtspClient->describeURL(mediaStreamInfo->url, mediaStreamInfo->authenticator,0U, 5/*timeout in seconds*/);
@@ -250,7 +259,7 @@ namespace onvifmp{
 			Cleanup();
 			return false;
 		}
-		
+
 		mediaSession = MediaSession::createNew(*usageEnvironment, sdp);
 		if(mediaSession == NULL){
 			//TODO: log error

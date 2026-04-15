@@ -15,6 +15,7 @@ extern "C"{
 #include "RTPSource.hh"
 #include "AVIFileSink.hh"
 #include "H264VideoRTPSource.hh"
+#include "H265VideoRTPSource.hh"
 //}
 
 
@@ -49,7 +50,7 @@ namespace onvifmp{
 	public:
 		int width;
 		int height;
-		PixelFormat pixelFormat;
+		AVPixelFormat pixelFormat;
 		int stride[4];
 		uint8_t* scan0[4];
 		uint8_t* signal;

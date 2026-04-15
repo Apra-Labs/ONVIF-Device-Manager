@@ -46,6 +46,10 @@ namespace onvif.services {
 	}
 	public partial class H264Options2 : IBaseVideoEncoderOptions {
 	}
+	public partial class H265Options : IBaseVideoEncoderOptions {
+	}
+	public partial class H265Options2 : IBaseVideoEncoderOptions {
+	}
 
 
 	public interface IBaseVideoDecoderOptions {
@@ -616,5 +620,32 @@ namespace onvif.services {
 				.AddHours(dateTime.time.hour)
 				.AddMinutes(dateTime.time.minute);
 		}
+	}
+
+	// --- ONVIF Media2 service proxy (ver20/media/wsdl) ---
+	// Used to query GetVideoEncoderConfigurations from cameras that advertise
+	// the Media2 service endpoint (ver20/media/wsdl) via WS-Discovery / GetServices.
+	// This is needed for cameras that report Encoding=H264 via Media1 but actually
+	// encode H265 — they expose the true encoding only through Media2.
+
+	// IMedia2: EndGetVideoEncoderConfigurations returns a raw System.ServiceModel.Channels.Message
+	// so that WCF never attempts to deserialize the response body. NvtSession.fs reads the
+	// body via GetReaderAtBodyContents() and parses with LINQ to XML.
+	[ServiceContract(Namespace = "http://www.onvif.org/ver20/media/wsdl")]
+	public interface IMedia2 {
+		[OperationContract(AsyncPattern = true,
+			Action = "http://www.onvif.org/ver20/media/wsdl/GetVideoEncoderConfigurations",
+			ReplyAction = "*")]
+		IAsyncResult BeginGetVideoEncoderConfigurations(
+			Media2GetVideoEncoderConfigurationsRequest request,
+			AsyncCallback callback, object asyncState);
+		System.ServiceModel.Channels.Message EndGetVideoEncoderConfigurations(
+			IAsyncResult result);
+	}
+
+	[MessageContract(WrapperName = "GetVideoEncoderConfigurations",
+		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
+	public partial class Media2GetVideoEncoderConfigurationsRequest {
+		public Media2GetVideoEncoderConfigurationsRequest() { }
 	}
 }

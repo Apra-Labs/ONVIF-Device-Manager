@@ -49,8 +49,72 @@ jobs:
 
         Write-Host "Targeting packs installed."
 
+    - name: Set build version
+      shell: pwsh
+      run: |
+        # Single source of truth for every CI build:
+        #   AssemblyVersion / AssemblyFileVersion : 3.0.<run_number>.0
+        #   AssemblyInformationalVersion          : 3.0.<run_number>+<git_short_hash>
+        #   MSI ProductVersion                   : 3.0.<run_number>
+        #   MSI ProductCode                      : fresh GUID (triggers major upgrade)
+        #
+        # 3.0.x is always > any previously shipped 2.x install, so upgrades
+        # are automatic with no manual uninstall required.
+        $run    = "${{ github.run_number }}"
+        $hash   = (git rev-parse --short HEAD).Trim()
+        $ver4   = "3.0.$run.0"
+        $verMsi = "3.0.$run"
+        $verInfo = "3.0.$run+$hash"
+
+        # Patch all C# AssemblyInfo files
+        $csFiles = @(
+          "odm\~cfg\AssemblyInfo.global.cs",
+          "onvif\~cfg\AssemblyInfo.global.cs",
+          "utils\~cfg\AssemblyInfo.global.cs"
+        )
+        foreach ($f in $csFiles) {
+          if (Test-Path $f) {
+            $c = Get-Content $f -Raw
+            $c = $c -replace 'AssemblyVersion\("[^"]*"\)',            "AssemblyVersion(`"$ver4`")"
+            $c = $c -replace 'AssemblyFileVersion\("[^"]*"\)',        "AssemblyFileVersion(`"$ver4`")"
+            $c = $c -replace 'AssemblyInformationalVersion\("[^"]*"\)', "AssemblyInformationalVersion(`"$verInfo`")"
+            Set-Content $f $c -NoNewline
+          }
+        }
+
+        # Patch all F# AssemblyInfo files
+        $fsFiles = @(
+          "odm\~cfg\AssemblyInfo.global.fs",
+          "onvif\~cfg\AssemblyInfo.global.fs",
+          "utils\~cfg\AssemblyInfo.global.fs"
+        )
+        foreach ($f in $fsFiles) {
+          if (Test-Path $f) {
+            $c = Get-Content $f -Raw
+            $c = $c -replace 'AssemblyVersion\("[^"]*"\)',     "AssemblyVersion(`"$ver4`")"
+            $c = $c -replace 'AssemblyFileVersion\("[^"]*"\)', "AssemblyFileVersion(`"$ver4`")"
+            Set-Content $f $c -NoNewline
+          }
+        }
+
+        # Patch MSI: new ProductCode + ProductVersion
+        $vdproj  = "odm.setup\odm.setup.vdproj"
+        $newGuid = [guid]::NewGuid().ToString().ToUpper()
+        $c = Get-Content $vdproj -Raw
+        $c = $c -replace '"ProductCode" = "8:\{[0-9A-Fa-f-]+\}"', ('"ProductCode" = "8:{' + $newGuid + '}"')
+        $c = $c -replace '"ProductVersion" = "8:[0-9.]+"',         ('"ProductVersion" = "8:' + $verMsi + '"')
+        Set-Content $vdproj $c -NoNewline
+
+        Write-Host "Version: $verInfo   MSI: $verMsi   ProductCode: {$newGuid}"
+
     - name: Build application
-      run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.ui.app
+      # Build the full solution (all projects except the installer, which requires
+      # DisableOutOfProcBuild and is handled separately at the end).
+      # Building the full solution ensures the native C++/CLI player projects
+      # (live555, odm.player.lib, odm.player.net) are always compiled fresh —
+      # this was the root cause of issue #1 where /Project odm.ui.app could
+      # silently skip them, leaving a stale or absent odm.player.net.dll.
+      run: msbuild ${{ env.Solution_Name }} /p:Configuration=Release /p:Platform=x64 /p:DeployExtension=false /m /nologo /v:minimal
 
     - name: Restore tests
       run: dotnet restore odm\odm.tests\odm.tests.csproj
@@ -68,11 +132,45 @@ jobs:
       run: .\package.bat
       shell: cmd
 
+    - name: Verify required DLLs present
+      shell: pwsh
+      run: |
+        $required = @(
+          "build\odm.exe",
+          "build\odm.player.net.dll",
+          "build\odm.player.host.exe",
+          "build\odm.player.media.dll",
+          "build\avcodec-61.dll",
+          "build\avformat-61.dll",
+          "build\avutil-59.dll",
+          "build\swscale-8.dll",
+          "build\swresample-5.dll"
+        )
+        $missing = $required | Where-Object { -not (Test-Path $_) }
+        if ($missing) {
+          Write-Error "Missing required artifacts:`n$($missing -join "`n")"
+          exit 1
+        }
+        Write-Host "All required DLLs present."
+
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
       with:
         name: odm-build-zip
         path: build/
+
+    - name: Strip PDB files from installer inputs
+      shell: pwsh
+      run: |
+        # The zip artifact (uploaded above) may include PDBs for debugging.
+        # Remove them from every source the installer pulls from so they are
+        # never embedded in the .msi shipped to end users.
+        $removed = 0
+        Get-ChildItem -Recurse -Filter "*.pdb" "odm\odm.ui.app\bin\x64\Release" -ErrorAction SilentlyContinue |
+          ForEach-Object { Remove-Item $_.FullName -Force; $removed++ }
+        Get-ChildItem -Recurse -Filter "*.pdb" "build" -ErrorAction SilentlyContinue |
+          ForEach-Object { Remove-Item $_.FullName -Force; $removed++ }
+        Write-Host "Removed $removed PDB file(s) from installer inputs."
 
     - name: DisableOutOfProcBuild
       working-directory: ${{env.DevEnvDir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild

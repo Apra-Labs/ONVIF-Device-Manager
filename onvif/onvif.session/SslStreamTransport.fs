@@ -123,6 +123,10 @@ module internal SslStreamHelpers =
         tcp.ReceiveTimeout <- timeoutMs
         tcp.SendTimeout <- timeoutMs
 
+        // TODO(security): TLS certificate validation is intentionally disabled to support
+        // self-signed camera certificates, which is the norm on LAN/IP-camera deployments.
+        // This is a MITM vector on untrusted networks — credentials can be intercepted.
+        // Issue #19 tracks adding a configurable trust policy (per-device or global setting).
         use ssl = new SslStream(tcp.GetStream(), false,
                       RemoteCertificateValidationCallback(fun _ _ _ _ -> true))
         // SslProtocols.Tls12 = 0xC00 = 3072; enum value exists at runtime on .NET 4.0+
@@ -197,7 +201,9 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         let resp = SslStreamHelpers.sslSend via bodyBytes contentType timeoutMs
         if resp.StatusCode >= 400 then
             System.Diagnostics.Debug.WriteLine(sprintf "SslStreamTransport: HTTP %d from %O" resp.StatusCode via)
+
             raise (CommunicationException(sprintf "HTTP %d received from camera at %O" resp.StatusCode via))
+
 
         // Deserialize response
         let respBuf = bufMgr.TakeBuffer(resp.Body.Length)

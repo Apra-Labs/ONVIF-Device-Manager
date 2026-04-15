@@ -124,13 +124,13 @@ namespace odm{
 					auto onvifmpVideoBuffer = std::make_shared<onvifmp::VideoBuffer>();
 					
 					if(videoBuffer->pixelFormat == PixFrmt::rgb24){
-						onvifmpVideoBuffer->pixelFormat = PixelFormat::PIX_FMT_RGB24;
+						onvifmpVideoBuffer->pixelFormat = AV_PIX_FMT_RGB24;
 					}else if(videoBuffer->pixelFormat == PixFrmt::argb32){
-						onvifmpVideoBuffer->pixelFormat = PixelFormat::PIX_FMT_ARGB;
+						onvifmpVideoBuffer->pixelFormat = AV_PIX_FMT_ARGB;
 					}else if(videoBuffer->pixelFormat == PixFrmt::bgra32){
-						onvifmpVideoBuffer->pixelFormat = PixelFormat::PIX_FMT_BGRA;
+						onvifmpVideoBuffer->pixelFormat = AV_PIX_FMT_BGRA;
 					}else if(videoBuffer->pixelFormat == PixFrmt::bgr24){
-						onvifmpVideoBuffer->pixelFormat = PixelFormat::PIX_FMT_BGR24;
+						onvifmpVideoBuffer->pixelFormat = AV_PIX_FMT_BGR24;
 					}else{
 						throw gcnew Exception("invalid pixel format");
 					}

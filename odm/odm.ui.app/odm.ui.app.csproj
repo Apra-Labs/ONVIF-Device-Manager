@@ -1,5 +1,5 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
@@ -10,7 +10,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>odm.ui</RootNamespace>
     <AssemblyName>odm</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <TargetFrameworkProfile>
     </TargetFrameworkProfile>
     <FileAlignment>512</FileAlignment>
@@ -49,7 +49,7 @@
   <PropertyGroup>
     <UseVSHostingProcess>false</UseVSHostingProcess>
     <ffmpegDir Condition="'$(Platform)' == 'x86'">..\..\libs\ffmpeg-git-a5c1a0c\win32\bin</ffmpegDir>
-    <ffmpegDir Condition="'$(Platform)' == 'x64'">..\..\libs\ffmpeg-git-a5c1a0c\x64\bin</ffmpegDir>
+    <ffmpegDir Condition="'$(Platform)' == 'x64'">..\..\libs\ffmpeg-n7.1-lgpl-shared\x64\bin</ffmpegDir>
     <OutputPath>bin\$(Configuration)\$(Platform)\</OutputPath>
     <DebugSymbols Condition="'$(Configuration)' == 'Debug'">true</DebugSymbols>
     <DebugSymbols Condition="'$(Configuration)' == 'Release'">false</DebugSymbols>
@@ -398,36 +398,32 @@
     </Page>
   </ItemGroup>
   <ItemGroup>
-    <Content Include="$(ffmpegDir)\avcodec-54.dll">
-      <Link>3rd\avcodec-54.dll</Link>
+    <Content Include="$(ffmpegDir)\avcodec-61.dll">
+      <Link>avcodec-61.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(ffmpegDir)\avdevice-54.dll">
-      <Link>3rd\avdevice-54.dll</Link>
+    <Content Include="$(ffmpegDir)\avdevice-61.dll">
+      <Link>avdevice-61.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(ffmpegDir)\avfilter-2.dll">
-      <Link>3rd\avfilter-2.dll</Link>
+    <Content Include="$(ffmpegDir)\avfilter-10.dll">
+      <Link>avfilter-10.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(ffmpegDir)\avformat-54.dll">
-      <Link>3rd\avformat-54.dll</Link>
+    <Content Include="$(ffmpegDir)\avformat-61.dll">
+      <Link>avformat-61.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(ffmpegDir)\avutil-51.dll">
-      <Link>3rd\avutil-51.dll</Link>
+    <Content Include="$(ffmpegDir)\avutil-59.dll">
+      <Link>avutil-59.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(ffmpegDir)\postproc-52.dll">
-      <Link>3rd\postproc-52.dll</Link>
+    <Content Include="$(ffmpegDir)\swresample-5.dll">
+      <Link>swresample-5.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="$(ffmpegDir)\swresample-0.dll">
-      <Link>3rd\swresample-0.dll</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="$(ffmpegDir)\swscale-2.dll">
-      <Link>3rd\swscale-2.dll</Link>
+    <Content Include="$(ffmpegDir)\swscale-8.dll">
+      <Link>swscale-8.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

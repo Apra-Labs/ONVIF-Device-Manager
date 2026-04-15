@@ -285,7 +285,7 @@
                 try
                     let items = Seq.toList(seq{
                         for vec in model.videoEncCfgs do
-                            let item = new ItemSelectorView.Item(vec.GetName(), GetVecDetails(vec) |> List.toArray, ItemSelectorView.ItemFlags.AllOperationsAvailable)
+                            let item = new ItemSelectorView.Item(vec.GetName(), GetVecDetails(vec, None) |> List.toArray, ItemSelectorView.ItemFlags.AllOperationsAvailable)
                             yield (vec, item)
                     })
 

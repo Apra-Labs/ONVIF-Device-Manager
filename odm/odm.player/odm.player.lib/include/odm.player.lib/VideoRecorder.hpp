@@ -4,7 +4,7 @@
 class TSWriter {
 public:
   TSWriter(const std::string& aFilePath, int aBitRate, int aWidth, int aHeight,
-    int aFrameRate, PixelFormat aPixFmt);
+    int aFrameRate, AVPixelFormat aPixFmt);
   ~TSWriter();
 
   bool write_picture(AVFrame *aPicture);
@@ -13,18 +13,18 @@ public:
   std::string getError() { return mErrorMsg; }
 
   double getPTS() {
-    if (mVideoStream) {
-      return (double)mVideoStream->pts.val * mVideoStream->time_base.num / mVideoStream->time_base.den;
-    }
+    // AVStream::pts was removed in FFmpeg 4.0+; stream PTS must be tracked from packets
     return -1.00;
   }
   int getTicksPerFrame() {
-    return mVideoStream->codec->ticks_per_frame;
+    // AVStream::codec was removed in FFmpeg 4.0+, replaced by AVStream::codecpar
+    // (AVCodecParameters*) which does not expose ticks_per_frame; return safe default of 1
+    return 1;
   }
 private:
   AVStream* setup_video_stream();
   bool open_video();
-  AVFrame *alloc_picture(PixelFormat pix_fmt, int width, int height);
+  AVFrame *alloc_picture(AVPixelFormat pix_fmt, int width, int height);
   void close_video();
 
   //errors
@@ -33,12 +33,12 @@ private:
   //inner data
   std::string mFilePath;
   int mBitRate, mWidth, mHeight, mFrameRate;
-  PixelFormat mPixFmt;
+  AVPixelFormat mPixFmt;
   AVOutputFormat *mOutFormat;
   AVFormatContext *mFormatCtx;
   AVStream *mVideoStream;
 
-  static const PixelFormat s_CodecPixFormat;
+  static const AVPixelFormat s_CodecPixFormat;
 
   struct PictureData {
     uint8_t *mOutBuf;

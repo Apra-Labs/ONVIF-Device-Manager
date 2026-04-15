@@ -1,4 +1,5 @@
 #pragma once
+#include <ctime>
 #include "odm.player.lib/all.h"
 
 namespace onvifmp{
@@ -6,11 +7,10 @@ namespace onvifmp{
 	class VideoDecoder : public IFrameProcessor{
 	public:
 		typedef function<shared_ptr<VideoDecoder> (VirtualSink* sink)> Factory;
-		static Factory Create(CodecID codecId, const char* sporps){
+		static Factory Create(AVCodecID codecId, const char* sporps){
 			return ([=](VirtualSink* sink)->shared_ptr<VideoDecoder>{
-				//avcodec_init();
-				av_register_all();
-				avcodec_register_all();
+				// av_register_all() and avcodec_register_all() were removed in FFmpeg 4.0.
+				// Codecs and formats are now registered automatically.
 
 				auto avCodec = avcodec_find_decoder(codecId);
 				if (avCodec == NULL) {
@@ -36,11 +36,12 @@ namespace onvifmp{
 			Cleanup();
 		}
 
-		bool Init(VirtualSink* sink, AVCodec* avCodec, const char* sprops){
+		bool Init(VirtualSink* sink, const AVCodec* avCodec, const char* sprops){
 			//if it has been initialized before, we should do cleanup first
 			Cleanup();
 
-			avCodecContext = avcodec_alloc_context();
+			// avcodec_alloc_context3 replaces deprecated avcodec_alloc_context (removed in FFmpeg 4.0)
+			avCodecContext = avcodec_alloc_context3(avCodec);
 			if (!avCodecContext) {
 				//failed to allocate codec context
 				Cleanup();
@@ -55,30 +56,33 @@ namespace onvifmp{
 						AddExtraData(startCode, sizeof(startCode));
 						AddExtraData(spropRecords[i].sPropBytes, spropRecords[i].sPropLength);
 					}
-				}catch(void*){
+				}catch(...){
 					//extradata exceeds size limit
 					delete[] spropRecords;
 					Cleanup();
 					return false;
 				}
 				delete[] spropRecords;
-					
+
 				avCodecContext->extradata = extraDataBuffer;
 				avCodecContext->extradata_size = extraDataSize;
 			}
 			AddExtraData(startCode, sizeof(startCode));
 			avCodecContext->flags = 0;
+			// AV_CODEC_FLAG2_CHUNKS must be set before avcodec_open2 so the codec's
+			// init callback can enable its internal NAL-chunk parser (affects HEVC).
+			if (avCodec->id == AV_CODEC_ID_H264 || avCodec->id == AV_CODEC_ID_HEVC){
+				avCodecContext->flags2 |= AV_CODEC_FLAG2_CHUNKS;
+			}
 
-			if (avcodec_open(avCodecContext, avCodec) < 0) {
+			// avcodec_open2 replaces deprecated avcodec_open (removed in FFmpeg 4.0)
+			if (avcodec_open2(avCodecContext, avCodec, NULL) < 0) {
 				//failed to open codec
 				Cleanup();
 				return false;
 			}
-			if (avCodecContext->codec_id == CODEC_ID_H264){
-				avCodecContext->flags2 |= CODEC_FLAG2_CHUNKS;
-				//avCodecContext->flags2 |= CODEC_FLAG2_SHOW_ALL;
-			}
-			avFrame = avcodec_alloc_frame();
+			// av_frame_alloc replaces deprecated avcodec_alloc_frame (removed in FFmpeg 4.0)
+			avFrame = av_frame_alloc();
 			if (!avFrame){
 				//failed to allocate frame
 				Cleanup();
@@ -90,12 +94,13 @@ namespace onvifmp{
 		void Cleanup(){
 			extraDataSize = 0;
 			if (avFrame != NULL){
-				av_free(avFrame);
+				// av_frame_free replaces av_free for AVFrame (frees the frame and its data)
+				av_frame_free(&avFrame);
 				avFrame = NULL;
 			}
 			if(avCodecContext != NULL){
-				avcodec_close(avCodecContext);
-				av_free(avCodecContext);
+				// avcodec_free_context replaces avcodec_close + av_free for AVCodecContext
+				avcodec_free_context(&avCodecContext);
 				avCodecContext = NULL;
 			}
 		}
@@ -114,7 +119,7 @@ namespace onvifmp{
 		}
 
 	protected:
-		AVCodec* avCodec;
+		const AVCodec* avCodec;
 		AVCodecContext* avCodecContext;
 		AVFrame* avFrame;
 		char* frameBuffer;
@@ -122,7 +127,7 @@ namespace onvifmp{
 		static const int MaxExtraDataSize = 1024;
 		uint8_t extraDataBuffer[MaxExtraDataSize];
 		shared_ptr<IVideoRenderer> videoRenderer;
-		
+
 		void AddExtraData(uint8_t* data, int size){
 			auto newSize = extraDataSize+size;
 			if(newSize > MaxExtraDataSize){
@@ -133,31 +138,38 @@ namespace onvifmp{
 		}
 
 		virtual void ProcessFrame(unsigned char* framePtr, int frameSize, struct timeval presentationTime, unsigned duration){
-			static int frame_num = 0;
-			auto started = clock();
+			// New send/receive API replaces deprecated avcodec_decode_video2 (removed in FFmpeg 3.1+)
+			AVPacket* avpkt = av_packet_alloc();
+			if (!avpkt) {
+				return;
+			}
+			avpkt->data = framePtr;
+			avpkt->size = frameSize;
+			// Make a ref-counted copy so the HEVC frame-threaded decoder can safely
+			// hold a reference past this call without aliasing live555's receive buffer.
+			av_packet_make_refcounted(avpkt);
 
-			AVPacket avpkt;
-			avpkt.data = framePtr;
-			avpkt.size = frameSize;
-			while (avpkt.size > 0) {
-				int got_frame = 0;
-				auto len = avcodec_decode_video2(avCodecContext, avFrame, &got_frame, &avpkt);
-				if (len < 0) {
+			int ret = avcodec_send_packet(avCodecContext, avpkt);
+			av_packet_free(&avpkt);
+
+			if (ret < 0) {
+				//TODO: log error
+				return;
+			}
+
+			while (ret >= 0) {
+				ret = avcodec_receive_frame(avCodecContext, avFrame);
+				if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+					break;
+				}
+				if (ret < 0) {
 					//TODO: log error
 					return;
 				}
-				//int silentMode = 0;
-				//mSilentMode.GetValue(silentMode);
-				if (got_frame /*&& !silentMode*/) {
-					//printf("frame decoded...\n");
-					if(videoRenderer!=nullptr){
-						videoRenderer->RenderFrame(avCodecContext, avFrame);
-					}
+				if(videoRenderer!=nullptr){
+					videoRenderer->RenderFrame(avCodecContext, avFrame);
 				}
-				avpkt.size -= len;
-				avpkt.data += len;
 			}
-			printf("processed in %ldms\n", clock()-started);
 			//dbg::Info(sys::String::Format("processed in {0}ms",clock()-started));
 		}
 		virtual void Dispose(){

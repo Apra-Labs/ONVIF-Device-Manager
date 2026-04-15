@@ -48,7 +48,7 @@ namespace onvifmp{
 		shared_ptr<VideoBuffer> videoBuffer;
 		MetadataCollector::Listener metadataListener;
 		
-		IFrameProcessorFactory InitVideoSubsession(CodecID codecId, const char* sprops);
+		IFrameProcessorFactory InitVideoSubsession(AVCodecID codecId, const char* sprops);
 		
 		IFrameProcessorFactory InitMetadataSubsession(const char* sprops);
 		

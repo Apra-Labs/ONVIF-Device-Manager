@@ -373,6 +373,11 @@
               <xs:documentation>Optional element to configure H.264 related parameters.</xs:documentation>
             </xs:annotation>
           </xs:element>
+          <xs:element minOccurs="0" name="H265" type="tt:H265Configuration">
+            <xs:annotation>
+              <xs:documentation>Optional element to configure H.265 related parameters.</xs:documentation>
+            </xs:annotation>
+          </xs:element>
           <xs:element name="Multicast" type="tt:MulticastConfiguration">
             <xs:annotation>
               <xs:documentation>Defines the multicast settings that could be used for video streaming.</xs:documentation>
@@ -394,6 +399,7 @@
       <xs:enumeration value="JPEG" />
       <xs:enumeration value="MPEG4" />
       <xs:enumeration value="H264" />
+      <xs:enumeration value="H265" />
     </xs:restriction>
   </xs:simpleType>
   <xs:simpleType name="Mpeg4Profile">
@@ -408,6 +414,13 @@
       <xs:enumeration value="Main" />
       <xs:enumeration value="Extended" />
       <xs:enumeration value="High" />
+    </xs:restriction>
+  </xs:simpleType>
+  <xs:simpleType name="H265Profile">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="Main" />
+      <xs:enumeration value="Main10" />
+      <xs:enumeration value="MainStillPicture" />
     </xs:restriction>
   </xs:simpleType>
   <xs:complexType name="VideoResolution">
@@ -471,6 +484,20 @@
       </xs:element>
     </xs:sequence>
   </xs:complexType>
+  <xs:complexType name="H265Configuration">
+    <xs:sequence>
+      <xs:element name="GovLength" type="xs:int">
+        <xs:annotation>
+          <xs:documentation>Group of Video frames length. Determines typically the interval in which the I-Frames will be coded.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="H265Profile" type="tt:H265Profile">
+        <xs:annotation>
+          <xs:documentation>the H.265 profile, either Main, Main10 or MainStillPicture</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
   <xs:complexType name="VideoEncoderConfigurationOptions">
     <xs:sequence>
       <xs:element name="QualityRange" type="tt:IntRange">
@@ -493,6 +520,11 @@
           <xs:documentation>Optional H.264 encoder settings ranges (See also Extension element).</xs:documentation>
         </xs:annotation>
       </xs:element>
+      <xs:element minOccurs="0" name="H265" type="tt:H265Options">
+        <xs:annotation>
+          <xs:documentation>Optional H.265 encoder settings ranges (See also Extension element).</xs:documentation>
+        </xs:annotation>
+      </xs:element>
       <xs:element minOccurs="0" name="Extension" type="tt:VideoEncoderOptionsExtension" />
     </xs:sequence>
     <xs:anyAttribute processContents="lax" />
@@ -513,6 +545,11 @@
       <xs:element minOccurs="0" name="H264" type="tt:H264Options2">
         <xs:annotation>
           <xs:documentation>Optional H.264 encoder settings ranges.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element minOccurs="0" name="H265" type="tt:H265Options2">
+        <xs:annotation>
+          <xs:documentation>Optional H.265 encoder settings ranges.</xs:documentation>
         </xs:annotation>
       </xs:element>
       <xs:element minOccurs="0" name="Extension" type="tt:VideoEncoderOptionsExtension2" />
@@ -633,6 +670,50 @@
   <xs:complexType name="H264Options2">
     <xs:complexContent mixed="false">
       <xs:extension base="tt:H264Options">
+        <xs:sequence>
+          <xs:element name="BitrateRange" type="tt:IntRange">
+            <xs:annotation>
+              <xs:documentation>Supported range of encoded bitrate in kbps.</xs:documentation>
+            </xs:annotation>
+          </xs:element>
+          <xs:any minOccurs="0" maxOccurs="unbounded" namespace="##any" processContents="lax" />
+        </xs:sequence>
+        <xs:anyAttribute processContents="lax" />
+      </xs:extension>
+    </xs:complexContent>
+  </xs:complexType>
+  <xs:complexType name="H265Options">
+    <xs:sequence>
+      <xs:element maxOccurs="unbounded" name="ResolutionsAvailable" type="tt:VideoResolution">
+        <xs:annotation>
+          <xs:documentation>List of supported image sizes.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="GovLengthRange" type="tt:IntRange">
+        <xs:annotation>
+          <xs:documentation>Supported group of Video frames length.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="FrameRateRange" type="tt:IntRange">
+        <xs:annotation>
+          <xs:documentation>Supported frame rate in fps (frames per second).</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element name="EncodingIntervalRange" type="tt:IntRange">
+        <xs:annotation>
+          <xs:documentation>Supported encoding interval range.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+      <xs:element maxOccurs="unbounded" name="H265ProfilesSupported" type="tt:H265Profile">
+        <xs:annotation>
+          <xs:documentation>List of supported H.265 profiles.</xs:documentation>
+        </xs:annotation>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="H265Options2">
+    <xs:complexContent mixed="false">
+      <xs:extension base="tt:H265Options">
         <xs:sequence>
           <xs:element name="BitrateRange" type="tt:IntRange">
             <xs:annotation>

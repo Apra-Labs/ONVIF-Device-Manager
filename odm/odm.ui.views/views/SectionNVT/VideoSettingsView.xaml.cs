@@ -137,6 +137,9 @@ namespace odm.ui.activities {
 							//TODO: get rid of hardcode
 							frgnd = new SolidColorBrush(System.Windows.Media.Color.FromArgb(255, 80, 0, 0));
 							break;
+						case VideoEncoding.h265:
+							frgnd = new SolidColorBrush(System.Windows.Media.Color.FromArgb(255, 80, 0, 80));
+							break;
 						default:
 							break;
 					}
@@ -183,6 +186,12 @@ namespace odm.ui.activities {
 			if (opts.mpeg4 != null && opts.mpeg4.resolutionsAvailable != null) {
 				foreach (var res in opts.mpeg4.resolutionsAvailable) {
 					yield return Tuple.Create(VideoEncoding.mpeg4, res);
+				}
+			}
+
+			if (opts.h265 != null && opts.h265.resolutionsAvailable != null) {
+				foreach (var res in opts.h265.resolutionsAvailable) {
+					yield return Tuple.Create(VideoEncoding.h265, res);
 				}
 			}
 
