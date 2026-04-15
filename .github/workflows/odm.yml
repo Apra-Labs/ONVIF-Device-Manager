@@ -16,7 +16,7 @@ jobs:
 
     permissions:
       id-token: write
-      contents: read
+      contents: write
 
     env:
       Solution_Name: odm.sln
@@ -58,11 +58,19 @@ jobs:
     - name: Set build version
       shell: pwsh
       run: |
-        $run    = "${{ github.run_number }}"
-        $hash   = (git rev-parse --short HEAD).Trim()
-        $ver4   = "3.0.$run.0"
-        $verMsi = "3.0.$run"
-        $verInfo = "3.0.$run+$hash"
+        $hash = (git rev-parse --short HEAD).Trim()
+        $ref  = "${{ github.ref }}"
+        if ($ref -match '^refs/tags/v(.+)$') {
+          $tagVer  = $Matches[1]
+          $ver4    = "$tagVer.0"
+          $verMsi  = $tagVer
+          $verInfo = "$tagVer+$hash"
+        } else {
+          $run     = "${{ github.run_number }}"
+          $ver4    = "3.0.$run.0"
+          $verMsi  = "3.0.$run"
+          $verInfo = "3.0.$run+$hash"
+        }
 
         $csFiles = @(
           "odm\~cfg\AssemblyInfo.global.cs",
@@ -206,3 +214,29 @@ jobs:
       with:
         name: odm-installer
         path: odm.setup/Release/odm.setup.msi
+
+    - name: Create GitHub release
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: softprops/action-gh-release@v2
+      with:
+        generate_release_notes: true
+        files: odm.setup/Release/odm.setup.msi
+
+    - name: Bump version.json for next dev cycle
+      if: startsWith(github.ref, 'refs/tags/v')
+      shell: pwsh
+      run: |
+        $tag  = "${{ github.ref }}" -replace '^refs/tags/v', ''
+        $parts = $tag.Split('.')
+        $parts[-1] = [string]([int]$parts[-1] + 1)
+        $next = $parts -join '.'
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git fetch origin development
+        git checkout development
+        $v = Get-Content 'version.json' | ConvertFrom-Json
+        $v.version = $next
+        $v | ConvertTo-Json -Compress | Set-Content 'version.json'
+        git add version.json
+        git commit -m "chore: bump version to $next [skip ci]"
+        git push origin development
