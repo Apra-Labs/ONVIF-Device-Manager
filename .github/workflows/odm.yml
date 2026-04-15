@@ -5,12 +5,18 @@ on:
     branches: [ "development" ]
   push:
     branches: [ "development" ]
+    tags: ['v*']
 
 jobs:
 
   build:
 
+    environment: signing
     runs-on: windows-2022
+
+    permissions:
+      id-token: write
+      contents: read
 
     env:
       Solution_Name: odm.sln
@@ -52,21 +58,12 @@ jobs:
     - name: Set build version
       shell: pwsh
       run: |
-        # Single source of truth for every CI build:
-        #   AssemblyVersion / AssemblyFileVersion : 3.0.<run_number>.0
-        #   AssemblyInformationalVersion          : 3.0.<run_number>+<git_short_hash>
-        #   MSI ProductVersion                   : 3.0.<run_number>
-        #   MSI ProductCode                      : fresh GUID (triggers major upgrade)
-        #
-        # 3.0.x is always > any previously shipped 2.x install, so upgrades
-        # are automatic with no manual uninstall required.
         $run    = "${{ github.run_number }}"
         $hash   = (git rev-parse --short HEAD).Trim()
         $ver4   = "3.0.$run.0"
         $verMsi = "3.0.$run"
         $verInfo = "3.0.$run+$hash"
 
-        # Patch all C# AssemblyInfo files
         $csFiles = @(
           "odm\~cfg\AssemblyInfo.global.cs",
           "onvif\~cfg\AssemblyInfo.global.cs",
@@ -75,14 +72,13 @@ jobs:
         foreach ($f in $csFiles) {
           if (Test-Path $f) {
             $c = Get-Content $f -Raw
-            $c = $c -replace 'AssemblyVersion\("[^"]*"\)',            "AssemblyVersion(`"$ver4`")"
-            $c = $c -replace 'AssemblyFileVersion\("[^"]*"\)',        "AssemblyFileVersion(`"$ver4`")"
+            $c = $c -replace 'AssemblyVersion\("[^"]*"\)',              "AssemblyVersion(`"$ver4`")"
+            $c = $c -replace 'AssemblyFileVersion\("[^"]*"\)',          "AssemblyFileVersion(`"$ver4`")"
             $c = $c -replace 'AssemblyInformationalVersion\("[^"]*"\)', "AssemblyInformationalVersion(`"$verInfo`")"
             Set-Content $f $c -NoNewline
           }
         }
 
-        # Patch all F# AssemblyInfo files
         $fsFiles = @(
           "odm\~cfg\AssemblyInfo.global.fs",
           "onvif\~cfg\AssemblyInfo.global.fs",
@@ -97,7 +93,6 @@ jobs:
           }
         }
 
-        # Patch MSI: new ProductCode + ProductVersion
         $vdproj  = "odm.setup\odm.setup.vdproj"
         $newGuid = [guid]::NewGuid().ToString().ToUpper()
         $c = Get-Content $vdproj -Raw
@@ -108,12 +103,6 @@ jobs:
         Write-Host "Version: $verInfo   MSI: $verMsi   ProductCode: {$newGuid}"
 
     - name: Build application
-      # Build the full solution (all projects except the installer, which requires
-      # DisableOutOfProcBuild and is handled separately at the end).
-      # Building the full solution ensures the native C++/CLI player projects
-      # (live555, odm.player.lib, odm.player.net) are always compiled fresh —
-      # this was the root cause of issue #1 where /Project odm.ui.app could
-      # silently skip them, leaving a stale or absent odm.player.net.dll.
       run: msbuild ${{ env.Solution_Name }} /p:Configuration=Release /p:Platform=x64 /p:DeployExtension=false /m /nologo /v:minimal
 
     - name: Restore tests
@@ -162,9 +151,6 @@ jobs:
     - name: Strip PDB files from installer inputs
       shell: pwsh
       run: |
-        # The zip artifact (uploaded above) may include PDBs for debugging.
-        # Remove them from every source the installer pulls from so they are
-        # never embedded in the .msi shipped to end users.
         $removed = 0
         Get-ChildItem -Recurse -Filter "*.pdb" "odm\odm.ui.app\bin\x64\Release" -ErrorAction SilentlyContinue |
           ForEach-Object { Remove-Item $_.FullName -Force; $removed++ }
@@ -180,6 +166,40 @@ jobs:
     - name: Build installer
       run: devenv ${{ env.Solution_Name }} /Build "Release|x64" /Project odm.setup
       shell: cmd
+
+    - name: Azure Login (OIDC)
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: azure/login@v2
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Sign exe
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: azure/trusted-signing-action@v0
+      with:
+        endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+        trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+        certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE }}
+        files-folder: build
+        files-folder-filter: exe
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Sign MSI
+      if: startsWith(github.ref, 'refs/tags/v')
+      uses: azure/trusted-signing-action@v0
+      with:
+        endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+        trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+        certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE }}
+        files-folder: odm.setup/Release
+        files-folder-filter: msi
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
 
     - name: Upload installer
       uses: actions/upload-artifact@v4
