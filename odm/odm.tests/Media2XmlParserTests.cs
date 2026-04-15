@@ -159,5 +159,212 @@ namespace odm.tests
 
             Assert.IsNull(uri, "Empty Uri element should return null");
         }
+
+        // ----------------------------------------------------------------
+        // Test 5: GetVideoEncoderConfigurationOptions H265 + H264 options
+        //         → parser populates options.h265 and options.h264 with
+        //           correct ranges (this is the fix for issue #21)
+        // ----------------------------------------------------------------
+        [TestMethod]
+        [TestCategory("Unit")]
+        public void ParseGetVideoEncoderConfigurationOptionsResponse_H265AndH264_PopulatesCorrectSubObjects()
+        {
+            const string xml = @"<GetVideoEncoderConfigurationOptionsResponse
+                xmlns:tr2='http://www.onvif.org/ver20/media/wsdl'
+                xmlns:tt='http://www.onvif.org/ver10/schema'>
+              <tr2:Options>
+                <tt:Encoding>H265</tt:Encoding>
+                <tt:ResolutionsAvailable>
+                  <tt:Width>3840</tt:Width>
+                  <tt:Height>2160</tt:Height>
+                </tt:ResolutionsAvailable>
+                <tt:ResolutionsAvailable>
+                  <tt:Width>1920</tt:Width>
+                  <tt:Height>1080</tt:Height>
+                </tt:ResolutionsAvailable>
+                <tt:GovLengthRange>
+                  <tt:Min>1</tt:Min>
+                  <tt:Max>300</tt:Max>
+                </tt:GovLengthRange>
+                <tt:FrameRateRange>
+                  <tt:Min>1</tt:Min>
+                  <tt:Max>30</tt:Max>
+                </tt:FrameRateRange>
+                <tt:BitrateRange>
+                  <tt:Min>128</tt:Min>
+                  <tt:Max>16000</tt:Max>
+                </tt:BitrateRange>
+              </tr2:Options>
+              <tr2:Options>
+                <tt:Encoding>H264</tt:Encoding>
+                <tt:ResolutionsAvailable>
+                  <tt:Width>1920</tt:Width>
+                  <tt:Height>1080</tt:Height>
+                </tt:ResolutionsAvailable>
+                <tt:GovLengthRange>
+                  <tt:Min>2</tt:Min>
+                  <tt:Max>150</tt:Max>
+                </tt:GovLengthRange>
+                <tt:FrameRateRange>
+                  <tt:Min>1</tt:Min>
+                  <tt:Max>60</tt:Max>
+                </tt:FrameRateRange>
+                <tt:BitrateRange>
+                  <tt:Min>256</tt:Min>
+                  <tt:Max>8000</tt:Max>
+                </tt:BitrateRange>
+              </tr2:Options>
+            </GetVideoEncoderConfigurationOptionsResponse>";
+
+            var opts = Media2XmlParser.ParseGetVideoEncoderConfigurationOptionsResponse(xml);
+
+            Assert.IsNotNull(opts, "Result must not be null");
+
+            // H265 sub-object
+            Assert.IsNotNull(opts.h265, "h265 options must be populated");
+            Assert.AreEqual(2, opts.h265.resolutionsAvailable.Length, "h265 should have 2 resolutions");
+            Assert.AreEqual(3840, opts.h265.resolutionsAvailable[0].width);
+            Assert.AreEqual(2160, opts.h265.resolutionsAvailable[0].height);
+            Assert.IsNotNull(opts.h265.govLengthRange);
+            Assert.AreEqual(1,   opts.h265.govLengthRange.min);
+            Assert.AreEqual(300, opts.h265.govLengthRange.max);
+            Assert.IsNotNull(opts.h265.frameRateRange);
+            Assert.AreEqual(1,  opts.h265.frameRateRange.min);
+            Assert.AreEqual(30, opts.h265.frameRateRange.max);
+
+            // H264 sub-object
+            Assert.IsNotNull(opts.h264, "h264 options must be populated");
+            Assert.AreEqual(1, opts.h264.resolutionsAvailable.Length, "h264 should have 1 resolution");
+            Assert.AreEqual(1920, opts.h264.resolutionsAvailable[0].width);
+            Assert.AreEqual(1080, opts.h264.resolutionsAvailable[0].height);
+            Assert.IsNotNull(opts.h264.govLengthRange);
+            Assert.AreEqual(2,   opts.h264.govLengthRange.min);
+            Assert.AreEqual(150, opts.h264.govLengthRange.max);
+            Assert.IsNotNull(opts.h264.frameRateRange);
+            Assert.AreEqual(1,  opts.h264.frameRateRange.min);
+            Assert.AreEqual(60, opts.h264.frameRateRange.max);
+
+            // H265 was parsed — h264 must also be set, jpeg must remain null
+            Assert.IsNull(opts.jpeg, "jpeg should not be set when only H265+H264 options present");
+        }
+
+        // ----------------------------------------------------------------
+        // Test 6: Options response with missing GovLengthRange
+        //         → field is null (not default-initialised), no exception
+        // ----------------------------------------------------------------
+        [TestMethod]
+        [TestCategory("Unit")]
+        public void ParseGetVideoEncoderConfigurationOptionsResponse_MissingGovLengthRange_IsNullNoException()
+        {
+            const string xml = @"<GetVideoEncoderConfigurationOptionsResponse
+                xmlns:tr2='http://www.onvif.org/ver20/media/wsdl'
+                xmlns:tt='http://www.onvif.org/ver10/schema'>
+              <tr2:Options>
+                <tt:Encoding>H265</tt:Encoding>
+                <tt:ResolutionsAvailable>
+                  <tt:Width>1920</tt:Width>
+                  <tt:Height>1080</tt:Height>
+                </tt:ResolutionsAvailable>
+                <tt:FrameRateRange>
+                  <tt:Min>1</tt:Min>
+                  <tt:Max>25</tt:Max>
+                </tt:FrameRateRange>
+                <tt:BitrateRange>
+                  <tt:Min>128</tt:Min>
+                  <tt:Max>8000</tt:Max>
+                </tt:BitrateRange>
+              </tr2:Options>
+            </GetVideoEncoderConfigurationOptionsResponse>";
+
+            VideoEncoderConfigurationOptions opts = null;
+            var ex = default(Exception);
+            try { opts = Media2XmlParser.ParseGetVideoEncoderConfigurationOptionsResponse(xml); }
+            catch (Exception e) { ex = e; }
+
+            Assert.IsNull(ex, "Parser must not throw when GovLengthRange is absent");
+            Assert.IsNotNull(opts);
+            Assert.IsNotNull(opts.h265, "h265 must be populated");
+            Assert.IsNull(opts.h265.govLengthRange, "govLengthRange must be null when element is absent");
+        }
+
+        // ----------------------------------------------------------------
+        // Test 7: Options response with empty body
+        //         → returns default (non-null) options object, no exception
+        // ----------------------------------------------------------------
+        [TestMethod]
+        [TestCategory("Unit")]
+        public void ParseGetVideoEncoderConfigurationOptionsResponse_EmptyBody_ReturnsDefaultNoException()
+        {
+            const string xml = @"<GetVideoEncoderConfigurationOptionsResponse
+                xmlns:tr2='http://www.onvif.org/ver20/media/wsdl'
+                xmlns:tt='http://www.onvif.org/ver10/schema'>
+            </GetVideoEncoderConfigurationOptionsResponse>";
+
+            var opts = Media2XmlParser.ParseGetVideoEncoderConfigurationOptionsResponse(xml);
+
+            Assert.IsNotNull(opts, "Must return non-null default options");
+            Assert.IsNull(opts.h264, "h264 must be null for empty response");
+            Assert.IsNull(opts.h265, "h265 must be null for empty response");
+            Assert.IsNull(opts.jpeg, "jpeg must be null for empty response");
+        }
+
+        // ----------------------------------------------------------------
+        // Test 8: BuildSetVideoEncoderConfigurationElement constructs
+        //         correct XML structure for an H265 configuration
+        // ----------------------------------------------------------------
+        [TestMethod]
+        [TestCategory("Unit")]
+        public void BuildSetVideoEncoderConfigurationElement_H265Config_ProducesCorrectXml()
+        {
+            var config = new VideoEncoderConfiguration {
+                token      = "VEC_H265",
+                name       = "H265Stream",
+                encoding   = VideoEncoding.h265,
+                resolution = new VideoResolution { width = 1920, height = 1080 },
+                rateControl = new VideoRateControl {
+                    frameRateLimit   = 25,
+                    encodingInterval = 1,
+                    bitrateLimit     = 4000
+                },
+                h265    = new H265Configuration { govLength = 60 },
+                quality = 5.0f
+            };
+
+            var el = Media2XmlParser.BuildSetVideoEncoderConfigurationElement(config);
+
+            Assert.IsNotNull(el, "Returned element must not be null");
+
+            const string nsTt = "http://www.onvif.org/ver10/schema";
+
+            // token attribute
+            Assert.AreEqual("VEC_H265", (string)el.Attribute("token"));
+
+            // name
+            Assert.AreEqual("H265Stream", (string)el.Element(System.Xml.Linq.XName.Get("Name", nsTt)));
+
+            // encoding
+            Assert.AreEqual("H265", (string)el.Element(System.Xml.Linq.XName.Get("Encoding", nsTt)));
+
+            // resolution
+            var resEl = el.Element(System.Xml.Linq.XName.Get("Resolution", nsTt));
+            Assert.IsNotNull(resEl, "Resolution element required");
+            Assert.AreEqual("1920", (string)resEl.Element(System.Xml.Linq.XName.Get("Width",  nsTt)));
+            Assert.AreEqual("1080", (string)resEl.Element(System.Xml.Linq.XName.Get("Height", nsTt)));
+
+            // rateControl
+            var rcEl = el.Element(System.Xml.Linq.XName.Get("RateControl", nsTt));
+            Assert.IsNotNull(rcEl, "RateControl element required");
+            Assert.AreEqual("25",   (string)rcEl.Element(System.Xml.Linq.XName.Get("FrameRateLimit",   nsTt)));
+            Assert.AreEqual("1",    (string)rcEl.Element(System.Xml.Linq.XName.Get("EncodingInterval", nsTt)));
+            Assert.AreEqual("4000", (string)rcEl.Element(System.Xml.Linq.XName.Get("BitrateLimit",     nsTt)));
+
+            // H265 block
+            var h265El = el.Element(System.Xml.Linq.XName.Get("H265", nsTt));
+            Assert.IsNotNull(h265El, "H265 element required for H265 encoding");
+            Assert.AreEqual("60", (string)h265El.Element(System.Xml.Linq.XName.Get("GovLength", nsTt)));
+
+            // H264 block must NOT be present
+            Assert.IsNull(el.Element(System.Xml.Linq.XName.Get("H264", nsTt)), "H264 element must be absent for H265 encoding");
+        }
     }
 }

@@ -913,24 +913,24 @@ namespace onvif.services {
 				switch (encoding) {
 					case "H264":
 						opts.h264 = new H264Options {
-							resolutionsAvailable = resolutions,
-							govLengthRange       = govRange ?? new IntRange(),
-							frameRateRange       = fpsRange ?? new IntRange(),
+							resolutionsAvailable  = resolutions,
+							govLengthRange        = govRange,  // null when element absent
+							frameRateRange        = fpsRange,  // null when element absent
 							encodingIntervalRange = new IntRange { min = 1, max = 1 }
 						};
 						break;
 					case "H265":
 						opts.h265 = new H265Options {
-							resolutionsAvailable = resolutions,
-							govLengthRange       = govRange ?? new IntRange(),
-							frameRateRange       = fpsRange ?? new IntRange(),
+							resolutionsAvailable  = resolutions,
+							govLengthRange        = govRange,  // null when element absent
+							frameRateRange        = fpsRange,  // null when element absent
 							encodingIntervalRange = new IntRange { min = 1, max = 1 }
 						};
 						break;
 					case "JPEG":
 						opts.jpeg = new JpegOptions {
 							resolutionsAvailable  = resolutions,
-							frameRateRange        = fpsRange ?? new IntRange(),
+							frameRateRange        = fpsRange,  // null when element absent
 							encodingIntervalRange = new IntRange { min = 1, max = 1 }
 						};
 						break;
