@@ -366,5 +366,163 @@ namespace odm.tests
             // H264 block must NOT be present
             Assert.IsNull(el.Element(System.Xml.Linq.XName.Get("H264", nsTt)), "H264 element must be absent for H265 encoding");
         }
+        // ----------------------------------------------------------------
+        // Test 9: GetVideoEncoderConfigurations response with full fields
+        //         → parser returns VideoEncoderConfiguration[] with all fields
+        //           populated (encoding, resolution, rateControl, govLength,
+        //           h265 profile)
+        // ----------------------------------------------------------------
+        [TestMethod]
+        [TestCategory("Unit")]
+        public void ParseGetVideoEncoderConfigurationsResponse_FullFields_AllFieldsPopulated()
+        {
+            const string xml = @"<GetVideoEncoderConfigurationsResponse
+                xmlns:tr2='http://www.onvif.org/ver20/media/wsdl'
+                xmlns:tt='http://www.onvif.org/ver10/schema'>
+              <tr2:Configurations token='VEC_H265'>
+                <tt:Name>H265Stream</tt:Name>
+                <tt:Encoding>H265</tt:Encoding>
+                <tt:Resolution>
+                  <tt:Width>1920</tt:Width>
+                  <tt:Height>1080</tt:Height>
+                </tt:Resolution>
+                <tt:RateControl>
+                  <tt:FrameRateLimit>25</tt:FrameRateLimit>
+                  <tt:EncodingInterval>1</tt:EncodingInterval>
+                  <tt:BitrateLimit>4000</tt:BitrateLimit>
+                </tt:RateControl>
+                <tt:H265>
+                  <tt:GovLength>60</tt:GovLength>
+                </tt:H265>
+                <tt:Quality>5</tt:Quality>
+              </tr2:Configurations>
+              <tr2:Configurations token='VEC_H264'>
+                <tt:Name>H264Stream</tt:Name>
+                <tt:Encoding>H264</tt:Encoding>
+                <tt:Resolution>
+                  <tt:Width>1280</tt:Width>
+                  <tt:Height>720</tt:Height>
+                </tt:Resolution>
+                <tt:RateControl>
+                  <tt:FrameRateLimit>30</tt:FrameRateLimit>
+                  <tt:EncodingInterval>1</tt:EncodingInterval>
+                  <tt:BitrateLimit>2000</tt:BitrateLimit>
+                </tt:RateControl>
+                <tt:H264>
+                  <tt:GovLength>30</tt:GovLength>
+                </tt:H264>
+              </tr2:Configurations>
+            </GetVideoEncoderConfigurationsResponse>";
+
+            var cfgs = Media2XmlParser.ParseGetVideoEncoderConfigurationsResponse(xml);
+
+            Assert.AreEqual(2, cfgs.Length, "Expected 2 configurations");
+
+            // H265 config
+            var c1 = cfgs[0];
+            Assert.AreEqual("VEC_H265", c1.token);
+            Assert.AreEqual("H265Stream", c1.name);
+            Assert.AreEqual(VideoEncoding.h265, c1.encoding);
+            Assert.IsNotNull(c1.resolution);
+            Assert.AreEqual(1920, c1.resolution.width);
+            Assert.AreEqual(1080, c1.resolution.height);
+            Assert.IsNotNull(c1.rateControl);
+            Assert.AreEqual(25, c1.rateControl.frameRateLimit);
+            Assert.AreEqual(4000, c1.rateControl.bitrateLimit);
+            Assert.IsNotNull(c1.h265, "H265 block must be populated");
+            Assert.AreEqual(60, c1.h265.govLength);
+            Assert.IsNull(c1.h264, "H264 block must be absent for H265 config");
+
+            // H264 config
+            var c2 = cfgs[1];
+            Assert.AreEqual("VEC_H264", c2.token);
+            Assert.AreEqual(VideoEncoding.h264, c2.encoding);
+            Assert.AreEqual(1280, c2.resolution.width);
+            Assert.AreEqual(720, c2.resolution.height);
+            Assert.IsNotNull(c2.h264, "H264 block must be populated");
+            Assert.AreEqual(30, c2.h264.govLength);
+            Assert.IsNull(c2.h265, "H265 block must be absent for H264 config");
+        }
+
+        // ----------------------------------------------------------------
+        // Test 10: GetVideoSourceConfigurations response
+        //          → parser returns VideoSourceConfiguration[] with token,
+        //            name, sourceToken, bounds
+        // ----------------------------------------------------------------
+        [TestMethod]
+        [TestCategory("Unit")]
+        public void ParseGetVideoSourceConfigurationsResponse_ValidResponse_AllFieldsPopulated()
+        {
+            const string xml = @"<GetVideoSourceConfigurationsResponse
+                xmlns:tr2='http://www.onvif.org/ver20/media/wsdl'
+                xmlns:tt='http://www.onvif.org/ver10/schema'>
+              <tr2:Configurations token='VSC_1'>
+                <tt:Name>VideoSource_1</tt:Name>
+                <tt:SourceToken>VideoSource_Channel1</tt:SourceToken>
+                <tt:Bounds x='0' y='0' width='1920' height='1080'/>
+              </tr2:Configurations>
+              <tr2:Configurations token='VSC_2'>
+                <tt:Name>VideoSource_2</tt:Name>
+                <tt:SourceToken>VideoSource_Channel2</tt:SourceToken>
+                <tt:Bounds x='0' y='0' width='1280' height='720'/>
+              </tr2:Configurations>
+            </GetVideoSourceConfigurationsResponse>";
+
+            var vscs = Media2XmlParser.ParseGetVideoSourceConfigurationsResponse(xml);
+
+            Assert.AreEqual(2, vscs.Length, "Expected 2 source configurations");
+
+            var v1 = vscs[0];
+            Assert.AreEqual("VSC_1", v1.token);
+            Assert.AreEqual("VideoSource_1", v1.name);
+            Assert.AreEqual("VideoSource_Channel1", v1.sourceToken);
+            Assert.IsNotNull(v1.bounds, "Bounds must be populated");
+            Assert.AreEqual(1920, v1.bounds.width);
+            Assert.AreEqual(1080, v1.bounds.height);
+            Assert.AreEqual(0, v1.bounds.x);
+            Assert.AreEqual(0, v1.bounds.y);
+
+            var v2 = vscs[1];
+            Assert.AreEqual("VSC_2", v2.token);
+            Assert.AreEqual("VideoSource_Channel2", v2.sourceToken);
+            Assert.AreEqual(1280, v2.bounds.width);
+            Assert.AreEqual(720, v2.bounds.height);
+        }
+
+        // ----------------------------------------------------------------
+        // Test 11: Empty responses for encoder configs and source configs
+        //          → both return empty arrays with no exceptions
+        // ----------------------------------------------------------------
+        [TestMethod]
+        [TestCategory("Unit")]
+        public void ParseGetVideoEncoderAndSourceConfigurationsResponse_EmptyBody_ReturnsEmptyArraysNoException()
+        {
+            const string emptyEncoderXml = @"<GetVideoEncoderConfigurationsResponse
+                xmlns:tr2='http://www.onvif.org/ver20/media/wsdl'
+                xmlns:tt='http://www.onvif.org/ver10/schema'>
+            </GetVideoEncoderConfigurationsResponse>";
+
+            const string emptySourceXml = @"<GetVideoSourceConfigurationsResponse
+                xmlns:tr2='http://www.onvif.org/ver20/media/wsdl'
+                xmlns:tt='http://www.onvif.org/ver10/schema'>
+            </GetVideoSourceConfigurationsResponse>";
+
+            VideoEncoderConfiguration[] encoderCfgs = null;
+            VideoSourceConfiguration[] sourceCfgs = null;
+            Exception ex = null;
+
+            try {
+                encoderCfgs = Media2XmlParser.ParseGetVideoEncoderConfigurationsResponse(emptyEncoderXml);
+                sourceCfgs  = Media2XmlParser.ParseGetVideoSourceConfigurationsResponse(emptySourceXml);
+            } catch (Exception e) {
+                ex = e;
+            }
+
+            Assert.IsNull(ex, "No exception should be thrown for empty responses");
+            Assert.IsNotNull(encoderCfgs);
+            Assert.AreEqual(0, encoderCfgs.Length, "Encoder configs: expected empty array");
+            Assert.IsNotNull(sourceCfgs);
+            Assert.AreEqual(0, sourceCfgs.Length, "Source configs: expected empty array");
+        }
     }
 }

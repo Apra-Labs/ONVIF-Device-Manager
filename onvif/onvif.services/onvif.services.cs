@@ -700,6 +700,10 @@ namespace onvif.services {
 	[MessageContract(WrapperName = "GetVideoEncoderConfigurations",
 		WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl", IsWrapped = true)]
 	public partial class Media2GetVideoEncoderConfigurationsRequest {
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 0)]
+		public string ConfigurationToken;
+		[MessageBodyMember(Namespace = "http://www.onvif.org/ver20/media/wsdl", Order = 1)]
+		public string ProfileToken;
 		public Media2GetVideoEncoderConfigurationsRequest() { }
 	}
 
@@ -986,6 +990,63 @@ namespace onvif.services {
 			cfgEl.Add(new XElement(NsTt + "Quality", config.quality.ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
 			return cfgEl;
+		}
+
+		/// <summary>
+		/// Parses the body XML from a Media2 GetVideoEncoderConfigurations response.
+		/// Returns all VideoEncoderConfiguration entries with full field population.
+		/// </summary>
+		public static VideoEncoderConfiguration[] ParseGetVideoEncoderConfigurationsResponse(string bodyXml) {
+			if (string.IsNullOrWhiteSpace(bodyXml)) return new VideoEncoderConfiguration[0];
+			XDocument doc;
+			try { doc = XDocument.Parse(bodyXml); } catch { return new VideoEncoderConfiguration[0]; }
+			var result = new List<VideoEncoderConfiguration>();
+			foreach (var el in doc.Root.Elements(NsTr2 + "Configurations")) {
+				var tokenAttr = el.Attribute("token");
+				if (tokenAttr == null || string.IsNullOrEmpty(tokenAttr.Value)) continue;
+				result.Add(ParseVideoEncoderConfigElement(el));
+			}
+			return result.ToArray();
+		}
+
+		/// <summary>
+		/// Parses the body XML from a Media2 GetVideoSourceConfigurations response.
+		/// Returns VideoSourceConfiguration[] with token, name, sourceToken, and bounds populated.
+		/// </summary>
+		public static VideoSourceConfiguration[] ParseGetVideoSourceConfigurationsResponse(string bodyXml) {
+			if (string.IsNullOrWhiteSpace(bodyXml)) return new VideoSourceConfiguration[0];
+			XDocument doc;
+			try { doc = XDocument.Parse(bodyXml); } catch { return new VideoSourceConfiguration[0]; }
+			var result = new List<VideoSourceConfiguration>();
+			foreach (var el in doc.Root.Elements(NsTr2 + "Configurations")) {
+				var tokenAttr = el.Attribute("token");
+				if (tokenAttr == null || string.IsNullOrEmpty(tokenAttr.Value)) continue;
+				var vsc = new VideoSourceConfiguration { token = tokenAttr.Value };
+
+				var nameEl = el.Element(NsTt + "Name");
+				if (nameEl != null) vsc.name = nameEl.Value;
+
+				var srcTokEl = el.Element(NsTt + "SourceToken");
+				if (srcTokEl != null) vsc.sourceToken = srcTokEl.Value;
+
+				var boundsEl = el.Element(NsTt + "Bounds");
+				if (boundsEl != null) {
+					var rect = new IntRectangle();
+					var xAttr = boundsEl.Attribute("x");
+					var yAttr = boundsEl.Attribute("y");
+					var wAttr = boundsEl.Attribute("width");
+					var hAttr = boundsEl.Attribute("height");
+					int v;
+					if (xAttr != null && int.TryParse(xAttr.Value, out v)) rect.x = v;
+					if (yAttr != null && int.TryParse(yAttr.Value, out v)) rect.y = v;
+					if (wAttr != null && int.TryParse(wAttr.Value, out v)) rect.width = v;
+					if (hAttr != null && int.TryParse(hAttr.Value, out v)) rect.height = v;
+					vsc.bounds = rect;
+				}
+
+				result.Add(vsc);
+			}
+			return result.ToArray();
 		}
 
 		// ---- private helpers ----

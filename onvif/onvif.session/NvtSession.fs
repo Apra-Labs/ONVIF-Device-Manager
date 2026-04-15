@@ -1235,6 +1235,28 @@
                 return Media2XmlParser.ParseGetVideoEncoderConfigurationOptionsResponse(bodyXml)
             }
 
+            // Returns VideoEncoderConfiguration[] parsed from a Media2 GetVideoEncoderConfigurations response.
+            // profileToken: when non-empty, sends as filter so the camera returns only compatible configs.
+            let getEncoderConfigurationsViaMedia2 (media2: IMedia2) (profileToken: string) = async {
+                let request = new Media2GetVideoEncoderConfigurationsRequest()
+                if not(String.IsNullOrEmpty(profileToken)) then request.ProfileToken <- profileToken
+                let! response = Async.FromBeginEnd(request, media2.BeginGetVideoEncoderConfigurations, media2.EndGetVideoEncoderConfigurations)
+                use response = response
+                let bodyReader = response.GetReaderAtBodyContents()
+                let bodyXml = bodyReader.ReadOuterXml()
+                return Media2XmlParser.ParseGetVideoEncoderConfigurationsResponse(bodyXml)
+            }
+
+            // Returns VideoSourceConfiguration[] parsed from a Media2 GetVideoSourceConfigurations response.
+            let getVideoSourceConfigurationsViaMedia2 (media2: IMedia2) = async {
+                let request = new Media2GetVideoSourceConfigurationsRequest()
+                let! response = Async.FromBeginEnd(request, media2.BeginGetVideoSourceConfigurations, media2.EndGetVideoSourceConfigurations)
+                use response = response
+                let bodyReader = response.GetReaderAtBodyContents()
+                let bodyXml = bodyReader.ReadOuterXml()
+                return Media2XmlParser.ParseGetVideoSourceConfigurationsResponse(bodyXml)
+            }
+
             // Applies VideoEncoderConfiguration via Media2 SetVideoEncoderConfigurations.
             // ForcePersistence is not sent — Media2 does not support it.
             let setVideoEncoderConfigurationViaMedia2 (media2: IMedia2) (config: VideoEncoderConfiguration) = async {
@@ -1807,26 +1829,53 @@
                     }
 
                     member this.GetVideoSourceConfigurations(): Async<VideoSourceConfiguration[]> = async{
-                        let! med = GetMediaClient()
-                        if med |> NotNull then
-                            return! med.GetVideoSourceConfigurations()
+                        let! media2 = GetMedia2Client()
+                        if media2 |> NotNull then
+                            try
+                                return! getVideoSourceConfigurationsViaMedia2 media2
+                            with _ ->
+                                let! med = GetMediaClient()
+                                if med |> NotNull then return! med.GetVideoSourceConfigurations()
+                                else return [||]
                         else
-                            return [||]
+                            let! med = GetMediaClient()
+                            if med |> NotNull then
+                                return! med.GetVideoSourceConfigurations()
+                            else
+                                return [||]
                     }
 
                     member this.GetVideoEncoderConfigurations(): Async<VideoEncoderConfiguration[]> = async{
-                        let! med = GetMediaClient()
-                        if med |> NotNull then
+                        let! media2 = GetMedia2Client()
+                        if media2 |> NotNull then
                             try
-                                return! med.GetVideoEncoderConfigurations()
-                            with 
-                                | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
+                                return! getEncoderConfigurationsViaMedia2 media2 ""
+                            with _ ->
+                                let! med = GetMediaClient()
+                                if med |> NotNull then
+                                    try
+                                        return! med.GetVideoEncoderConfigurations()
+                                    with
+                                        | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
+                                            return [||]
+                                        | err ->
+                                            dbg.Error(err)
+                                            return raise err
+                                else
                                     return [||]
-                                | err -> 
-                                    dbg.Error(err)
-                                    return raise err
                         else
-                            return [||]
+                            let! med = GetMediaClient()
+                            if med |> NotNull then
+                                try
+                                    return! med.GetVideoEncoderConfigurations()
+                                with
+                                    | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
+                                        return [||]
+                                    | err ->
+                                        dbg.Error(err)
+                                        return raise err
+                            else
+                                return [||]
                     }
 
                     member this.GetAudioSourceConfigurations(): Async<AudioSourceConfiguration[]> = async{
@@ -1913,15 +1962,30 @@
                     }
 
                     member this.GetCompatibleVideoEncoderConfigurations(profToken:string): Async<VideoEncoderConfiguration[]> = async{
-                        let! med = GetMediaClient()
-                        try
-                            return! med.GetCompatibleVideoEncoderConfigurations(profToken)
-                        with 
-                            | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
-                                return! this.GetVideoEncoderConfigurations()
-                            | err -> 
-                                dbg.Error(err)
-                                return raise err
+                        let! media2 = GetMedia2Client()
+                        if media2 |> NotNull then
+                            try
+                                return! getEncoderConfigurationsViaMedia2 media2 profToken
+                            with _ ->
+                                let! med = GetMediaClient()
+                                try
+                                    return! med.GetCompatibleVideoEncoderConfigurations(profToken)
+                                with
+                                    | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
+                                        return! this.GetVideoEncoderConfigurations()
+                                    | err ->
+                                        dbg.Error(err)
+                                        return raise err
+                        else
+                            let! med = GetMediaClient()
+                            try
+                                return! med.GetCompatibleVideoEncoderConfigurations(profToken)
+                            with
+                                | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
+                                    return! this.GetVideoEncoderConfigurations()
+                                | err ->
+                                    dbg.Error(err)
+                                    return raise err
                     }
 
                     member this.GetCompatibleVideoSourceConfigurations(profToken:string): Async<VideoSourceConfiguration[]> = async{
