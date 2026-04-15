@@ -887,5 +887,132 @@ namespace onvif.services {
 			if (uriEl == null || string.IsNullOrEmpty(uriEl.Value)) return null;
 			return uriEl.Value;
 		}
+
+		/// <summary>
+		/// Parses the body XML from a Media2 GetVideoEncoderConfigurationOptions response.
+		/// Media2 returns per-encoding option blocks; this method maps them into the
+		/// single VideoEncoderConfigurationOptions type used by the rest of ODM.
+		/// Returns a default (non-null) instance even on empty or malformed input.
+		/// </summary>
+		public static VideoEncoderConfigurationOptions ParseGetVideoEncoderConfigurationOptionsResponse(string bodyXml) {
+			var opts = new VideoEncoderConfigurationOptions();
+			if (string.IsNullOrWhiteSpace(bodyXml)) return opts;
+			XDocument doc;
+			try { doc = XDocument.Parse(bodyXml); } catch { return opts; }
+
+			foreach (var optEl in doc.Root.Elements(NsTr2 + "Options")) {
+				var encEl = optEl.Element(NsTt + "Encoding");
+				if (encEl == null) continue;
+				var encoding = encEl.Value.Trim().ToUpperInvariant();
+
+				var resolutions = ParseResolutionsAvailable(optEl);
+				var govRange    = ParseIntRange(optEl.Element(NsTt + "GovLengthRange"));
+				var fpsRange    = ParseIntRange(optEl.Element(NsTt + "FrameRateRange"));
+				var bpsRange    = ParseIntRange(optEl.Element(NsTt + "BitrateRange"));
+
+				switch (encoding) {
+					case "H264":
+						opts.h264 = new H264Options {
+							resolutionsAvailable = resolutions,
+							govLengthRange       = govRange ?? new IntRange(),
+							frameRateRange       = fpsRange ?? new IntRange(),
+							encodingIntervalRange = new IntRange { min = 1, max = 1 }
+						};
+						break;
+					case "H265":
+						opts.h265 = new H265Options {
+							resolutionsAvailable = resolutions,
+							govLengthRange       = govRange ?? new IntRange(),
+							frameRateRange       = fpsRange ?? new IntRange(),
+							encodingIntervalRange = new IntRange { min = 1, max = 1 }
+						};
+						break;
+					case "JPEG":
+						opts.jpeg = new JpegOptions {
+							resolutionsAvailable  = resolutions,
+							frameRateRange        = fpsRange ?? new IntRange(),
+							encodingIntervalRange = new IntRange { min = 1, max = 1 }
+						};
+						break;
+				}
+			}
+			return opts;
+		}
+
+		/// <summary>
+		/// Builds the tt:Configuration XElement body for a Media2 SetVideoEncoderConfigurations request.
+		/// The returned element is set as Media2SetVideoEncoderConfigurationsRequest.Configuration.
+		/// </summary>
+		public static XElement BuildSetVideoEncoderConfigurationElement(VideoEncoderConfiguration config) {
+			if (config == null) throw new ArgumentNullException("config");
+
+			string encStr;
+			switch (config.encoding) {
+				case VideoEncoding.h265:  encStr = "H265";  break;
+				case VideoEncoding.jpeg:  encStr = "JPEG";  break;
+				case VideoEncoding.mpeg4: encStr = "MPEG4"; break;
+				default:                  encStr = "H264";  break;
+			}
+
+			var cfgEl = new XElement(NsTt + "Configuration",
+				new XAttribute("token", config.token ?? ""));
+
+			if (config.name != null)
+				cfgEl.Add(new XElement(NsTt + "Name", config.name));
+
+			cfgEl.Add(new XElement(NsTt + "Encoding", encStr));
+
+			if (config.resolution != null) {
+				cfgEl.Add(new XElement(NsTt + "Resolution",
+					new XElement(NsTt + "Width",  config.resolution.width),
+					new XElement(NsTt + "Height", config.resolution.height)));
+			}
+
+			if (config.rateControl != null) {
+				cfgEl.Add(new XElement(NsTt + "RateControl",
+					new XElement(NsTt + "FrameRateLimit",    config.rateControl.frameRateLimit),
+					new XElement(NsTt + "EncodingInterval",  config.rateControl.encodingInterval),
+					new XElement(NsTt + "BitrateLimit",      config.rateControl.bitrateLimit)));
+			}
+
+			if (config.encoding == VideoEncoding.h264 && config.h264 != null) {
+				cfgEl.Add(new XElement(NsTt + "H264",
+					new XElement(NsTt + "GovLength", config.h264.govLength)));
+			} else if (config.encoding == VideoEncoding.h265 && config.h265 != null) {
+				cfgEl.Add(new XElement(NsTt + "H265",
+					new XElement(NsTt + "GovLength", config.h265.govLength)));
+			}
+
+			cfgEl.Add(new XElement(NsTt + "Quality", config.quality.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+
+			return cfgEl;
+		}
+
+		// ---- private helpers ----
+
+		private static VideoResolution[] ParseResolutionsAvailable(XElement parent) {
+			var list = new List<VideoResolution>();
+			foreach (var resEl in parent.Elements(NsTt + "ResolutionsAvailable")) {
+				var wEl = resEl.Element(NsTt + "Width");
+				var hEl = resEl.Element(NsTt + "Height");
+				if (wEl != null && hEl != null) {
+					int w, h;
+					if (int.TryParse(wEl.Value, out w) && int.TryParse(hEl.Value, out h))
+						list.Add(new VideoResolution { width = w, height = h });
+				}
+			}
+			return list.ToArray();
+		}
+
+		private static IntRange ParseIntRange(XElement el) {
+			if (el == null) return null;
+			var minEl = el.Element(NsTt + "Min");
+			var maxEl = el.Element(NsTt + "Max");
+			int mn, mx;
+			if (minEl != null && maxEl != null &&
+			    int.TryParse(minEl.Value, out mn) && int.TryParse(maxEl.Value, out mx))
+				return new IntRange { min = mn, max = mx };
+			return null;
+		}
 	}
 }

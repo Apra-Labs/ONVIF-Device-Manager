@@ -1223,6 +1223,31 @@
                 return mediaUri
             }
 
+            // Returns VideoEncoderConfigurationOptions parsed from a Media2 GetVideoEncoderConfigurationOptions response.
+            let getVideoEncoderConfigurationOptionsViaMedia2 (media2: IMedia2) (configToken: string) (profileToken: string) = async {
+                let request = new Media2GetVideoEncoderConfigurationOptionsRequest()
+                if not(String.IsNullOrEmpty(configToken)) then request.ConfigurationToken <- configToken
+                if not(String.IsNullOrEmpty(profileToken)) then request.ProfileToken <- profileToken
+                let! response = Async.FromBeginEnd(request, media2.BeginGetVideoEncoderConfigurationOptions, media2.EndGetVideoEncoderConfigurationOptions)
+                use response = response
+                let bodyReader = response.GetReaderAtBodyContents()
+                let bodyXml = bodyReader.ReadOuterXml()
+                return Media2XmlParser.ParseGetVideoEncoderConfigurationOptionsResponse(bodyXml)
+            }
+
+            // Applies VideoEncoderConfiguration via Media2 SetVideoEncoderConfigurations.
+            // ForcePersistence is not sent — Media2 does not support it.
+            let setVideoEncoderConfigurationViaMedia2 (media2: IMedia2) (config: VideoEncoderConfiguration) = async {
+                let request = new Media2SetVideoEncoderConfigurationsRequest()
+                request.Configuration <- Media2XmlParser.BuildSetVideoEncoderConfigurationElement(config)
+                let! response = Async.FromBeginEnd(request, media2.BeginSetVideoEncoderConfigurations, media2.EndSetVideoEncoderConfigurations)
+                use response = response
+                // Response body is empty for a successful Set — just consume it
+                if not(response.IsEmpty) then
+                    use _rdr = response.GetReaderAtBodyContents()
+                    ()
+            }
+
             {
                 new INvtSession with
                     member this.deviceUri = deviceUri
@@ -1951,8 +1976,17 @@
                     }
 
                     member this.SetVideoEncoderConfiguration(config:VideoEncoderConfiguration, forcePersistence:bool): Async<unit> = async{
-                        let! med = GetMediaClient()
-                        return! med.SetVideoEncoderConfiguration(config, forcePersistence)
+                        let! media2 = GetMedia2Client()
+                        if media2 |> NotNull then
+                            try
+                                return! setVideoEncoderConfigurationViaMedia2 media2 config
+                            with err ->
+                                dbg.Error(err)
+                                let! med = GetMediaClient()
+                                return! med.SetVideoEncoderConfiguration(config, forcePersistence)
+                        else
+                            let! med = GetMediaClient()
+                            return! med.SetVideoEncoderConfiguration(config, forcePersistence)
                     }
 
                     member this.SetAudioSourceConfiguration(config:AudioSourceConfiguration, forcePersistence:bool): Async<unit> = async{
@@ -1981,8 +2015,17 @@
                     }
 
                     member this.GetVideoEncoderConfigurationOptions(configToken:string, profToken:string): Async<VideoEncoderConfigurationOptions> = async{
-                        let! med = GetMediaClient()
-                        return! med.GetVideoEncoderConfigurationOptions(configToken, profToken)
+                        let! media2 = GetMedia2Client()
+                        if media2 |> NotNull then
+                            try
+                                return! getVideoEncoderConfigurationOptionsViaMedia2 media2 configToken profToken
+                            with err ->
+                                dbg.Error(err)
+                                let! med = GetMediaClient()
+                                return! med.GetVideoEncoderConfigurationOptions(configToken, profToken)
+                        else
+                            let! med = GetMediaClient()
+                            return! med.GetVideoEncoderConfigurationOptions(configToken, profToken)
                     }
 
                     member this.GetAudioSourceConfigurationOptions(configToken:string, profToken:string): Async<AudioSourceConfigurationOptions> = async{
