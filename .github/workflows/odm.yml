@@ -11,6 +11,7 @@ jobs:
 
   build:
 
+    environment: signing
     runs-on: windows-2022
 
     permissions:
