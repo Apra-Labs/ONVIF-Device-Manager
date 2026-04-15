@@ -422,3 +422,187 @@ No changes to:
 - The `bpsRange` variable in `ParseGetVideoEncoderConfigurationOptionsResponse` is computed from `BitrateRange` XML but never assigned. This is a dead variable since the target types (`H265Options`, `H264Options`) lack a `bitrateRange` field. Remove the variable in a future cleanup to avoid confusion.
 
 **No changes needed. Proceed to Phase 4.**
+
+---
+---
+
+# Phase 4 Code Review — GetCompatibleVideoEncoderConfigurations + GetVideoEncoderConfigurations + GetVideoSourceConfigurations (Tasks 4.1, 4.2, 4.3)
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-15 12:00:00-04:00
+**Scope:** Commits `49282f3`, `9306552` on `feat/media2-support` (diff from `f667a06..9306552`)
+**Verdict:** APPROVED
+
+---
+
+## 1. GetVideoEncoderConfigurations — Shared Helper + Full-Field Parser + Media1 Fallback
+
+**PASS.** `NvtSession.fs` introduces `getEncoderConfigurationsViaMedia2` as a shared helper used by both `GetVideoEncoderConfigurations()` and `GetCompatibleVideoEncoderConfigurations()`. The helper:
+
+- Constructs `Media2GetVideoEncoderConfigurationsRequest` and optionally sets `ProfileToken` when non-empty (for compatible-configs filtering)
+- Uses the standard `Async.FromBeginEnd → raw Message → ReadOuterXml` pipeline
+- Delegates parsing to `Media2XmlParser.ParseGetVideoEncoderConfigurationsResponse`
+
+The parser (`onvif.services.cs` line ~994) iterates `tr2:Configurations` elements and reuses the shared `ParseVideoEncoderConfigElement` helper established in Phase 2 — **DRY confirmed**. This means every encoder config field (token, name, encoding, resolution, rateControl, govLength, h264/h265 profile) is populated via the same code path that parses profiles.
+
+`GetVideoEncoderConfigurations()` routing: Media2 first → on failure falls back to Media1 with the original `FaultException` handling for `ActionNotSupported`. `GetCompatibleVideoEncoderConfigurations(profToken)` routing: Media2 first (passing `profToken` to filter) → on failure falls back to Media1's `GetCompatibleVideoEncoderConfigurations(profToken)` → on `ActionNotSupported`, further falls back to `this.GetVideoEncoderConfigurations()`. Fallback chain is correct and preserves pre-existing behavior.
+
+**NOTE (non-blocking):** The `ConfigurationToken` and `ProfileToken` fields were added to `Media2GetVideoEncoderConfigurationsRequest` in this phase (commit `49282f3`), resolving the ambiguity noted in Check 10 of the plan review. This is the correct approach — the Phase 1 request type was extended rather than creating a new one.
+
+---
+
+## 2. GetVideoSourceConfigurations — Field Mapping + Media1 Fallback
+
+**PASS.** `getVideoSourceConfigurationsViaMedia2` helper follows the established pattern. `ParseGetVideoSourceConfigurationsResponse` correctly maps:
+
+| XML Source | Domain Field |
+|------------|-------------|
+| `tr2:Configurations/@token` | `vsc.token` |
+| `tt:Name` | `vsc.name` |
+| `tt:SourceToken` | `vsc.sourceToken` |
+| `tt:Bounds/@x` | `vsc.bounds.x` |
+| `tt:Bounds/@y` | `vsc.bounds.y` |
+| `tt:Bounds/@width` | `vsc.bounds.width` |
+| `tt:Bounds/@height` | `vsc.bounds.height` |
+
+All bounds attributes use `int.TryParse` for safe parsing — no exception risk from malformed XML. The `IntRectangle` is only assigned when the `tt:Bounds` element is present. Configurations without a `token` attribute are skipped (consistent with the encoder config parser).
+
+`GetVideoSourceConfigurations()` routing: Media2 first → on failure falls back to Media1 → returns `[||]` if neither client is available. Correct.
+
+---
+
+## 3. Unit Tests 9–11
+
+**PASS.** Three well-structured tests with meaningful field-level assertions:
+
+| Test | Scenario | Key Assertions |
+|------|----------|---------------|
+| Test 9 | Two encoder configs (H265 + H264) | Full field coverage: token, name, encoding enum, resolution width/height, rateControl frameRateLimit/bitrateLimit, h265.govLength=60, h264.govLength=30, cross-codec null checks (h264 null on H265 config and vice versa) |
+| Test 10 | Two video source configs | token, name, sourceToken, bounds x/y/width/height for both configs |
+| Test 11 | Empty encoder + source responses | Both return empty arrays (not null), no exceptions thrown |
+
+Test 9 is particularly thorough — it validates that the full-field parser (via shared `ParseVideoEncoderConfigElement`) correctly populates all fields when called through `ParseGetVideoEncoderConfigurationsResponse`. This is a stronger test than the Phase 2 profile test because it isolates the encoder config parsing from the profile wrapper.
+
+All tests use correct `tr2`/`tt` namespace prefixes and are tagged `[TestCategory("Unit")]`.
+
+---
+
+## 4. Build and Test Results
+
+**PASS.** Per progress.json V4 entry: Release x64 build passed (warnings only, 0 errors). 80/80 unit tests passed (77 prior + 3 new Phase 4 tests). No regressions.
+
+---
+
+## 5. Code Duplication Observation
+
+**NOTE (non-blocking).** The Media2-first routing pattern in `NvtSession.fs` duplicates the Media1 fallback code in the `else` branch (when `media2` is null) versus the `with` branch (when Media2 call fails). Both branches call `GetMediaClient()` and execute the same Media1 logic. This is a recurring pattern across all routed operations (Phases 2–4). While it would be cleaner to extract a `fallbackToMedia1` helper, this is a style concern, not a correctness issue. The duplication is consistent and easy to follow. Deferring to a future cleanup pass is acceptable.
+
+---
+
+## Summary
+
+**All checks pass.** Phase 4 correctly routes `GetCompatibleVideoEncoderConfigurations`, `GetVideoEncoderConfigurations`, and `GetVideoSourceConfigurations` through Media2 with transparent Media1 fallback. The shared `getEncoderConfigurationsViaMedia2` helper avoids code duplication between the two encoder config operations. The full-field parser reuses `ParseVideoEncoderConfigElement` from Phase 2 (DRY). Video source config parsing correctly maps all fields including bounds. Tests are thorough with field-level assertions.
+
+**No changes needed. Proceed to Phase 5.**
+
+---
+---
+
+# Phase 5 Code Review — GetSnapshotUri + Retire Bridge + Integration Tests (Tasks 5.1, 5.2, 5.3)
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-15 12:00:00-04:00
+**Scope:** Commits `65e5ca9`, `4c0dc2d`, `1cd5bf4` on `feat/media2-support` (diff from `9306552..1cd5bf4`)
+**Verdict:** APPROVED
+
+---
+
+## 1. GetSnapshotUri — URI Parsing Pattern + FixUrl()
+
+**PASS.** `getSnapshotUriViaMedia2` in `NvtSession.fs` correctly:
+
+- Constructs `Media2GetSnapshotUriRequest` with `ProfileToken`
+- Uses the standard raw-Message pipeline
+- **Reuses `Media2XmlParser.ParseGetStreamUriResponse`** for URI extraction — confirmed at line 1161. The Media2 `GetSnapshotUri` response has the same `<tr2:Uri>` structure as `GetStreamUri`, so parser reuse is correct and DRY.
+- Applies `FixUrl()` on the parsed URI — same pattern as `getStreamUriViaMedia2`
+- Sets `mediaUri.uri <- null` when URI is empty — correct null handling
+
+`GetSnapshotUri(token)` routing: Media2 first → on failure logs via `dbg.Error(err)` and falls back to Media1 with the original `FixUrl()` logic preserved identically. The Media1 fallback code is a direct copy of the pre-existing implementation. No regression risk.
+
+---
+
+## 2. GetVideoEncoderConfigurationsMedia2 Retired — Zero Remaining References
+
+**PASS.** Verification:
+
+1. **INvtSession interface (line 88):** `abstract GetVideoEncoderConfigurationsMedia2` member **removed**. The interface now has only `GetAllCapabilities` as an abstract member (confirmed by grep).
+2. **NvtSession.fs implementation:** The entire 44-line `GetVideoEncoderConfigurationsMedia2()` method (the old inline parser that only extracted token+encoding) has been **deleted** and replaced with whitespace. All its functionality is now subsumed by `getEncoderConfigurationsViaMedia2` (Phase 4) which parses all fields.
+3. **Caller migration:**
+   - `VideoSettingsActivity.fs` line 72: `session.GetVideoEncoderConfigurationsMedia2()` → `session.GetVideoEncoderConfigurations()` ✓
+   - `ProfileManagementActivity.fs` line 130: `session.GetVideoEncoderConfigurationsMedia2()` → `session.GetVideoEncoderConfigurations()` ✓
+4. **Codebase grep:** Zero references to `GetVideoEncoderConfigurationsMedia2` in any `.fs` or `.cs` source file. Only references remain in documentation files (`feedback.md`, `PLAN.md`, `requirements.md`, `progress.json`, `docs/features/h265-hevc.md`) — these are historical references, not code.
+
+**Net interface change:** One member removed (`GetVideoEncoderConfigurationsMedia2`). All 7 video operations now route transparently through the internal Media2-first layer without any public interface change. This is the correct outcome.
+
+---
+
+## 3. Integration Tests — Structure, Skip Logic, Coverage
+
+**PASS.** `Media2IntegrationTests.cs` is well-structured:
+
+- **Test category:** All 7 tests tagged `[TestCategory("Integration")]` — confirmed. Offline test runs with `TestCaseFilter:"TestCategory!=Integration"` will skip them automatically.
+- **Skip mechanism:** `SkipIfNoHost()` calls `Assert.Inconclusive("ODM_TEST_HOST not set — skipping integration test")` when the environment variable is absent. This is the correct MSTest pattern — inconclusive tests are reported as skipped, not failed.
+- **Session factory:** `CreateSession()` constructs a `NvtSessionFactory` with optional credentials from `ODM_TEST_USER`/`ODM_TEST_PASS`, creates a session against `http://{host}/onvif/device_service`. Clean.
+- **F# async interop:** `Run<T>` helper correctly uses `FSharpAsync.RunSynchronously` to bridge F# `Async<T>` to synchronous MSTest execution.
+
+**7 tests covering all routed operations:**
+
+| Test | Operation | Key Assertions |
+|------|-----------|---------------|
+| 1 | GetProfiles | Non-null, non-empty, all tokens non-empty |
+| 2 | GetStreamUri | Non-null, non-empty URI, starts with "rtsp" |
+| 3 | GetVideoEncoderConfigurationOptions | Non-null result |
+| 4 | GetVideoEncoderConfigurations | Non-null, non-empty, all tokens non-empty |
+| 5 | GetVideoSourceConfigurations | Non-null, non-empty, tokens and sourceTokens non-empty |
+| 6 | GetSnapshotUri | Gracefully handles null/empty URI; if present, validates HTTP(S) prefix |
+| 7 | GetCompatibleVideoEncoderConfigurations | Non-null result (empty is acceptable) |
+
+Tests that depend on profiles (2, 3, 6, 7) correctly check for profile availability and mark inconclusive if none found. Test 6 is particularly well-designed — it wraps the call in try/catch and marks inconclusive for cameras that don't support snapshot, while still validating the URI scheme when a snapshot URI is returned.
+
+---
+
+## 4. Build and Test Results
+
+**PASS.** Per progress.json V5 entry: Release x64 build passed (warnings only, 0 errors). 80/80 unit tests passed (TestCategory!=Integration). The 7 integration tests are correctly excluded from offline runs. No regressions.
+
+---
+
+## 5. Full Routing Layer — Completeness Audit
+
+**PASS.** After Phase 5, all 7 video operations specified in requirements now route through Media2 when available:
+
+| Operation | Routing Helper | Phase Added |
+|-----------|---------------|-------------|
+| GetProfiles | `getProfilesViaMedia2` | Phase 2 |
+| GetStreamUri | `getStreamUriViaMedia2` | Phase 2 |
+| GetVideoEncoderConfigurationOptions | `getVideoEncoderConfigurationOptionsViaMedia2` | Phase 3 |
+| SetVideoEncoderConfiguration | `setVideoEncoderConfigurationViaMedia2` | Phase 3 |
+| GetCompatibleVideoEncoderConfigurations | `getEncoderConfigurationsViaMedia2` (shared) | Phase 4 |
+| GetVideoEncoderConfigurations | `getEncoderConfigurationsViaMedia2` (shared) | Phase 4 |
+| GetVideoSourceConfigurations | `getVideoSourceConfigurationsViaMedia2` | Phase 4 |
+| GetSnapshotUri | `getSnapshotUriViaMedia2` | Phase 5 |
+
+The temporary `GetVideoEncoderConfigurationsMedia2` bridge has been retired. All callers migrated. The public `INvtSession` interface is cleaner (one member removed). The routing is fully transparent — callers use the same methods as before, and Media2 vs Media1 selection is an internal concern.
+
+---
+
+## Summary
+
+**All 5 checks pass.** Phase 5 completes the Media2 full routing layer. `GetSnapshotUri` correctly reuses the `ParseGetStreamUriResponse` parser and applies `FixUrl()`. The `GetVideoEncoderConfigurationsMedia2` bridge method has been cleanly retired with zero remaining source references and both callers migrated. The 7 integration tests provide good coverage of all routed operations with correct skip logic for offline runs. The build is clean and all 80 unit tests pass.
+
+**Cumulative verdict for Phases 4+5: APPROVED.** The Media2 full routing vision from the requirements is now fully implemented. All video operations route through Media2 when available with transparent Media1 fallback. No changes needed.
+
+**Minor observations carried forward (not blocking):**
+- Phase 3: Dead `bpsRange` variable in options parser — cleanup candidate
+- Phase 4: Media1 fallback code duplication across routed operations — style cleanup candidate
+- Both are acceptable technical debt for a future pass.
