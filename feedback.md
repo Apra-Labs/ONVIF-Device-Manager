@@ -326,3 +326,99 @@ No changes to:
 - `int.Parse()` calls in the XML parser could throw on malformed XML. Since this is wrapped in the `try/with` at the routing level (which falls back to Media1), this is safe in practice. No action needed.
 
 **No changes needed. Proceed to Phase 3.**
+
+---
+---
+
+# Phase 3 Code Review — GetVideoEncoderConfigurationOptions + SetVideoEncoderConfiguration
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-15 10:00:00-04:00
+**Verdict:** APPROVED
+
+**Commits reviewed:**
+- `0b93951` — Tasks 3.1 + 3.2: GetVideoEncoderConfigurationOptions + SetVideoEncoderConfiguration Media2 routing
+- `94ce966` — Task 3.3: Tests 5–8 appended to Media2XmlParserTests.cs
+- `99a244d` — VERIFY 3 progress.json update
+
+---
+
+## 1. GetVideoEncoderConfigurationOptions Routing
+
+**PASS.** `NvtSession.fs` routes `GetVideoEncoderConfigurationOptions` through Media2 first via the new `getVideoEncoderConfigurationOptionsViaMedia2` helper. On failure, `dbg.Error(err)` logs the exception and falls back to the Media1 `med.GetVideoEncoderConfigurationOptions(configToken, profToken)` call. When no Media2 client is available (`media2` is null), it goes directly to Media1. This matches the established pattern from Phase 2.
+
+The helper correctly constructs `Media2GetVideoEncoderConfigurationOptionsRequest`, optionally sets `ConfigurationToken` and `ProfileToken` only when non-empty, reads the raw body XML from the WCF `Message`, and delegates parsing to `Media2XmlParser.ParseGetVideoEncoderConfigurationOptionsResponse`.
+
+---
+
+## 2. H265 Ranges (Issue #21 Root Fix)
+
+**PASS.** `ParseGetVideoEncoderConfigurationOptionsResponse` iterates `tr2:Options` blocks, reads the `tt:Encoding` element, and maps each block into the correct sub-object on `VideoEncoderConfigurationOptions`:
+
+| Encoding | Target sub-object | Fields populated |
+|----------|-------------------|------------------|
+| H265 | `opts.h265` (H265Options) | resolutionsAvailable, govLengthRange, frameRateRange, encodingIntervalRange |
+| H264 | `opts.h264` (H264Options) | resolutionsAvailable, govLengthRange, frameRateRange, encodingIntervalRange |
+| JPEG | `opts.jpeg` (JpegOptions) | resolutionsAvailable, frameRateRange, encodingIntervalRange |
+
+GovLengthRange, FrameRateRange, and ResolutionsAvailable are correctly populated using the `ParseIntRange` and `ParseResolutionsAvailable` private helpers. When an element is absent from the XML, the range is `null` (not default-initialized) — confirmed by Test 6.
+
+**NOTE (non-blocking):** `BitrateRange` is parsed from the XML into the local `bpsRange` variable but never assigned to any sub-object. This is because `H265Options` / `H264Options` do not have a `bitrateRange` property (only `H265Options2` / `H264Options2` do). The variable is effectively dead code. Not a bug — the existing ODM type system cannot store it — but the unused variable should be removed in a future cleanup pass to avoid confusion.
+
+---
+
+## 3. SetVideoEncoderConfiguration Routing
+
+**PASS.** `NvtSession.fs` routes `SetVideoEncoderConfiguration` through Media2 first via `setVideoEncoderConfigurationViaMedia2`. Key observations:
+
+- **ForcePersistence correctly omitted:** The Media2 spec does not support `ForcePersistence`. The helper does not pass it. The fallback Media1 path correctly preserves the original `forcePersistence` parameter.
+- **XML body construction:** `BuildSetVideoEncoderConfigurationElement` produces a `tt:Configuration` XElement with the correct structure: `token` attribute, `Name`, `Encoding` (mapped to string: H264/H265/JPEG/MPEG4), `Resolution`, `RateControl`, codec-specific block (H264 or H265 with `GovLength`), and `Quality`.
+- **Response handling:** The set operation correctly consumes the response body (which is empty on success). The `response.IsEmpty` check before attempting to read prevents errors on truly empty responses.
+- **Fallback:** On Media2 failure, logs error and falls back to `med.SetVideoEncoderConfiguration(config, forcePersistence)`.
+
+---
+
+## 4. Unit Tests 5–8
+
+**PASS.** All four tests have meaningful, specific assertions — not just "no exception" checks.
+
+| Test | Scenario | Key assertions |
+|------|----------|---------------|
+| Test 5 | H265 + H264 options parsing | `opts.h265` and `opts.h264` populated with correct resolution counts/values, govLengthRange min/max, frameRateRange min/max; `opts.jpeg` is null |
+| Test 6 | Missing GovLengthRange | `opts.h265.govLengthRange` is null (not default), no exception thrown |
+| Test 7 | Empty response body | Returns non-null default options, all sub-objects null |
+| Test 8 | BuildSetVEC H265 XML | Verifies token attribute, Name, Encoding="H265", Resolution Width/Height, RateControl fields, H265/GovLength=60, H264 element absent |
+
+Test XML uses correct `tr2`/`tt` namespace prefixes. Test 5 is the critical one for issue #21 — it directly verifies that H265 options are correctly parsed from a Media2 response. Test 8 verifies round-trip correctness of the SetVEC XML builder with explicit element-by-element assertions.
+
+---
+
+## 5. No Changes to INvtSession Interface or Activity Files
+
+**PASS.** The Phase 3 diff (`24f997f..94ce966`) touches exactly:
+- `onvif/onvif.services/onvif.services.cs` — new parser/builder methods on `Media2XmlParser` (expected)
+- `onvif/onvif.session/NvtSession.fs` — routing logic + helpers (expected)
+- `odm/odm.tests/Media2XmlParserTests.cs` — tests 5–8 appended (expected)
+- `progress.json` — status tracking (expected)
+
+No changes to:
+- `onvif/onvif.session/INvtSession.fs` — interface unchanged
+- `odm/odm.ui.activities/` — no activity files touched
+- `odm/odm.ui.views/` — no view files touched
+
+---
+
+## 6. Build Clean, 77 Tests Pass
+
+**PASS.** Per progress.json V3 entry: Release x64 build passed (warnings only, 0 errors). 77/77 tests passed (73 prior + 4 new Phase 3 tests). No regressions from Phase 2.
+
+---
+
+## Summary
+
+**All 6 checks pass.** Phase 3 correctly implements the root fix for issue #21: `GetVideoEncoderConfigurationOptions` now routes through Media2, properly mapping H265/H264/JPEG option blocks into the existing ODM type system. `SetVideoEncoderConfiguration` correctly routes through Media2 without ForcePersistence. Both operations have transparent Media1 fallback. Tests are thorough with meaningful assertions.
+
+**Minor observation (not blocking):**
+- The `bpsRange` variable in `ParseGetVideoEncoderConfigurationOptionsResponse` is computed from `BitrateRange` XML but never assigned. This is a dead variable since the target types (`H265Options`, `H264Options`) lack a `bitrateRange` field. Remove the variable in a future cleanup to avoid confusion.
+
+**No changes needed. Proceed to Phase 4.**
