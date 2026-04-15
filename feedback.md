@@ -118,3 +118,97 @@ The plan explicitly states the goal: "When a camera supports Media2, ALL video o
 **Deferred (out of scope, acknowledged):**
 - Issue #20: H265 sprop-vps/sps/pps (live555) — separate sprint
 - Media2 audio/PTZ/analytics operations
+
+---
+---
+
+# Phase 1 Code Review — IMedia2 WCF Interface Expansion (Tasks 1.1 + 1.2)
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-14 23:55:00-04:00
+**Scope:** Diff from `238eb17..a857e1d` — changes to `onvif/onvif.services/onvif.services.cs`
+**Verdict:** APPROVED
+
+---
+
+## 1. All 6 Operation Pairs Present and Correctly Structured
+
+**PASS.** All 6 new operations added to `IMedia2` interface with correct Begin/End async pattern:
+
+| Operation | Action URL | Request Type |
+|-----------|-----------|--------------|
+| GetProfiles | `.../GetProfiles` | `Media2GetProfilesRequest` |
+| GetStreamUri | `.../GetStreamUri` | `Media2GetStreamUriRequest` |
+| GetVideoEncoderConfigurationOptions | `.../GetVideoEncoderConfigurationOptions` | `Media2GetVideoEncoderConfigurationOptionsRequest` |
+| SetVideoEncoderConfigurations | `.../SetVideoEncoderConfigurations` | `Media2SetVideoEncoderConfigurationsRequest` |
+| GetVideoSourceConfigurations | `.../GetVideoSourceConfigurations` | `Media2GetVideoSourceConfigurationsRequest` |
+| GetSnapshotUri | `.../GetSnapshotUri` | `Media2GetSnapshotUriRequest` |
+
+All Action URLs correctly use `http://www.onvif.org/ver20/media/wsdl/<OperationName>`. All `ReplyAction = "*"`. All `End` methods return `System.ServiceModel.Channels.Message` (raw message for LINQ-to-XML parsing). The `SetVideoEncoderConfigurations` plural form matches the ONVIF Media2 spec (confirmed in `requirements.md` line 82: `tr2:SetVideoEncoderConfigurations (note: plural)`).
+
+Total IMedia2 operation count: 7 (1 existing + 6 new). Matches Task 1.1 done criteria.
+
+---
+
+## 2. Request Types — MessageContract and MessageBodyMember Attributes
+
+**PASS.** All 6 request classes have correct `[MessageContract]` with:
+- `WrapperName` matching the SOAP operation name
+- `WrapperNamespace = "http://www.onvif.org/ver20/media/wsdl"` (consistent across all)
+- `IsWrapped = true`
+
+`[MessageBodyMember]` attributes verified:
+- `Media2GetProfilesRequest`: `Token` (Order=0), `Type` (Order=1) — correct per Media2 GetProfiles schema
+- `Media2GetStreamUriRequest`: `ProfileToken` (Order=0), `Protocol` (Order=1) — correct
+- `Media2GetVideoEncoderConfigurationOptionsRequest`: `ConfigurationToken` (Order=0), `ProfileToken` (Order=1) — correct
+- `Media2SetVideoEncoderConfigurationsRequest`: `Configuration` as `XElement` (Order=0) — correct; raw XML allows constructing the Media2-specific `VideoEncoder2Configuration` without needing generated WCF types
+- `Media2GetVideoSourceConfigurationsRequest`: `ConfigurationToken` (Order=0), `ProfileToken` (Order=1) — correct
+- `Media2GetSnapshotUriRequest`: `ProfileToken` (Order=0) — correct
+
+All `[MessageBodyMember]` attributes use `Namespace = "http://www.onvif.org/ver20/media/wsdl"`. Order values sequential starting from 0. Default constructors present on all request types.
+
+---
+
+## 3. Media2EncoderOptions Class
+
+**PASS.** All required fields present with correct types:
+- `Encoding` (`string`) — encoding identifier (H264, H265, JPEG, etc.)
+- `ResolutionsAvailable` (`VideoResolution[]`) — reuses existing domain type
+- `GovLengthRange` (`IntRange`) — reference type, implicitly nullable; comment documents this correctly
+- `FrameRateRange` (`IntRange`) — required range
+- `BitrateRange` (`IntRange`) — required range
+
+The class is a plain POCO with auto-properties, suitable for population by the LINQ-to-XML parser in NvtSession.fs (Phase 2+).
+
+---
+
+## 4. No Changes to INvtSession or Activity Files
+
+**PASS.** The diff (`238eb17..a857e1d`) touches exactly two files:
+- `onvif/onvif.services/onvif.services.cs` — the IMedia2 interface expansion (expected)
+- `feedback.md` — plan review output (expected)
+
+No changes to:
+- `onvif/onvif.session/NvtSession.fs` (INvtSession implementation)
+- `onvif/onvif.session/Services/MediaAsync.fs` (Media1 proxy)
+- `odm/odm.ui.activities/VideoSettingsActivity.fs` or any activity files
+- Any `.fs` or `.fsi` files whatsoever
+
+This is correct — Phase 1 is interface-only. Routing and consumption come in Phase 2+.
+
+---
+
+## 5. Build Clean and Tests Pass
+
+**PASS.** Per progress.json V1 entry and commit `901a066`:
+- Release x64 build: **0 errors** (warnings only)
+- Unit tests: **69/69 passed** (TestCategory!=Integration)
+- No regressions introduced
+
+---
+
+## Summary
+
+**All 5 checks pass.** Phase 1 implementation is correct and complete. The IMedia2 WCF interface now has all 7 operation pairs needed for the full Media2 routing vision. Request types are correctly attributed for WCF serialization. The Media2EncoderOptions data class is ready for consumption by the XML parser. No scope creep — changes are confined to the service interface layer as planned.
+
+**No findings. No changes needed. Proceed to Phase 2.**
