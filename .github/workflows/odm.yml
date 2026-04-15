@@ -101,6 +101,21 @@ jobs:
         name: odm-build-zip
         path: build/
 
+    - name: Patch installer version
+      shell: pwsh
+      run: |
+        # Give every CI build a unique ProductCode GUID and an incrementing
+        # ProductVersion (2.2.<run_number>) so Windows Installer always sees
+        # a higher version and triggers a major upgrade, automatically removing
+        # the previously installed version without user intervention.
+        $vdproj = "odm.setup\odm.setup.vdproj"
+        $content = Get-Content $vdproj -Raw
+        $newGuid = [guid]::NewGuid().ToString().ToUpper()
+        $content = $content -replace '"ProductCode" = "8:\{[0-9A-Fa-f-]+\}"', ('"ProductCode" = "8:{' + $newGuid + '}"')
+        $content = $content -replace '"ProductVersion" = "8:[0-9.]+"', '"ProductVersion" = "8:2.2.${{ github.run_number }}"'
+        Set-Content $vdproj $content -NoNewline
+        Write-Host "Patched installer: ProductCode={$newGuid}  ProductVersion=2.2.${{ github.run_number }}"
+
     - name: DisableOutOfProcBuild
       working-directory: ${{env.DevEnvDir}}\CommonExtensions\Microsoft\VSI\DisableOutOfProcBuild
       run: .\DisableOutOfProcBuild.exe
