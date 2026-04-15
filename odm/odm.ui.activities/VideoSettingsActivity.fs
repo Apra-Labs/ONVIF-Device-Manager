@@ -67,9 +67,10 @@ namespace odm.ui.activities
 
             // Override with Media2 result for cameras that advertise ver20/media/wsdl but
             // still report Encoding=H264 via Media1 (e.g. the confirmed case at 10.102.10.7).
+            // GetVideoEncoderConfigurations() now routes through Media2 when available.
             let! media2Cfgs =
                 async{
-                    try return! session.GetVideoEncoderConfigurationsMedia2()
+                    try return! session.GetVideoEncoderConfigurations()
                     with _ -> return [||]
                 }
             let effectiveEncoding =

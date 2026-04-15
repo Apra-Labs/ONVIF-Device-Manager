@@ -85,7 +85,6 @@
         abstract credentials:NetworkCredential
         abstract deviceUri:Uri
         abstract GetAllCapabilities: unit -> Async<Capabilities>
-        abstract GetVideoEncoderConfigurationsMedia2: unit -> Async<VideoEncoderConfiguration[]>
     end
 
     type private ServiceEndpointMap = {
@@ -1223,6 +1222,24 @@
                 return mediaUri
             }
 
+            // Returns MediaUri parsed from a Media2 GetSnapshotUri response.
+            let getSnapshotUriViaMedia2 (media2: IMedia2) (profileToken: string) = async {
+                let request = new Media2GetSnapshotUriRequest()
+                request.ProfileToken <- profileToken
+                let! response = Async.FromBeginEnd(request, media2.BeginGetSnapshotUri, media2.EndGetSnapshotUri)
+                use response = response
+                let bodyReader = response.GetReaderAtBodyContents()
+                let bodyXml = bodyReader.ReadOuterXml()
+                let uriStr = Media2XmlParser.ParseGetStreamUriResponse(bodyXml)
+                let mediaUri = new MediaUri()
+                if not(String.IsNullOrEmpty(uriStr)) then
+                    let! fixedUri = FixUrl(new Uri(uriStr, UriKind.RelativeOrAbsolute))
+                    mediaUri.uri <- fixedUri.OriginalString
+                else
+                    mediaUri.uri <- null
+                return mediaUri
+            }
+
             // Returns VideoEncoderConfigurationOptions parsed from a Media2 GetVideoEncoderConfigurationOptions response.
             let getVideoEncoderConfigurationOptionsViaMedia2 (media2: IMedia2) (configToken: string) (profileToken: string) = async {
                 let request = new Media2GetVideoEncoderConfigurationOptionsRequest()
@@ -1336,50 +1353,7 @@
                     member this.GetAllCapabilities() =
                         GetAllCapabilities()
 
-                    member this.GetVideoEncoderConfigurationsMedia2(): Async<VideoEncoderConfiguration[]> = async{
-                        try
-                            let! med2 = GetMedia2Client()
-                            if med2 |> IsNull then
-                                return [||]
-                            else
-                                let request = new Media2GetVideoEncoderConfigurationsRequest()
-                                let! response = Async.FromBeginEnd(request, med2.BeginGetVideoEncoderConfigurations, med2.EndGetVideoEncoderConfigurations)
-                                // response.Configurations is XmlElement[] — parse token and Encoding manually
-                                // because WCF cannot deserialize VideoEncoderConfiguration[] across the
-                                // ver20/media/wsdl (wrapper) / ver10/schema (type) namespace boundary.
-                                // response is a raw WCF Message — read body with LINQ to XML.
-                                // Use ReadOuterXml() to consume the full element as a string before
-                                // WCF closes the reader; XDocument.Load(reader) alone leaves the reader
-                                // short of EndOfFile and WCF throws on Message disposal.
-                                use response = response
-                                let bodyReader = response.GetReaderAtBodyContents()
-                                let bodyXml = bodyReader.ReadOuterXml()
-                                let doc = System.Xml.Linq.XDocument.Parse(bodyXml)
-                                let nsTr2 = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver20/media/wsdl")
-                                let nsTt  = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver10/schema")
-                                let cfgEls = doc.Root.Elements(nsTr2 + "Configurations") |> Seq.toArray
-                                return [|
-                                    for el in cfgEls do
-                                        let tokenAttr = el.Attribute(System.Xml.Linq.XName.Get("token"))
-                                        if tokenAttr |> NotNull && tokenAttr.Value.Length > 0 then
-                                            let encEl = el.Element(nsTt + "Encoding")
-                                            let enc =
-                                                if encEl |> NotNull then
-                                                    match encEl.Value.Trim().ToUpperInvariant() with
-                                                    | "H265"  -> VideoEncoding.h265
-                                                    | "JPEG"  -> VideoEncoding.jpeg
-                                                    | "MPEG4" -> VideoEncoding.mpeg4
-                                                    | _       -> VideoEncoding.h264
-                                                else VideoEncoding.h264
-                                            let cfg = new VideoEncoderConfiguration()
-                                            cfg.token    <- tokenAttr.Value
-                                            cfg.encoding <- enc
-                                            yield cfg
-                                |]
-                        with err ->
-                            dbg.Error(err)
-                            return [||]
-                    }
+
 
                 end
 
@@ -1746,16 +1720,31 @@
                     }
 
                     member this.GetSnapshotUri(token:string) = async{
-                        let! med = GetMediaClient()
-                        let! mediaUri = med.GetSnapshotUri(token)
-                        if mediaUri |> NotNull then
-                            if not(String.IsNullOrEmpty(mediaUri.uri)) then
-                                let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri, UriKind.RelativeOrAbsolute))
-                                mediaUri.uri <- fixedMediaUrl.OriginalString
-                            else
-                                mediaUri.uri <- null
-                        return mediaUri
-                        //return! med.GetSnapshotUri(token)
+                        let! media2 = GetMedia2Client()
+                        if media2 |> NotNull then
+                            try
+                                return! getSnapshotUriViaMedia2 media2 token
+                            with err ->
+                                dbg.Error(err)
+                                let! med = GetMediaClient()
+                                let! mediaUri = med.GetSnapshotUri(token)
+                                if mediaUri |> NotNull then
+                                    if not(String.IsNullOrEmpty(mediaUri.uri)) then
+                                        let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri, UriKind.RelativeOrAbsolute))
+                                        mediaUri.uri <- fixedMediaUrl.OriginalString
+                                    else
+                                        mediaUri.uri <- null
+                                return mediaUri
+                        else
+                            let! med = GetMediaClient()
+                            let! mediaUri = med.GetSnapshotUri(token)
+                            if mediaUri |> NotNull then
+                                if not(String.IsNullOrEmpty(mediaUri.uri)) then
+                                    let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri, UriKind.RelativeOrAbsolute))
+                                    mediaUri.uri <- fixedMediaUrl.OriginalString
+                                else
+                                    mediaUri.uri <- null
+                            return mediaUri
                     }
 
                     member this.AddVideoEncoderConfiguration(profToken:string, cofigToken:string): Async<unit> = async{

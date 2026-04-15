@@ -127,7 +127,7 @@
             let! cont = async{
                 try
                     let! media2Cfgs = async{
-                        try return! session.GetVideoEncoderConfigurationsMedia2()
+                        try return! session.GetVideoEncoderConfigurations()
                         with _ -> return [||]
                     }
                     let profItems = Seq.toList(seq{
