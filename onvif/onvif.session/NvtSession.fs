@@ -1204,6 +1204,25 @@
             // Kick off endpoint resolution eagerly so service clients find results already cached
             do GetResolvedEndpoints() |> Async.Ignore |> Async.Start
 
+            // Returns MediaUri parsed from a Media2 GetStreamUri response.
+            let getStreamUriViaMedia2 (media2: IMedia2) (profileToken: string) = async {
+                let request = new Media2GetStreamUriRequest()
+                request.ProfileToken <- profileToken
+                request.Protocol <- "RtspUnicast"
+                let! response = Async.FromBeginEnd(request, media2.BeginGetStreamUri, media2.EndGetStreamUri)
+                use response = response
+                let bodyReader = response.GetReaderAtBodyContents()
+                let bodyXml = bodyReader.ReadOuterXml()
+                let uriStr = Media2XmlParser.ParseGetStreamUriResponse(bodyXml)
+                let mediaUri = new MediaUri()
+                if not(String.IsNullOrEmpty(uriStr)) then
+                    let! fixedUri = FixUrl(new Uri(uriStr, UriKind.RelativeOrAbsolute))
+                    mediaUri.uri <- fixedUri.OriginalString
+                else
+                    mediaUri.uri <- null
+                return mediaUri
+            }
+
             {
                 new INvtSession with
                     member this.deviceUri = deviceUri
@@ -1660,12 +1679,23 @@
                     }
 
                     member this.GetStreamUri(streamSetup:StreamSetup, token:string) = async{
-                        let! med = GetMediaClient()
-                        let! mediaUri = med.GetStreamUri(streamSetup, token)
-                        let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
-                        mediaUri.uri <- fixedMediaUrl.OriginalString
-                        return mediaUri
-                        //return! med.GetStreamUri(streamSetup, token)
+                        let! media2 = GetMedia2Client()
+                        if media2 |> NotNull then
+                            try
+                                return! getStreamUriViaMedia2 media2 token
+                            with err ->
+                                dbg.Error(err)
+                                let! med = GetMediaClient()
+                                let! mediaUri = med.GetStreamUri(streamSetup, token)
+                                let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
+                                mediaUri.uri <- fixedMediaUrl.OriginalString
+                                return mediaUri
+                        else
+                            let! med = GetMediaClient()
+                            let! mediaUri = med.GetStreamUri(streamSetup, token)
+                            let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
+                            mediaUri.uri <- fixedMediaUrl.OriginalString
+                            return mediaUri
                     }
 
                     member this.GetSnapshotUri(token:string) = async{
