@@ -768,4 +768,124 @@ namespace onvif.services {
 		public IntRange FrameRateRange { get; set; }
 		public IntRange BitrateRange { get; set; }
 	}
+
+	// Static XML parsing helpers for Media2 response bodies.
+	// Methods accept the string produced by response.GetReaderAtBodyContents().ReadOuterXml()
+	// and return parsed ONVIF types. Exposed as static methods for unit testability.
+	public static class Media2XmlParser {
+		private static readonly XNamespace NsTr2 = XNamespace.Get("http://www.onvif.org/ver20/media/wsdl");
+		private static readonly XNamespace NsTt  = XNamespace.Get("http://www.onvif.org/ver10/schema");
+
+		/// <summary>
+		/// Parses the body XML from a Media2 GetProfiles response into Profile[].
+		/// </summary>
+		public static Profile[] ParseGetProfilesResponse(string bodyXml) {
+			if (string.IsNullOrWhiteSpace(bodyXml)) return new Profile[0];
+			var doc = XDocument.Parse(bodyXml);
+			var result = new List<Profile>();
+			foreach (var el in doc.Root.Elements(NsTr2 + "Profiles")) {
+				var tokenAttr = el.Attribute("token");
+				if (tokenAttr == null || string.IsNullOrEmpty(tokenAttr.Value)) continue;
+				var profile = new Profile { token = tokenAttr.Value };
+
+				var nameEl = el.Element(NsTt + "Name");
+				if (nameEl != null) profile.name = nameEl.Value;
+
+				var vscEl = el.Element(NsTt + "VideoSourceConfiguration");
+				if (vscEl != null) {
+					var vsc = new VideoSourceConfiguration();
+					var vscToken = vscEl.Attribute("token");
+					if (vscToken != null) vsc.token = vscToken.Value;
+					var vscName = vscEl.Element(NsTt + "Name");
+					if (vscName != null) vsc.name = vscName.Value;
+					var srcTok = vscEl.Element(NsTt + "SourceToken");
+					if (srcTok != null) vsc.sourceToken = srcTok.Value;
+					profile.videoSourceConfiguration = vsc;
+				}
+
+				var vecEl = el.Element(NsTt + "VideoEncoderConfiguration");
+				if (vecEl != null)
+					profile.videoEncoderConfiguration = ParseVideoEncoderConfigElement(vecEl);
+
+				result.Add(profile);
+			}
+			return result.ToArray();
+		}
+
+		/// <summary>
+		/// Parses a single tt:VideoEncoderConfiguration XElement.
+		/// </summary>
+		public static VideoEncoderConfiguration ParseVideoEncoderConfigElement(XElement el) {
+			var cfg = new VideoEncoderConfiguration();
+			var tokenAttr = el.Attribute("token");
+			if (tokenAttr != null) cfg.token = tokenAttr.Value;
+
+			var nameEl = el.Element(NsTt + "Name");
+			if (nameEl != null) cfg.name = nameEl.Value;
+
+			var encEl = el.Element(NsTt + "Encoding");
+			if (encEl != null) {
+				switch (encEl.Value.Trim().ToUpperInvariant()) {
+					case "H265":  cfg.encoding = VideoEncoding.h265; break;
+					case "JPEG":  cfg.encoding = VideoEncoding.jpeg; break;
+					case "MPEG4": cfg.encoding = VideoEncoding.mpeg4; break;
+					default:      cfg.encoding = VideoEncoding.h264; break;
+				}
+			}
+
+			var resEl = el.Element(NsTt + "Resolution");
+			if (resEl != null) {
+				var wEl = resEl.Element(NsTt + "Width");
+				var hEl = resEl.Element(NsTt + "Height");
+				if (wEl != null && hEl != null) {
+					cfg.resolution = new VideoResolution {
+						width  = int.Parse(wEl.Value),
+						height = int.Parse(hEl.Value)
+					};
+				}
+			}
+
+			var rcEl = el.Element(NsTt + "RateControl");
+			if (rcEl != null) {
+				var rc = new VideoRateControl();
+				var frlEl = rcEl.Element(NsTt + "FrameRateLimit");
+				var bilEl = rcEl.Element(NsTt + "BitrateLimit");
+				var eiEl  = rcEl.Element(NsTt + "EncodingInterval");
+				if (frlEl != null) rc.frameRateLimit    = int.Parse(frlEl.Value);
+				if (bilEl != null) rc.bitrateLimit      = int.Parse(bilEl.Value);
+				if (eiEl  != null) rc.encodingInterval  = int.Parse(eiEl.Value);
+				cfg.rateControl = rc;
+			}
+
+			var h264El = el.Element(NsTt + "H264");
+			if (h264El != null) {
+				var h264 = new H264Configuration();
+				var govEl = h264El.Element(NsTt + "GovLength");
+				if (govEl != null) h264.govLength = int.Parse(govEl.Value);
+				cfg.h264 = h264;
+			}
+
+			var h265El = el.Element(NsTt + "H265");
+			if (h265El != null) {
+				var h265 = new H265Configuration();
+				var govEl = h265El.Element(NsTt + "GovLength");
+				if (govEl != null) h265.govLength = int.Parse(govEl.Value);
+				cfg.h265 = h265;
+			}
+
+			return cfg;
+		}
+
+		/// <summary>
+		/// Parses the body XML from a Media2 GetStreamUri response.
+		/// Returns the URI string, or null if the element is absent or empty.
+		/// </summary>
+		public static string ParseGetStreamUriResponse(string bodyXml) {
+			if (string.IsNullOrWhiteSpace(bodyXml)) return null;
+			var doc = XDocument.Parse(bodyXml);
+			var uriEl = doc.Root.Element(NsTr2 + "Uri");
+			if (uriEl == null || string.IsNullOrEmpty(uriEl.Value)) return null;
+			return uriEl.Value;
+		}
+	}
 }

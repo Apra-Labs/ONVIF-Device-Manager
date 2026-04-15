@@ -1,4 +1,4 @@
-namespace odm.core
+﻿namespace odm.core
 
     open System
     open System.Collections.Generic
@@ -1188,6 +1188,19 @@ namespace odm.core
                 }
                 fun() -> comp
 
+            // ---------------------------------------------------------------
+            // Media2 routing helpers — called by IMediaAsync implementations below
+            // ---------------------------------------------------------------
+
+            // Returns Profile[] parsed from a Media2 GetProfiles response.
+            let getProfilesViaMedia2 (media2: IMedia2) = async {
+                let request = new Media2GetProfilesRequest()
+                let! response = Async.FromBeginEnd(request, media2.BeginGetProfiles, media2.EndGetProfiles)
+                use response = response
+                let bodyReader = response.GetReaderAtBodyContents()
+                let bodyXml = bodyReader.ReadOuterXml()
+                return Media2XmlParser.ParseGetProfilesResponse(bodyXml)
+            }
             // Kick off endpoint resolution eagerly so service clients find results already cached
             do GetResolvedEndpoints() |> Async.Ignore |> Async.Start
 
@@ -1617,11 +1630,23 @@ namespace odm.core
                     }
 
                     member this.GetProfiles() = async{
-                        let! med = GetMediaClient()
-                        if med |> NotNull then
-                            return! med.GetProfiles()
+                        let! media2 = GetMedia2Client()
+                        if media2 |> NotNull then
+                            try
+                                return! getProfilesViaMedia2 media2
+                            with err ->
+                                dbg.Error(err)
+                                let! med = GetMediaClient()
+                                if med |> NotNull then
+                                    return! med.GetProfiles()
+                                else
+                                    return [||]
                         else
-                            return [||]
+                            let! med = GetMediaClient()
+                            if med |> NotNull then
+                                return! med.GetProfiles()
+                            else
+                                return [||]
                     }
 
                     member this.GetProfile(profileToken:string) = async{
