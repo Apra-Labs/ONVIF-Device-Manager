@@ -212,3 +212,117 @@ This is correct — Phase 1 is interface-only. Routing and consumption come in P
 **All 5 checks pass.** Phase 1 implementation is correct and complete. The IMedia2 WCF interface now has all 7 operation pairs needed for the full Media2 routing vision. Request types are correctly attributed for WCF serialization. The Media2EncoderOptions data class is ready for consumption by the XML parser. No scope creep — changes are confined to the service interface layer as planned.
 
 **No findings. No changes needed. Proceed to Phase 2.**
+
+---
+---
+
+# Phase 2 Code Review — GetProfiles + GetStreamUri Routing (Tasks 2.1, 2.2, 2.3)
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-14 23:59:00-04:00
+**Scope:** Commits `7e53ff2`, `f87b32e`, `45ebd00`, `97da512` on `feat/media2-support` (diff from `c5704a7..97da512`)
+**Verdict:** APPROVED
+
+---
+
+## 1. GetProfiles Routing
+
+**PASS.** `GetProfiles()` in `NvtSession.fs` correctly implements the Media2-first routing pattern:
+
+1. Calls `GetMedia2Client()` first
+2. If Media2 is available (`NotNull`), calls `getProfilesViaMedia2` inside a `try` block
+3. On failure, logs via `dbg.Error(err)` and falls back to `GetMediaClient() → med.GetProfiles()`
+4. If Media2 is null, goes directly to Media1
+5. Returns `[||]` if neither client is available
+
+The `getProfilesViaMedia2` helper uses `Async.FromBeginEnd` with `Media2GetProfilesRequest`, reads the raw `Message` body via `GetReaderAtBodyContents().ReadOuterXml()`, and delegates to `Media2XmlParser.ParseGetProfilesResponse`. The response message is correctly disposed with `use response = response`. Pattern is clean and matches the plan.
+
+---
+
+## 2. XML Parser — Namespace and Field Coverage
+
+**PASS.** `Media2XmlParser` (static class in `onvif.services.cs`) uses correct namespaces:
+
+- `NsTr2 = "http://www.onvif.org/ver20/media/wsdl"` — Media2 service namespace for response wrapper elements (`Profiles`, `Uri`)
+- `NsTt = "http://www.onvif.org/ver10/schema"` — ONVIF common schema for data elements (`Name`, `VideoSourceConfiguration`, etc.)
+
+`ParseGetProfilesResponse` maps all fields the activities need:
+
+| Field | Source | Mapped |
+|-------|--------|--------|
+| `token` | `Profiles/@token` attribute | ✓ |
+| `name` | `tt:Name` element | ✓ |
+| `videoSourceConfiguration.token` | `tt:VideoSourceConfiguration/@token` | ✓ |
+| `videoSourceConfiguration.name` | `tt:VideoSourceConfiguration/tt:Name` | ✓ |
+| `videoSourceConfiguration.sourceToken` | `tt:VideoSourceConfiguration/tt:SourceToken` | ✓ |
+| `videoEncoderConfiguration.*` | Full parse via `ParseVideoEncoderConfigElement` | ✓ |
+
+`ParseVideoEncoderConfigElement` covers: `token`, `name`, `Encoding` (with H264/H265/JPEG/MPEG4 switch), `Resolution` (width/height), `RateControl` (frameRateLimit/bitrateLimit/encodingInterval), `H264.GovLength`, and `H265.GovLength`. All fields used by `VideoSettingsActivity` and `ProfilesActivity` are present.
+
+Defensive behavior: profiles without a `token` attribute are skipped. Null/empty body XML returns `new Profile[0]`. The encoding switch defaults unknown values to `h264` — reasonable, though a debug log would improve diagnostics. Minor, not blocking.
+
+---
+
+## 3. GetStreamUri Routing
+
+**PASS.** `GetStreamUri()` follows the same routing pattern as `GetProfiles()`:
+
+1. `GetMedia2Client()` → if available, try `getStreamUriViaMedia2 media2 token`
+2. On failure, fall back to Media1 path with `FixUrl()` applied
+3. If Media2 null, use Media1 directly
+
+The `getStreamUriViaMedia2` helper:
+- Sets `request.Protocol <- "RtspUnicast"` — correct Media2 protocol string
+- Calls `FixUrl()` on the parsed URI — **confirmed**, the URI is wrapped in `new Uri(uriStr, UriKind.RelativeOrAbsolute)`, passed to `FixUrl()`, and the result's `OriginalString` is assigned to `mediaUri.uri`
+- Returns a `MediaUri` object matching the Media1 return type
+- Handles empty/null URI by setting `mediaUri.uri <- null`
+
+The Media1 fallback path preserves the original `FixUrl()` logic exactly as it existed before the change. No regression.
+
+---
+
+## 4. Unit Tests
+
+**PASS.** `Media2XmlParserTests.cs` contains 4 well-structured tests covering the right scenarios:
+
+| Test | What it validates |
+|------|-------------------|
+| `ParseGetProfilesResponse_TwoProfiles_ReturnsBothWithCorrectFields` | Two profiles (H264 + H265) with full field assertions: token, name, VSC, VEC, encoding enum, resolution, rate control, GOV length |
+| `ParseGetProfilesResponse_NoProfiles_ReturnsEmptyArray` | Empty response returns `Profile[0]`, not null |
+| `ParseGetStreamUriResponse_ValidUri_ReturnsUriString` | Extracts `rtsp://` URI from valid response |
+| `ParseGetStreamUriResponse_EmptyUri_ReturnsNull` | Empty `<tr2:Uri>` returns null, not empty string |
+
+Test XML uses correct `tr2`/`tt` namespace prefixes matching real camera responses. The two-profile test asserts on nearly every parsed field — high confidence that the parser is correct. All tests are tagged `[TestCategory("Unit")]` for test filtering.
+
+---
+
+## 5. No Changes to INvtSession Interface or Activity Files
+
+**PASS.** The Phase 2 diff (`c5704a7..97da512`) touches exactly:
+- `onvif/onvif.services/onvif.services.cs` — new `Media2XmlParser` class (expected)
+- `onvif/onvif.session/NvtSession.fs` — routing logic + helpers (expected)
+- `odm/odm.tests/Media2XmlParserTests.cs` — new test file (expected)
+- `progress.json` — status tracking (expected)
+
+No changes to:
+- `onvif/onvif.session/INvtSession.fs` — interface unchanged ✓
+- `odm/odm.ui.activities/` — no activity files touched ✓
+- Any `.fsi` signature files
+
+---
+
+## 6. Build Clean, 73 Tests Pass
+
+**PASS.** Per progress.json V2 entry: Release x64 build passed (warnings only, 0 errors). 73/73 tests passed (69 existing + 4 new Media2XmlParser tests). No regressions.
+
+---
+
+## Summary
+
+**All 6 checks pass.** Phase 2 implementation is correct, clean, and complete. The Media2-first routing pattern is established for `GetProfiles` and `GetStreamUri` with proper error handling and transparent Media1 fallback. The `Media2XmlParser` is well-tested and maps all fields needed by downstream activities. `FixUrl()` is correctly applied on both Media2 and Media1 paths for `GetStreamUri`. No interface changes, no scope creep.
+
+**Minor observations (not blocking):**
+- The encoding switch in `ParseVideoEncoderConfigElement` defaults unknown encodings to `h264` silently. A `dbg.Warning` for unrecognized encoding strings would aid debugging with unusual cameras. Low priority — can be added in a later phase.
+- `int.Parse()` calls in the XML parser could throw on malformed XML. Since this is wrapped in the `try/with` at the routing level (which falls back to Media1), this is safe in practice. No action needed.
+
+**No changes needed. Proceed to Phase 3.**
