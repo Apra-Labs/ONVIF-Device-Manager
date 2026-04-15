@@ -125,7 +125,7 @@ jobs:
         $content = Get-Content $vdproj -Raw
         $newGuid = [guid]::NewGuid().ToString().ToUpper()
         $content = $content -replace '"ProductCode" = "8:\{[0-9A-Fa-f-]+\}"', ('"ProductCode" = "8:{' + $newGuid + '}"')
-        $content = $content -replace '"ProductVersion" = "8:[0-9.]+"', '"ProductVersion" = "8:2.2.${{ github.run_number }}"'
+        $content = $content -replace '"ProductVersion" = "8:[0-9.]+"', '"ProductVersion" = "8:3.0.${{ github.run_number }}"'
         Set-Content $vdproj $content -NoNewline
         Write-Host "Patched installer: ProductCode={$newGuid}  ProductVersion=2.2.${{ github.run_number }}"
 

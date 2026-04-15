@@ -3284,7 +3284,7 @@
         "RemovePreviousVersions" = "11:TRUE"
         "DetectNewerInstalledVersion" = "11:TRUE"
         "InstallAllUsers" = "11:FALSE"
-        "ProductVersion" = "8:2.2.253"
+        "ProductVersion" = "8:3.0.0"
         "Manufacturer" = "8:Synesis"
         "ARPHELPTELEPHONE" = "8:"
         "ARPHELPLINK" = "8:"
