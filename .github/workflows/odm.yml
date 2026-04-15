@@ -101,6 +101,19 @@ jobs:
         name: odm-build-zip
         path: build/
 
+    - name: Strip PDB files from installer inputs
+      shell: pwsh
+      run: |
+        # The zip artifact (uploaded above) may include PDBs for debugging.
+        # Remove them from every source the installer pulls from so they are
+        # never embedded in the .msi shipped to end users.
+        $removed = 0
+        Get-ChildItem -Recurse -Filter "*.pdb" "odm\odm.ui.app\bin\x64\Release" -ErrorAction SilentlyContinue |
+          ForEach-Object { Remove-Item $_.FullName -Force; $removed++ }
+        Get-ChildItem -Recurse -Filter "*.pdb" "build" -ErrorAction SilentlyContinue |
+          ForEach-Object { Remove-Item $_.FullName -Force; $removed++ }
+        Write-Host "Removed $removed PDB file(s) from installer inputs."
+
     - name: Patch installer version
       shell: pwsh
       run: |
