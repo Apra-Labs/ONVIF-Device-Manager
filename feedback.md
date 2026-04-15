@@ -606,3 +606,93 @@ The temporary `GetVideoEncoderConfigurationsMedia2` bridge has been retired. All
 - Phase 3: Dead `bpsRange` variable in options parser — cleanup candidate
 - Phase 4: Media1 fallback code duplication across routed operations — style cleanup candidate
 - Both are acceptable technical debt for a future pass.
+
+---
+---
+
+# Sprint 4 Documentation Harvest — Review
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-15 14:00:00-04:00
+**Scope:** Commit `0e5e7d6` — `docs/features/media2-routing.md` and `docs/features/media2-testing.md`
+**Verdict:** APPROVED
+
+---
+
+## 1. Durable Knowledge — Architecture Decisions, API Contracts, Design Rationale
+
+**PASS.** Both documents capture knowledge that will outlast the sprint.
+
+`media2-routing.md` covers:
+- The detection mechanism (`GetMedia2Client()` with `Async.Memoize`)
+- The routing pattern with a concrete F# code example
+- A complete table of all 8 routed operations with their Media2 request types
+- WCF interface design rationale (why raw `Message` instead of generated proxies)
+- The two XML namespaces (`tr2`, `tt`) and their usage
+- Why `INvtSession` was kept unchanged (transparent routing)
+- Why the bridge method was retired (two paths to same data, partial vs full parse)
+- Root cause of issue #21 (Media1 has no H265 options sub-object)
+
+`media2-testing.md` covers:
+- Test file locations and counts
+- Exact commands to run unit and integration tests
+- Environment variable contracts for live camera testing
+- What each of the 18 tests verifies (11 unit + 7 integration)
+- How to add new tests of each type, with a skeleton example
+
+This is the kind of documentation that saves a future developer hours of code archaeology.
+
+---
+
+## 2. Free of Transient Content
+
+**PASS.** No task lists, no code-line references ("line 1234"), no debug notes, no implementation steps. The phrase "retired in Phase 5" in the routing doc is the only sprint reference — it reads as historical context explaining a design evolution, not a transient task marker. Acceptable.
+
+The test counts (11 unit, 7 integration, 80 total) will become stale as tests are added, but these are useful baseline references and easy to update. Not a blocking concern.
+
+---
+
+## 3. Routing Doc — Useful for a New Developer?
+
+**PASS.** A developer joining the project could understand the entire Media2 routing layer from this document alone. The structure follows a natural learning path: what is Media2 detection → how does routing work (with code) → what operations are routed → how is WCF wired up → why were certain design decisions made. The "Why" sections (INvtSession unchanged, bridge retired, issue #21 root cause) anticipate exactly the questions a newcomer would ask.
+
+**NOTE (minor):** The doc does not mention the error-logging behavior on fallback (`dbg.Error(err)` before falling back to Media1). This is relevant for debugging — a developer seeing Media1-quality responses from a Media2 camera would want to know where to look. Not blocking, but a one-line addition to the "Routing Pattern" section would be valuable:
+
+> When Media2 fails, the exception is logged via `dbg.Error(err)` before falling back to Media1.
+
+---
+
+## 4. Testing Doc — Actionable for Running Integration Tests?
+
+**PASS.** The testing doc is fully actionable. A developer could run integration tests against a real camera by following the doc step by step:
+
+1. Environment variables are clearly documented with required/optional flags and defaults
+2. Exact `vstest.console.exe` commands are provided for both unit-only and integration-only runs
+3. The skip mechanism is explained (Assert.Inconclusive when `ODM_TEST_HOST` is unset)
+4. Each integration test's expected behavior is documented in a table
+5. The "Adding New Integration Tests" section includes a complete skeleton with the correct pattern (`SkipIfNoHost`, `CreateSession`, `Run(async)`)
+
+**NOTE (minor):** The `vstest.console.exe` path is hardcoded to VS2022 Community edition. If a developer uses Professional/Enterprise or a different VS version, the path differs. A one-line note ("adjust the VS edition in the path if needed") would prevent confusion. Not blocking.
+
+---
+
+## 5. Anything Important Missing?
+
+**NOTE (minor, not blocking).** Two small gaps:
+
+1. **Fallback logging:** As noted in check 3, the routing doc doesn't mention that Media2 failures are logged before fallback. One sentence in the "Routing Pattern" section would help debugging.
+
+2. **`Media2XmlParser` location:** The routing doc mentions `Media2XmlParser` is "in `onvif.services`" and the testing doc references it in test files, but neither doc gives the exact file path (`onvif/onvif.services/onvif.services.cs`). A developer searching for "Media2XmlParser.cs" would not find it because it lives inside `onvif.services.cs`. Adding the full path once would save a grep.
+
+Neither gap is blocking. The documents are comprehensive and well-structured as-is.
+
+---
+
+## Summary
+
+**APPROVED.** Both documentation files are high quality: they capture durable architectural knowledge, are free of transient sprint artifacts, and are immediately useful to developers who weren't on this sprint. The routing doc provides a complete mental model of the Media2 routing layer. The testing doc is fully actionable for running tests against a live camera.
+
+**Minor suggestions (not blocking):**
+- Add a one-line note about `dbg.Error` logging on Media2 fallback in the routing pattern section
+- Mention the full file path for `Media2XmlParser` (`onvif/onvif.services/onvif.services.cs`)
+- Add a note about VS edition in the `vstest.console.exe` path
