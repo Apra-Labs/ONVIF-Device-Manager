@@ -1220,7 +1220,14 @@
             let GetMedia2Client =
                 let comp = Async.Memoize(async{
                     dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetMedia2Client")
-                    let! services = GetServices()
+                    let! services =
+                        async{
+                            try
+                                return! GetServices()
+                            with err ->
+                                log.WriteInfo(sprintf "[GetMedia2Client] GetServices() threw %s: %s — treating as no Media2" (err.GetType().Name) err.Message)
+                                return null
+                        }
                     if services |> IsNull then
                         log.WriteInfo("[GetMedia2Client] GetServices() returned null — no Media2")
                         return null
@@ -1960,6 +1967,7 @@
                                 let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetStreamUri(streamSetup, token))
                                 let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
                                 mediaUri.uri <- fixedMediaUrl.OriginalString
+                                log.WriteInfo(sprintf "[GetStreamUri/Media1-fault-fallback] returning uri=%s" mediaUri.uri)
                                 return mediaUri
                             | err ->
                                 dbg.Error(err)
@@ -1967,12 +1975,14 @@
                                 let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetStreamUri(streamSetup, token))
                                 let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
                                 mediaUri.uri <- fixedMediaUrl.OriginalString
+                                log.WriteInfo(sprintf "[GetStreamUri/Media1-fallback] returning uri=%s" mediaUri.uri)
                                 return mediaUri
                         else
                             let! med = GetMediaClient()
                             let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetStreamUri(streamSetup, token))
                             let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
                             mediaUri.uri <- fixedMediaUrl.OriginalString
+                            log.WriteInfo(sprintf "[GetStreamUri/Media1-only] returning uri=%s" mediaUri.uri)
                             return mediaUri
                     }
 
