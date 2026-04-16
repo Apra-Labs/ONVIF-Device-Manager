@@ -1,98 +1,81 @@
-# Sprint 6 — Milesight Camera Compatibility Fixes — Plan Re-Review
+# Sprint 6 Phase 1 — Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-16 15:00:00+05:30
-**Branch reviewed:** `feat/media2-support` @ `3e8e7b6`
+**Date:** 2026-04-16 02:17:18-0400
+**Commit:** 67e943b — "feat(sprint6/phase1): apply ServicePointManager trio before SOAP probe + Media2 test harness parity"
 **Verdict:** APPROVED
 
 ---
 
-## Context
+## Task 1.1 — NvtSession.fs: ServicePointManager trio before `raceEndpoints`
 
-Re-review of `PLAN.md` after the author addressed the 3 CHANGES NEEDED items from `dae1026`:
-1. Fix A scope disclaimer (Milesight unblocker attribution)
-2. Exception taxonomy alignment between Task 3.1 detector and risk register
-3. Risk register entries for `ServerCertificateValidationCallback` and `SecurityProtocol` mutation
+**PASS.**
 
----
+Diff at `onvif/onvif.session/NvtSession.fs:569-573`:
+```fsharp
+if uris.Length = 0 then return failwith("no uri was passed")
 
-## 1. Fix A scope — explicit non-unblocker callout
-**PASS** — PLAN.md:69 (Task 2.1) now contains:
+ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13
+ServicePointManager.Expect100Continue <- false
+ServicePointManager.ServerCertificateValidationCallback <- fun _ _ _ _ -> true
 
-> "For the Milesight camera (`https://192.168.1.190:443`), `deviceUri.IsDefaultPort = true` so `httpsPort = 443` — Fix A produces the same URL as today. Fix A is a correctness improvement for cameras with non-default HTTPS ports (e.g. 8443). Fix B (HTTP fallback, Phase 3-4) is the actual Milesight unblocker."
+// Try original URIs first (SOAP-level probe, not just TCP)
+let! httpResult = raceEndpoints uris
+```
 
-Unambiguous. An implementer shipping only Phase 2 and testing against Milesight will no longer conclude Fix A is broken. The note sits directly inside the task where the mis-attribution risk lives, which is the right location.
+Checklist:
+- **Insertion point (after the `uris.Length = 0` guard, before `raceEndpoints uris`):** Correct. The three settings are the first statements after the guard, and no other work is interleaved before the probe call.
+- **`Tls12 ||| Tls13` (additive/bitwise OR, not a single-protocol replacement):** Correct. Matches the risk-register mitigation in PLAN.md that called out `Tls12` alone would replace prior flags and break a TLS 1.3-only camera. Using `|||` preserves both.
+- **Callback signature `fun _ _ _ _ -> true`:** Correct F# lambda. `RemoteCertificateValidationCallback` is `(sender, cert, chain, sslErrors) -> bool`, so four discarded arguments returning `true` is the canonical always-accept form.
+- **Single-URI `CreateSession(deviceUri:Uri)` overload unchanged:** Confirmed at `NvtSession.fs:662-664`. That overload sets `ServicePointManager.FindServicePoint(deviceUri).Expect100Continue <- false` per-ServicePoint as before; no code was added, removed, or reordered in that member. Minor note: the single-URI overload only sets `Expect100Continue` at the per-ServicePoint level (it does not itself set `SecurityProtocol` or the cert-validation callback), but that pre-existing condition is outside the scope of this phase — `CreateSession(Uri[])` is now the sole entry point required to apply all three.
 
-## 2. Exception taxonomy — detector ↔ risk register reconciled
-**PASS** — Task 3.1 (PLAN.md:117-118) now enumerates exactly:
-- `WebException` with `Status ∈ {ConnectFailure}`
-- `SocketException` with `SocketErrorCode ∈ {ConnectionRefused; ConnectionReset}`
-- `CommunicationException` whose inner matches
-
-`SecureChannelFailure`, `HostUnreachable`, and `TimedOut` are removed. Matches the risk register entry at PLAN.md:15 verbatim. The five unit tests in the Done block (PLAN.md:124-128) are still consistent with the narrowed set. The "HTTPS→HTTP silent downgrade masking a TLS regression" scenario is now closed off.
-
-## 3. Risk register — two new entries present
-**PASS** — Two new rows at PLAN.md:21-22:
-
-### 3a. ServerCertificateValidationCallback permanent/process-wide bypass
-> "`ServerCertificateValidationCallback <- fun _ _ _ _ -> true` is a permanent, process-wide bypass — not scoped to the probe. Any subsequent WCF call in the process will accept invalid certs. | Matches existing behavior in `HttpsIntegrationTests.ClassInitialize`; production entry point is application startup before any other WCF traffic. Document a TODO to scope this narrowly (e.g. restore previous callback after probe) in a future sprint."
-
-Acknowledges scope (process-wide), consistency with existing harness, and defers tightening to a future sprint with a concrete mitigation sketch. Acceptable.
-
-### 3b. SecurityProtocol replacement (not additive)
-> "`SecurityProtocol <- Tls12` replaces prior `SecurityProtocol` flags (not additive). If a TLS 1.3-only camera is connected mid-session after this runs, it will fail. | Use `|||` (bitwise OR): `ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13` to preserve existing capabilities rather than replacing them."
-
-Mitigation is correctly propagated into Task 1.1 (PLAN.md:31), which now sets `SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13` rather than the replacement form. Fix ↔ mitigation alignment holds.
-
-## 4. Carryover from previous "should change (low)" findings
-**NOTE** — Partial credit:
-- **Previous Section 9 (line-number anchors with method names):** RESOLVED. Task 4.1 at PLAN.md:168 now enumerates call sites as `GetProfiles (1600), GetStreamUri (1630), GetSnapshotUri (1650), GetVideoSourceConfigurations (1748), GetVideoEncoderConfigurations (1765), GetCompatibleVideoEncoderConfigurations (1881), SetVideoEncoderConfiguration (1959), GetVideoEncoderConfigurationOptions (1998)`. Re-anchoring after drift is now trivial.
-- **Previous Section 10 (`GetServices()` dependency on Media2 path):** UNRESOLVED. The risk register still only names the `GetCapabilities()` dependency for the Media1 HttpXAddr path (row 6); the symmetric dependency on `GetServices()` for the Media2 HttpXAddr is not called out. Low severity — does not block approval.
-- **Previous Section 13 (test pinning decision on `SecureChannelFailure`):** N/A. Now that the detector's taxonomy is narrow and explicit, the existing `FaultException → false` and `new Exception("random") → false` tests already anchor "non-listed exception → no fallback." A dedicated `SecureChannelFailure` test would be marginal; not a blocker.
+NOTE (informational, not blocking): the global `ServerCertificateValidationCallback` assignment is a permanent process-wide cert-bypass after the probe runs. PLAN.md risk register (row 6) already documents this and defers a scoped bypass to a future sprint — accepted trade-off.
 
 ---
 
-## 5. Final pass on overall plan quality
+## Task 1.2 — Media2IntegrationTests.cs: ClassInitialize + ODM_TEST_HTTP_PORT
 
-### Phase structure
-**PASS** — 5 phases with a VERIFY after each. Phase 1 bootstraps harness + session settings; Phase 2 fixes scheme mapping; Phase 3 lays fallback plumbing (unused); Phase 4 wires it; Phase 5 closes with Release build + integration. Structurally clean.
+**PASS.**
 
-### Task ordering
-**PASS** — Dependencies flow: Task 1.1 (global settings) → Task 1.2 (test harness) → Phase 2 scheme fix → Task 3.1/3.2 (detector + factories) → Task 4.1/4.2 (combinators) → Task 4.3 (tests) → Phase 5. No forward references.
+Verified against `odm/odm.tests/HttpsIntegrationTests.cs:23-43` (the reference implementation).
 
-### Done criteria
-**PASS** — Every task has measurable, concrete `Done:` outcomes (build exit codes, specific test names, grep checks, Milesight-specific acceptance observations). No "implement X" without an exit condition.
+Checklist:
+- **`[ClassInitialize]` loads `.env` like HttpsIntegrationTests.ClassInitialize:** The `.env`-walk-up loop at `Media2IntegrationTests.cs:32-49` is byte-equivalent to the loop in `HttpsIntegrationTests.cs:27-43` — same base-directory seed, same ancestor walk, same guard on pre-existing env vars, same `#` comment skip, same 2-part split. Good parity. (HttpsIntegrationTests additionally pulls `ODM_TEST_HOST`/`USER`/`PASS`/`ODM_TEST_HTTPS_PORT` into static fields inside ClassInitialize; Media2 reads these lazily via property accessors. Both correct — just different styles.)
+- **Same `ServicePointManager` trio applied:** `Media2IntegrationTests.cs:51-53` sets `SecurityProtocol`, `Expect100Continue`, and `ServerCertificateValidationCallback` — the three settings. `SecurityProtocol` is `Tls12 | Tls13` (matches the production code in Task 1.1), while HttpsIntegrationTests restricts to `Tls12` only. This divergence is appropriate: HttpsIntegrationTests targets a camera known to be TLS-1.3-incompatible, while Media2IntegrationTests should mirror production behavior (which now supports both). "Same trio" = same three settings structurally applied; values are permitted to differ per test-class intent.
+- **`CreateSession()` honours `ODM_TEST_HTTP_PORT` (default `"80"`):** Confirmed at `Media2IntegrationTests.cs:63-64`:
+  ```csharp
+  var port = Environment.GetEnvironmentVariable("ODM_TEST_HTTP_PORT") ?? "80";
+  var uri = new Uri(string.Format("http://{0}:{1}/onvif/device_service", TestHost, port));
+  ```
+  Matches the PLAN.md snippet verbatim. Class docstring updated to mention the new env var (line 17).
 
-### Test coverage
-**PASS** — Required artifacts all present:
-- `ConnectionRefusedDetectorTests` — Task 3.1 (5 cases)
-- `MediaHttpFallbackTests` — Task 4.3 (3 cases: primary refused + fallback success, fault propagates, null xAddr propagates)
-- Updated `FixUrlHttpsTests` — Task 2.2 (2 rewritten cases, existing 3 preserved)
-- `ODM_TEST_HTTP_PORT` plumbing — Task 1.2
-- Integration acceptance tied to 13/13 on 192.168.1.190 in VERIFY 5
+---
 
-### Coverage of the stated Milesight failure set
-**PASS** — Plan addresses all 9 failing integration tests from the diagnosis in `requirements.md`: Phase 1 unblocks the 7 `Media2IntegrationTests` (SOAP probe); Phase 3–4 unblock the 2 `HttpsIntegrationTests` failures (`GetProfiles`, `GetStreamUri`). The 4 already-passing tests are protected by baseline checks in each VERIFY.
+## Build & Offline Tests
 
-### Single-source-of-truth preserved
-**PASS** — Task 2.1 bullet 2 still rewrites `UpgradeSchemeIfNeeded` to delegate to the static `UpgradeScheme`, eliminating a pre-existing drift hazard. Good hygiene.
+**PASS.**
+
+- `dotnet build odm/odm.tests/odm.tests.csproj -v quiet` → **Build succeeded, 0 errors, 2 NuGet vuln-feed warnings** (unrelated to this change — transient unreachable BluB0X NuGet feed).
+- `dotnet test ... --filter 'TestCategory!=Integration' --no-build` → **80 passed, 0 failed, 0 skipped, duration 12 s.** Baseline preserved per VERIFY 1 criterion.
+
+Integration smoke against Milesight (the third VERIFY 1 criterion — "Media2 tests progress past `CreateSession()`") was not runnable in this review environment; defer confirmation to the developer running the Milesight smoke per PLAN.md Phase 5. Code-level review alone cannot clear that checkpoint, but no evidence in the diff suggests it will fail.
+
+---
+
+## Done-Criteria Alignment (PLAN.md VERIFY 1)
+
+| Criterion | Status |
+|-----------|--------|
+| Build succeeded, 0 errors | PASS |
+| Offline test filter → all pass (baseline preserved) | PASS (80/80) |
+| Media2 integration tests progress past `CreateSession()` against 192.168.1.190 | DEFERRED to developer smoke — code change is consistent with the criterion |
 
 ---
 
 ## Summary
 
-**Passed (all critical):**
-- Fix A scope note explicitly deflates the Milesight unblocker expectation (Section 1).
-- Detector taxonomy is narrowed and matches the risk register (Section 2).
-- Risk register gains the two safety-relevant entries; Task 1.1 carries the `|||` mitigation through (Section 3).
-- Task 4.1 call-site enumeration now includes method names (Section 4).
-- Overall plan quality: phases, ordering, done criteria, and test coverage hold (Section 5).
+Both Phase 1 tasks are implemented correctly per PLAN.md and requirements.md. Task 1.1 places the ServicePointManager trio at the exact insertion point specified (after the `uris.Length = 0` guard, before `raceEndpoints`), uses the additive `Tls12 ||| Tls13` form the risk register called for, and leaves the single-URI overload untouched. Task 1.2 mirrors `HttpsIntegrationTests.ClassInitialize` for `.env` loading, applies the three-setting trio, and wires `ODM_TEST_HTTP_PORT` (default `"80"`) into `CreateSession()`.
 
-**Not blocking:**
-- `GetServices()` dependency for the Media2 HttpXAddr memoization is still not called out in the risk register (Section 4). Author may want to add one line; not a merge blocker.
+Build is clean (0 errors) and all 80 offline tests pass — baseline preserved. The only outstanding VERIFY 1 item is the live Milesight smoke, which cannot be executed from this review environment and is appropriately deferred to developer-side verification.
 
-**Deferred:**
-- Scoped cert-validation callback (acknowledged as future-sprint TODO in risk register row 8).
-- Out-of-Scope list (issues #20, #19, #14, Media2 audio/PTZ/analytics) remains accurate.
-
-**Recommendation:** APPROVED to proceed with implementation. Phase 1 (TLS/Expect settings) is correctly positioned as the load-bearing first task — failing there halts the sprint before any further plumbing work is wasted. All three CHANGES NEEDED items from the prior review are cleanly resolved.
+**Verdict: APPROVED.** Proceed to Phase 2.
