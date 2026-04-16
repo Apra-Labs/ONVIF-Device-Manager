@@ -18,6 +18,8 @@
 | Memoized Media1/Media2 clients use upgraded URLs; HTTP fallback must construct a second non-memoized client | New helper creates an on-demand channel at the original HTTP xAddr and aborts it after the retry completes |
 | `GetMedia1HttpXAddr` depends on `GetCapabilities()` — if device call itself fails, fallback cannot proceed | Fallback helper returns `null` when upstream calls fail; caller then propagates original connection-refused exception unchanged |
 | `UpgradeScheme` (public static) and `UpgradeSchemeIfNeeded` (private closure) could drift | Phase 2 rewrites `UpgradeSchemeIfNeeded` to delegate to the static member — single source of truth |
+| `ServerCertificateValidationCallback <- fun _ _ _ _ -> true` is a permanent, process-wide bypass — not scoped to the probe. Any subsequent WCF call in the process will accept invalid certs. | Matches existing behavior in `HttpsIntegrationTests.ClassInitialize`; production entry point is application startup before any other WCF traffic. Document a TODO to scope this narrowly (e.g. restore previous callback after probe) in a future sprint. |
+| `SecurityProtocol <- Tls12` replaces prior `SecurityProtocol` flags (not additive). If a TLS 1.3-only camera is connected mid-session after this runs, it will fail. | Use `\|\|\|` (bitwise OR): `ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 \|\|\| SecurityProtocolType.Tls13` to preserve existing capabilities rather than replacing them. |
 
 ---
 
@@ -26,7 +28,7 @@
 ### Task 1.1 — Apply ServicePointManager settings before `raceEndpoints`
 - **Files:** `onvif/onvif.session/NvtSession.fs:514-569` (`CreateSession(uris:Uri[])`)
 - **What:** Immediately after the `uris.Length = 0` guard (currently line 569) and before `let! httpResult = raceEndpoints uris` (line 572), set:
-  - `ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12`
+  - `ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13`
   - `ServicePointManager.Expect100Continue <- false`
   - `ServicePointManager.ServerCertificateValidationCallback <- fun _ _ _ _ -> true`
 
@@ -64,6 +66,7 @@
 - **Files:**
   - `onvif/onvif.session/NvtSession.fs:478-485` (static `UpgradeScheme`)
   - `onvif/onvif.session/NvtSession.fs:771-779` (private `UpgradeSchemeIfNeeded` closure in `CreateSession(deviceUri)`)
+- **Scope note:** For the Milesight camera (`https://192.168.1.190:443`), `deviceUri.IsDefaultPort = true` so `httpsPort = 443` — Fix A produces the same URL as today. Fix A is a correctness improvement for cameras with non-default HTTPS ports (e.g. 8443). Fix B (HTTP fallback, Phase 3-4) is the actual Milesight unblocker.
 - **What:**
   1. In `UpgradeScheme` (478-485) replace `if b.Port = 80 then b.Port <- 443` with
      ```fsharp
@@ -110,8 +113,8 @@
 - **Files:** `onvif/onvif.session/NvtSession.fs` — add new helpers inside `CreateSession(deviceUri)` immediately after `GetMedia2Client` ends (current line 1054) and before `MediaGetVideoSources` (current line 1056)
 - **What:**
   1. Expose detector as `static member IsConnectionRefused (err: exn) : bool` on `NvtSessionFactory` (so unit tests can call it). Returns true when unwrapping any level of `AggregateException` / `InnerException` reveals:
-     - `WebException` with `Status ∈ {ConnectFailure; SecureChannelFailure}`
-     - `SocketException` with `SocketErrorCode ∈ {ConnectionRefused; ConnectionReset; HostUnreachable; TimedOut}`
+     - `WebException` with `Status ∈ {ConnectFailure}`
+     - `SocketException` with `SocketErrorCode ∈ {ConnectionRefused; ConnectionReset}`
      - `CommunicationException` whose inner matches
   2. Add memoized `GetMedia2HttpXAddr : unit -> Async<Uri>` — reads `GetServices()`, finds the Media2 service entry, returns `new Uri(service.XAddr)` without passing it through `FixUrl`. Returns `null` on absent service / absent services array.
   3. Add memoized `GetMedia1HttpXAddr : unit -> Async<Uri>` — reads `GetCapabilities()`, returns `new Uri(caps.media.xAddr)` without `FixUrl`. Returns `null` when media caps are null.
