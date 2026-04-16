@@ -67,10 +67,28 @@
       "phase": 3,
       "name": "HTTP fallback plumbing",
       "tasks": [
-        { "id": "3.1", "status": "pending" },
-        { "id": "3.2", "status": "pending" }
+        {
+          "id": "3.1",
+          "name": "IsConnectionRefused detector + GetMedia2HttpXAddr + GetMedia1HttpXAddr",
+          "status": "done",
+          "file": "onvif/onvif.session/NvtSession.fs"
+        },
+        {
+          "id": "3.2",
+          "name": "createMedia2ClientAt + createMediaClientAt fallback factories",
+          "status": "done",
+          "file": "onvif/onvif.session/NvtSession.fs"
+        }
       ],
-      "verify": { "id": "VERIFY 3", "status": "pending" }
+      "verify": {
+        "id": "VERIFY 3",
+        "status": "done",
+        "results": {
+          "build_session": "succeeded, 0 errors (MSBuild Release/Net45)",
+          "build_tests": "succeeded, 0 errors (dotnet build)",
+          "offline_tests": "88 passed, 0 failed (81 baseline + 7 new ConnectionRefusedDetectorTests)"
+        }
+      }
     },
     {
       "phase": 4,
