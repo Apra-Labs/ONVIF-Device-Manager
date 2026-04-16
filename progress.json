@@ -34,11 +34,34 @@
       "phase": 2,
       "name": "UpgradeScheme honours device port + test-harness hardcode",
       "tasks": [
-        { "id": "2.1", "status": "pending" },
-        { "id": "2.2", "status": "pending" },
-        { "id": "2.3", "status": "pending" }
+        {
+          "id": "2.1",
+          "name": "UpgradeScheme port fix + UpgradeSchemeIfNeeded delegation",
+          "status": "done",
+          "file": "onvif/onvif.session/NvtSession.fs"
+        },
+        {
+          "id": "2.2",
+          "name": "Update FixUrlHttpsTests for new port-mapping contract",
+          "status": "done",
+          "file": "odm/odm.tests/FixUrlHttpsTests.cs"
+        },
+        {
+          "id": "2.3",
+          "name": "Remove hardcoded :443 from HttpsIntegrationTests",
+          "status": "done",
+          "file": "odm/odm.tests/HttpsIntegrationTests.cs"
+        }
       ],
-      "verify": { "id": "VERIFY 2", "status": "pending" }
+      "verify": {
+        "id": "VERIFY 2",
+        "status": "done",
+        "results": {
+          "build": "succeeded, 0 errors",
+          "offline_tests": "81 passed, 0 failed",
+          "grep_check": "no https://*:443 literals in HttpsIntegrationTests.cs"
+        }
+      }
     },
     {
       "phase": 3,
