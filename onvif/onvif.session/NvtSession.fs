@@ -497,8 +497,11 @@
                 b.Scheme <- Uri.UriSchemeHttps
                 let httpsPort = if deviceUri.IsDefaultPort then 443 else deviceUri.Port
                 b.Port <- httpsPort
-                b.Uri
+                let result = b.Uri
+                log.WriteInfo(sprintf "[UpgradeScheme] deviceUri=%s input=%s → output=%s" (deviceUri.ToString()) (url.ToString()) (result.ToString()))
+                result
             else
+                log.WriteInfo(sprintf "[UpgradeScheme] no change: %s" (url.ToString()))
                 url
 
         /// Generates HTTPS URI variants from HTTP URIs for scheme-upgrade fallback.
@@ -613,6 +616,7 @@
 
             // SecurityProtocolType.Tls12 (3072) and Tls13 (12288) are not named constants
             // in .NET 4.0/4.5 reference assemblies; use integer casts for cross-target compatibility.
+            log.WriteInfo("[CreateSession] applying ServicePointManager: Tls12|Tls13, Expect100Continue=false, cert-validation-bypass")
             ServicePointManager.SecurityProtocol <- enum<SecurityProtocolType>(3072 ||| 12288)
             ServicePointManager.Expect100Continue <- false
             ServicePointManager.ServerCertificateValidationCallback <- fun _ _ _ _ -> true
@@ -753,6 +757,7 @@
                     let! secToken = GetSecurityUserNameToken()
                     let paramCol = channel.GetProperty<ChannelParameterCollection>()
                     paramCol.Add(secToken)
+                    log.WriteInfo("[SetupUserNameToken] applied username token to channel")
             }
 
             let GetDeviceClient = 
@@ -1154,13 +1159,17 @@
                 let comp = Async.Memoize(async {
                     let! services = GetServices()
                     if services |> IsNull then
+                        log.WriteInfo("[GetMedia2HttpXAddr] raw xAddr=null")
                         return null
                     else
                         let service = services.FirstOrDefault(fun (s: Service) -> s.Namespace = "http://www.onvif.org/ver20/media/wsdl")
                         if service |> IsNull then
+                            log.WriteInfo("[GetMedia2HttpXAddr] raw xAddr=null")
                             return null
                         else
-                            return new Uri(service.XAddr)
+                            let result = new Uri(service.XAddr)
+                            log.WriteInfo(sprintf "[GetMedia2HttpXAddr] raw xAddr=%s" (result.ToString()))
+                            return result
                 })
                 fun () -> comp
 
@@ -1170,17 +1179,22 @@
                 let comp = Async.Memoize(async {
                     let! caps = GetCapabilities()
                     if caps |> IsNull then
+                        log.WriteInfo("[GetMedia1HttpXAddr] raw xAddr=null")
                         return null
                     elif caps.media |> IsNull then
+                        log.WriteInfo("[GetMedia1HttpXAddr] raw xAddr=null")
                         return null
                     else
-                        return new Uri(caps.media.xAddr)
+                        let result = new Uri(caps.media.xAddr)
+                        log.WriteInfo(sprintf "[GetMedia1HttpXAddr] raw xAddr=%s" (result.ToString()))
+                        return result
                 })
                 fun () -> comp
 
             // Creates a non-memoized Media2 client channel at an arbitrary URL.
             // Used by the HTTP fallback retry — a fresh channel is created each retry.
             let createMedia2ClientAt (url: Uri) : Async<IMedia2> = async {
+                log.WriteInfo(sprintf "[createMedia2ClientAt] creating fallback Media2 channel at %s" (url.ToString()))
                 do! Async.SwitchToThreadPool()
                 let useTls = url.Scheme = Uri.UriSchemeHttps
                 let! factory = getMedia2Factory(useTls)
@@ -1192,6 +1206,7 @@
             // Creates a non-memoized Media1 client channel at an arbitrary URL.
             // Used by the HTTP fallback retry — a fresh channel is created each retry.
             let createMediaClientAt (url: Uri) : Async<IMediaAsync> = async {
+                log.WriteInfo(sprintf "[createMediaClientAt] creating fallback Media1 channel at %s" (url.ToString()))
                 do! Async.SwitchToThreadPool()
                 let useTls = url.Scheme = Uri.UriSchemeHttps
                 let! factory = getMediaFactory(useTls)
@@ -1206,12 +1221,17 @@
             let withMedia2HttpFallback (media2: IMedia2) (work: IMedia2 -> Async<'T>) : Async<'T> = async {
                 try
                     return! work media2
-                with err when NvtSessionFactory.IsConnectionRefused err ->
+                with
+                | err when NvtSessionFactory.IsConnectionRefused err ->
                     let! httpXAddr = GetMedia2HttpXAddr()
                     if httpXAddr |> IsNull then return raise err
                     else
+                        log.WriteInfo(sprintf "[withMedia2HttpFallback] connection-refused on primary, retrying at httpXAddr=%s" (httpXAddr.ToString()))
                         let! fallback = createMedia2ClientAt httpXAddr
                         return! work fallback
+                | err ->
+                    log.WriteInfo(sprintf "[withMedia2HttpFallback] non-retryable exception (%s): propagating" (err.GetType().Name))
+                    return raise err
             }
 
             // Calls `work media1`. On connection-refused, rebuilds a Media1 client at the
@@ -1220,12 +1240,17 @@
             let withMedia1HttpFallback (media1: IMediaAsync) (work: IMediaAsync -> Async<'T>) : Async<'T> = async {
                 try
                     return! work media1
-                with err when NvtSessionFactory.IsConnectionRefused err ->
+                with
+                | err when NvtSessionFactory.IsConnectionRefused err ->
                     let! httpXAddr = GetMedia1HttpXAddr()
                     if httpXAddr |> IsNull then return raise err
                     else
+                        log.WriteInfo(sprintf "[withMedia1HttpFallback] connection-refused on primary, retrying at httpXAddr=%s" (httpXAddr.ToString()))
                         let! fallback = createMediaClientAt httpXAddr
                         return! work fallback
+                | err ->
+                    log.WriteInfo(sprintf "[withMedia1HttpFallback] non-retryable exception (%s): propagating" (err.GetType().Name))
+                    return raise err
             }
 
             let MediaGetVideoSources =
