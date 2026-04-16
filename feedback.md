@@ -1,154 +1,117 @@
-# Sprint 6 Phase 2 — Review
+# Sprint 6 Phase 3 Review — Connection-Refused Detector + HTTP xAddr Memoization + Fallback Factories
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-16
-**Verdict:** APPROVED
+**Date:** 2026-04-16 02:58:44-0400
+**Branch:** `feat/media2-support`
+**Commits under review:** `c556bf5`, `236280d` (base `41460ed`)
+**Verdict:** **APPROVED**
 
 ---
 
-## Scope under review
+## Scope
 
-Phase 2 commits on `feat/media2-support`:
+Diff surface (`git diff 41460ed..HEAD --stat`):
 
-- `d0ac716` feat(sprint6/phase2/task2.1): UpgradeScheme honours device HTTPS port; delegate closure
-- `6e58eec` feat(sprint6/phase2/task2.2): update FixUrlHttpsTests for new port-mapping contract
-- `e10a01e` feat(sprint6/phase2/task2.3): remove hardcoded :443 from HttpsIntegrationTests
-- `c48a25a` chore: mark Phase 2 tasks done in progress.json (VERIFY 2 passed)
-
-Files touched (excluding progress.json):
-
-- `onvif/onvif.session/NvtSession.fs`
-- `odm/odm.tests/FixUrlHttpsTests.cs`
-- `odm/odm.tests/HttpsIntegrationTests.cs`
-
----
-
-## Task 2.1 — UpgradeScheme + UpgradeSchemeIfNeeded
-
-**PASS.**
-
-`NvtSession.fs:478-486` — `UpgradeScheme` static now derives the HTTPS port
-from `deviceUri` exactly as specified:
-
-```fsharp
-let httpsPort = if deviceUri.IsDefaultPort then 443 else deviceUri.Port
-b.Port <- httpsPort
+```
+ odm/odm.tests/ConnectionRefusedDetectorTests.cs | 82 ++++++++++++++++++++
+ onvif/onvif.session/NvtSession.fs               | 82 ++++++++++++++++++-
+ progress.json                                   | 24 +++++-
+ 3 files changed, 184 insertions(+), 4 deletions(-)
 ```
 
-The prior hard-coded `if b.Port = 80 then b.Port <- 443` is gone, so a device
-reached via `https://host:8443` no longer silently collapses probe URLs back
-to 443. Milesight-at-443 behavior is preserved because `IsDefaultPort` is
-true for an implicit `https://host` URI.
-
-`NvtSession.fs:776` — `UpgradeSchemeIfNeeded` is a true one-liner:
-
-```fsharp
-let UpgradeSchemeIfNeeded (url: Uri) = NvtSessionFactory.UpgradeScheme deviceUri url
-```
-
-No duplicated logic. Single source of truth. Drift risk eliminated.
+Tight, task-aligned change surface — no drift.
 
 ---
 
-## Task 2.2 — FixUrlHttpsTests
+## Task 3.1 — `IsConnectionRefused` + HTTP xAddr memoization
 
-**PASS.**
+### `NvtSessionFactory.IsConnectionRefused` — PASS
 
-All six tests in `FixUrlHttpsTests.cs` pass (the original five, plus the new
-non-default-port test — the `NonStandardHttpPort` test was rewritten into
-`UpgradeScheme_HttpUrl_MapsToDeviceHttpsPort` to reflect the corrected
-contract that the input URL's port is ignored when the device URI is
-authoritative).
+Source: `onvif/onvif.session/NvtSession.fs:518-537`
 
-Key coverage:
+- **Static member on `NvtSessionFactory`** — PASS. `static member IsConnectionRefused (err: exn) : bool`, directly callable from C# tests as `NvtSessionFactory.IsConnectionRefused(ex)`.
+- **Recursive unwrapping** — PASS.
+  - `AggregateException` → `ae.InnerExceptions |> Seq.exists check` (handles multi-inner aggregates correctly).
+  - `CommunicationException` → `check e.InnerException` (recurses into the wrapped transport exception).
+- **True only for the two intended transport cases** — PASS.
+  - `WebException` iff `Status = WebExceptionStatus.ConnectFailure`.
+  - `SocketException` iff `SocketErrorCode ∈ { ConnectionRefused, ConnectionReset }`.
+  - **`SecureChannelFailure` and `TimedOut` are NOT present** — matches the plan's removal requirement exactly.
+- **`CommunicationException` wrapping a transport exception** — PASS (true via inner recursion).
+- **`FaultException`** — PASS (returns false). `FaultException` is a subclass of `CommunicationException` and matches that arm, but its `InnerException` is null, so `check null` returns false on the entry guard `obj.ReferenceEquals(e, null) → false`.
+- **Random exceptions** — PASS (fall through to wildcard `_ -> false`).
+- **Null safety** — PASS (explicit null guard at entry).
 
-- `UpgradeScheme_HttpUrl_Port80_WhenSessionIsHttps_ReturnsHttpsPort443`
-  (FixUrlHttpsTests.cs:44-55) — default-port path: device `https://host` +
-  input `http://host:80` -> port 443. Passes.
-- `UpgradeScheme_HttpUrl_WithNonDefaultHttpsDevicePort_MapsToDevicePort`
-  (FixUrlHttpsTests.cs:94-109) — non-default-port path: device
-  `https://host:8443` + input `http://host:80` -> port 8443. Passes.
-- `UpgradeScheme_HttpUrl_MapsToDeviceHttpsPort` (FixUrlHttpsTests.cs:77-92)
-  — clarifies that result port derives from device, not input (input
-  `:8080` + device `https://host` -> `:443`). Passes.
+Minor observation (not a defect): the implementation is fault-tolerant to `FaultException` instances that do have a non-null InnerException — if that inner were a real transport exception it would return true. This is the correct behaviour for the fallback policy (transport failure at any depth = retry HTTP), not a bug.
 
-Test class XML doc comment (FixUrlHttpsTests.cs:7-19) was updated in step
-with the new contract.
+### `GetMedia2HttpXAddr` — PASS
 
-**NOTE:** The task brief says "All 5 tests pass"; there are actually 6
-after the rewrite. Not a defect — the brief was a minor undercount.
+Source: `onvif/onvif.session/NvtSession.fs:1081-1094`
 
----
+- **Memoized** — PASS. `let comp = Async.Memoize(async {...})` is captured once in the session closure; `fun () -> comp` returns the same memoized computation per session.
+- **No `FixUrl` / `UpgradeScheme`** — PASS. Returns `new Uri(service.XAddr)` directly from `GetServices()`. Raw xAddr preserved for fallback retry.
+- **Null on absent service** — PASS. Two guards: `services |> IsNull` and `service |> IsNull` (the `FirstOrDefault` result) both return null.
 
-## Task 2.3 — HttpsIntegrationTests hardcode removed
+### `GetMedia1HttpXAddr` — PASS
 
-**PASS.**
+Source: `onvif/onvif.session/NvtSession.fs:1097-1107`
 
-`grep -n "https://.*:443" odm/odm.tests/HttpsIntegrationTests.cs` returns
-zero matches.
-
-The `ServicePointManager.FindServicePoint` call at
-`HttpsIntegrationTests.cs:64-65` now composes the URL from `_host` and
-`_httpsPort`:
-
-```csharp
-var sp = ServicePointManager.FindServicePoint(
-    new Uri(string.Format("https://{0}:{1}/onvif/device_service", _host, _httpsPort)));
-```
-
-`_httpsPort` is parsed from `ODM_TEST_HTTPS_PORT` (default 443) in
-`ClassInitialize` (HttpsIntegrationTests.cs:51-52), so the pre-warmed
-ServicePoint now matches the device URI used for the actual session
-(HttpsIntegrationTests.cs:72-74), which is what this call exists to
-configure.
+- **Memoized** — PASS (identical `Async.Memoize` pattern).
+- **Raw URI from `GetCapabilities().media.xAddr`** — PASS. `new Uri(caps.media.xAddr)` with no transformation.
+- **Null when media caps are null** — PASS. Both `caps |> IsNull` and `caps.media |> IsNull` branches return null.
 
 ---
 
-## Build and tests
+## Task 3.2 — Fallback client factories — PASS
 
-- `dotnet build odm/odm.tests/odm.tests.csproj -v quiet` — **Build succeeded**,
-  0 errors, 2 unrelated `NU1900` package-feed warnings.
-- `vstest.console.exe odm.tests.dll --TestCaseFilter:"TestCategory!=Integration"`
-  — **81 passed / 0 failed / 0 skipped**, total 13.8 s. All six
-  `FixUrlHttpsTests` methods pass, including the new
-  `UpgradeScheme_HttpUrl_WithNonDefaultHttpsDevicePort_MapsToDevicePort`.
+Source: `onvif/onvif.session/NvtSession.fs:1109-1129`
+
+- **`createMedia2ClientAt` and `createMediaClientAt` exist** — PASS. Both `Uri -> Async<IMedia2>` / `Uri -> Async<IMediaAsync>` per spec.
+- **Non-memoized (fresh channel per call)** — PASS. No `Async.Memoize` wrapper; every invocation runs `factory.CreateChannel(new EndpointAddress(url))`, yielding a new `IClientChannel`. Critical property for HTTP fallback retries where channel state must be reset.
+- **`SetupUserNameToken` for auth** — PASS. Both call `do! SetupUserNameToken(proxy :?> IClientChannel)` before returning.
+- **Scheme handling** — PASS. `useTls = url.Scheme = Uri.UriSchemeHttps` correctly selects HTTPS vs HTTP factory. (Factory selection is still memoized inside `getMedia2Factory` / `getMediaFactory`, which is correct — binding configuration can be reused.)
 
 ---
 
-## Minor observation (non-blocking)
+## Test coverage — `ConnectionRefusedDetectorTests.cs` — PASS
 
-`NvtSession.fs:475-477` — the XML doc comment on the `UpgradeScheme` static
-is now stale:
+Source: `odm/odm.tests/ConnectionRefusedDetectorTests.cs:1-82`
 
-```fsharp
-/// Upgrades an HTTP URL to HTTPS when the session's device was reached via HTTPS.
-/// Maps port 80 -> 443; keeps other non-standard ports unchanged.
-/// Publicly accessible for unit testing (mirrors the private UpgradeSchemeIfNeeded closure).
-```
+All 5 PLAN.md cases are covered, plus 2 additional negative cases:
 
-Two drifts vs. the new implementation:
+| Case | Test method | Expected |
+|---|---|---|
+| 1. `WebException(ConnectFailure)` | `IsConnectionRefused_WebExceptionConnectFailure_ReturnsTrue` | true — PASS |
+| 2. `SocketException(ConnectionRefused)` in `AggregateException` | `..._SocketExceptionConnectionRefused_WrappedInAggregate_ReturnsTrue` | true — PASS |
+| 3. `SocketException(ConnectionReset)` in `AggregateException` | `..._SocketExceptionConnectionReset_WrappedInAggregate_ReturnsTrue` | true — PASS |
+| 4. `CommunicationException` wrapping `SocketException(ConnectionRefused)` | `..._CommunicationException_WrappingSocketException_ReturnsTrue` | true — PASS |
+| 5. `FaultException` | `..._FaultException_ReturnsFalse` | false — PASS |
+| +bonus — random `Exception` | `..._RandomException_ReturnsFalse` | false — PASS |
+| +bonus — `WebException(Timeout)` | `..._WebExceptionTimeout_ReturnsFalse` | false — PASS (regression lock) |
 
-1. "Maps port 80 -> 443; keeps other non-standard ports unchanged" — the
-   function no longer maps 80->443 at all; it substitutes `deviceUri`'s
-   port (defaulting to 443).
-2. "mirrors the private UpgradeSchemeIfNeeded closure" — the relationship
-   is now inverted: the closure delegates to this static.
+The `WebException(Timeout)` test is a nice regression lock — if a future refactor re-adds `TimedOut` to the accept list, this test will catch it immediately.
 
-Refreshing this docblock in a follow-up is strictly tidy-up and not a gate
-on approval.
+---
+
+## Build + test run — PASS
+
+- `dotnet build odm/odm.tests/odm.tests.csproj -v quiet` — **Build succeeded**, 0 errors, 2 unrelated `NU1900` package-feed warnings (BluB0X feed unreachable from reviewer machine — not a code issue).
+- `dotnet test --filter "TestCategory!=Integration" --no-build -v minimal` — **Passed! 88/88 tests, 0 failures, 12 s.**
 
 ---
 
 ## Summary
 
-Phase 2 delivers exactly the port-mapping correctness fix and
-deduplication specified. Implementation is clean: the port is now derived
-from the authoritative `deviceUri`, and the closure no longer carries a
-parallel copy that could drift. Tests assert both the default-port and
-non-default-port paths, and the `:443` hardcode in the HTTPS integration
-test is gone. Build clean, 81/81 offline tests pass.
+**What passed**
+- `IsConnectionRefused` is correctly scoped (static, public, pure), recursively unwraps `AggregateException` and `CommunicationException`, and accepts only the two intended transport-error signatures. `SecureChannelFailure` and `TimedOut` are correctly absent.
+- `GetMedia2HttpXAddr` / `GetMedia1HttpXAddr` memoize per session, bypass `FixUrl`/`UpgradeScheme`, and return null for absent services — ready for fallback consumers.
+- `createMedia2ClientAt` / `createMediaClientAt` are fresh-channel-per-call, scheme-aware, and apply UsernameToken — ready for retry use.
+- Tests cover all 5 PLAN.md cases plus two regression-lock negatives. Full `odm.tests` suite (88 tests) passes offline.
 
-**Verdict: APPROVED.**
+**What must change**
+- Nothing. No findings at any severity.
 
-Suggested follow-up (non-blocking): refresh the XML doc comment on
-`UpgradeScheme` in `NvtSession.fs` to match the new behavior.
+**What is deferred**
+- Actual wiring of these primitives into the fallback retry path (GetProfiles/GetStreamUri/etc.) lands in later Phase 4+ tasks — out of scope for this review.
+
+Phase 3 is **APPROVED**. Safe to proceed to Phase 4.
