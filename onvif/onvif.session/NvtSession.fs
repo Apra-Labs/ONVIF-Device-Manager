@@ -585,7 +585,9 @@
 
             if uris.Length = 0 then return failwith("no uri was passed")
 
-            ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13
+            // SecurityProtocolType.Tls12 (3072) and Tls13 (12288) are not named constants
+            // in .NET 4.0/4.5 reference assemblies; use integer casts for cross-target compatibility.
+            ServicePointManager.SecurityProtocol <- enum<SecurityProtocolType>(3072 ||| 12288)
             ServicePointManager.Expect100Continue <- false
             ServicePointManager.ServerCertificateValidationCallback <- fun _ _ _ _ -> true
 

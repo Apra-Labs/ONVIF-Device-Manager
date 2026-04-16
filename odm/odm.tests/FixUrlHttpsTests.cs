@@ -8,14 +8,14 @@ namespace odm.tests
     /// Offline unit tests for the UpgradeSchemeIfNeeded logic exposed via
     /// NvtSessionFactory.UpgradeScheme(deviceUri, url).
     ///
-    /// The private UpgradeSchemeIfNeeded closure in NvtSession.fs is mirrored
-    /// by the public static UpgradeScheme for testability (same logic).
+    /// The private UpgradeSchemeIfNeeded closure in NvtSession.fs delegates to
+    /// this public static for testability — single source of truth.
     ///
     /// Behavior:
-    ///   - http:// url + https:// deviceUri  => https:// url (port 80 -> 443)
+    ///   - http:// url + https:// deviceUri  => https:// url, port from deviceUri
+    ///     (default device port -> 443; non-default device port e.g. 8443 -> 8443)
     ///   - https:// url                       => unchanged (already HTTPS)
     ///   - http:// url + http:// deviceUri    => unchanged (session is HTTP)
-    ///   - non-standard port preserved as-is (e.g. 8080 stays 8080)
     /// </summary>
     [TestClass]
     public class FixUrlHttpsTests
@@ -75,18 +75,36 @@ namespace odm.tests
         }
 
         [TestMethod]
-        public void UpgradeScheme_NonStandardHttpPort_MapsToSameNonStandardHttpsPort()
+        public void UpgradeScheme_HttpUrl_MapsToDeviceHttpsPort()
         {
-            // Port 8080 is non-standard — UpgradeScheme only maps 80->443.
-            // Any other port is kept as-is.
+            // Device is on the default HTTPS port (443), so deviceUri.IsDefaultPort = true.
+            // Input URL has a non-standard port (8080), but the result port comes from
+            // the device URI, not the input URL — i.e. 443.
             var input  = new Uri("http://192.168.1.190:8080/onvif/device_service");
             var result = NvtSessionFactory.UpgradeScheme(HttpsDeviceUri, input);
 
             Assert.AreEqual(Uri.UriSchemeHttps, result.Scheme,
-                "Scheme should still be upgraded to https");
-            Assert.AreEqual(8080, result.Port,
-                "Non-standard port 8080 must be preserved unchanged (only 80->443 is mapped)");
+                "Scheme should be upgraded to https");
+            Assert.AreEqual(443, result.Port,
+                "Result port must be the device's HTTPS port (443), not the input URL's port");
             Assert.AreEqual("/onvif/device_service", result.AbsolutePath,
+                "Path must be preserved");
+        }
+
+        [TestMethod]
+        public void UpgradeScheme_HttpUrl_WithNonDefaultHttpsDevicePort_MapsToDevicePort()
+        {
+            // Device is on a non-default HTTPS port (8443).
+            // Input URL is http://host:80/... -> result must be https://host:8443/...
+            var deviceUri8443 = new Uri("https://192.168.1.190:8443/onvif/device_service");
+            var input         = new Uri("http://192.168.1.190:80/onvif/media");
+            var result        = NvtSessionFactory.UpgradeScheme(deviceUri8443, input);
+
+            Assert.AreEqual(Uri.UriSchemeHttps, result.Scheme,
+                "Scheme should be upgraded to https");
+            Assert.AreEqual(8443, result.Port,
+                "Result port must match the device's non-default HTTPS port (8443)");
+            Assert.AreEqual("/onvif/media", result.AbsolutePath,
                 "Path must be preserved");
         }
     }
