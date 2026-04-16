@@ -906,7 +906,13 @@
 
             // Upgrade an HTTP URL to HTTPS when the device was reached via HTTPS.
             // Delegates to the public static UpgradeScheme — single source of truth.
-            let UpgradeSchemeIfNeeded (url: Uri) = NvtSessionFactory.UpgradeScheme deviceUri url
+            let UpgradeSchemeIfNeeded (url: Uri) =
+                let result = NvtSessionFactory.UpgradeScheme deviceUri url
+                if result <> url then
+                    log.WriteInfo(sprintf "[UpgradeSchemeIfNeeded] upgraded %s -> %s (deviceUri=%s)" (url.ToString()) (result.ToString()) (deviceUri.ToString()))
+                else
+                    log.WriteInfo(sprintf "[UpgradeSchemeIfNeeded] no upgrade: %s" (url.ToString()))
+                result
 
             // Returns true for addresses that are loopback/unroutable and must be replaced with
             // the device's reachable host. Never touch the port — only substitute the host.
@@ -1834,7 +1840,17 @@
                         if media2 |> NotNull then
                             try
                                 return! withMedia2HttpFallback media2 (fun m -> getProfilesViaMedia2 m)
-                            with err ->
+                            with
+                            | :? FaultException as fault ->
+                                let subCode = if fault.Code.SubCode |> IsNull then "(none)" else sprintf "%s:%s" fault.Code.SubCode.Namespace fault.Code.SubCode.Name
+                                log.WriteInfo(sprintf "[GetProfiles/Media1] FaultException: code=%s subCode=%s reason='%s'" fault.Code.Name subCode fault.Message)
+                                dbg.Error(fault)
+                                let! med = GetMediaClient()
+                                if med |> NotNull then
+                                    return! withMedia1HttpFallback med (fun m -> m.GetProfiles())
+                                else
+                                    return [||]
+                            | err ->
                                 dbg.Error(err)
                                 let! med = GetMediaClient()
                                 if med |> NotNull then
@@ -1864,7 +1880,17 @@
                         if media2 |> NotNull then
                             try
                                 return! withMedia2HttpFallback media2 (fun m -> getStreamUriViaMedia2 m token)
-                            with err ->
+                            with
+                            | :? FaultException as fault ->
+                                let subCode = if fault.Code.SubCode |> IsNull then "(none)" else sprintf "%s:%s" fault.Code.SubCode.Namespace fault.Code.SubCode.Name
+                                log.WriteInfo(sprintf "[GetStreamUri/Media1] FaultException: code=%s subCode=%s reason='%s'" fault.Code.Name subCode fault.Message)
+                                dbg.Error(fault)
+                                let! med = GetMediaClient()
+                                let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetStreamUri(streamSetup, token))
+                                let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
+                                mediaUri.uri <- fixedMediaUrl.OriginalString
+                                return mediaUri
+                            | err ->
                                 dbg.Error(err)
                                 let! med = GetMediaClient()
                                 let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetStreamUri(streamSetup, token))
