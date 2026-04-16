@@ -336,7 +336,10 @@ namespace odm.ui.viewModels {
 
 		List<System.Net.NetworkCredential> GetAllNetworkCredentials() {
 			var result = new List<System.Net.NetworkCredential>();
-			if (!AccountManager.Instance.LoggedOutExplicitly) {
+			// Gate on IsLoaded: if the credential store hasn't finished loading yet
+			// (issue #29 race), skip real credentials so we don't fail auth with an
+			// empty store and lock the camera out.
+			if (odm.ui.core.CredentialStore.Instance.IsLoaded && !AccountManager.Instance.LoggedOutExplicitly) {
 				var current = AccountManager.Instance.CurrentAccount;
 				if (!current.IsAnonymous)
 					result.Add(new System.Net.NetworkCredential { UserName = current.Name, Password = current.Password });
@@ -353,7 +356,16 @@ namespace odm.ui.viewModels {
 		CompositeDisposable IdentitySubscriptions = new CompositeDisposable();
 
 		public void LoadDevices() {
-			log.WriteInfo(string.Format("[AutoConnect] LoadDevices() — discovery starting — {0:O}", DateTime.Now));
+			// Ensure CredentialStore.Load() completes before the first camera arrives (issue #29).
+			// Accessing IsLoaded forces the static singleton to initialize synchronously on this
+			// thread; without this, a fast WS-Discovery response could reach OnNodeLoaded before
+			// the singleton is warm, leaving GetAllNetworkCredentials with 0 real credentials.
+			var storeReady = odm.ui.core.CredentialStore.Instance.IsLoaded;
+			log.WriteInfo(string.Format("[AutoConnect] LoadDevices() — storeReady={0} — discovery starting — {1:O}", storeReady, DateTime.Now));
+			if (!storeReady) {
+				log.WriteInfo("[AutoConnect] WARNING: CredentialStore not loaded — discovery deferred");
+				return;
+			}
 			deviceManager = new NvtManager();
 			try {
 				//currentAccount = LoadCurrentAccount();

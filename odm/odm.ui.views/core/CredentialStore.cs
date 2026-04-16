@@ -23,9 +23,16 @@ namespace odm.ui.core
 
         List<Account> _credentials;
 
+        /// <summary>
+        /// True once Load() has completed in the constructor.
+        /// Auto-connect checks this before attempting camera auth (issue #29).
+        /// </summary>
+        public bool IsLoaded { get; private set; }
+
         private CredentialStore()
         {
             _credentials = Load();
+            IsLoaded = true;
         }
 
         /// <summary>Returns a copy of all stored credentials.</summary>
