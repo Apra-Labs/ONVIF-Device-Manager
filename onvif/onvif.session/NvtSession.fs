@@ -528,6 +528,32 @@
             )
             |> Seq.distinct |> Seq.toArray
 
+        /// Returns true when the exception (at any nesting depth) indicates a TCP
+        /// connection-refused / connection-reset failure.  Used by the HTTP fallback
+        /// logic to distinguish transport errors from SOAP/auth/other faults.
+        ///
+        /// Unwraps AggregateException and CommunicationException recursively.
+        /// Returns false for FaultException, random exceptions, and null.
+        static member IsConnectionRefused (err: exn) : bool =
+            let rec check (e: exn) =
+                if obj.ReferenceEquals(e, null) then false
+                else
+                    match e with
+                    | :? AggregateException as ae ->
+                        ae.InnerExceptions |> Seq.exists check
+                    | :? WebException as we ->
+                        we.Status = WebExceptionStatus.ConnectFailure
+                    | :? SocketException as se ->
+                        se.SocketErrorCode = SocketError.ConnectionRefused ||
+                        se.SocketErrorCode = SocketError.ConnectionReset
+                    | :? CommunicationException ->
+                        // Recurse into inner — handles CommunicationException wrapping
+                        // a SocketException, but correctly returns false for FaultException
+                        // (whose InnerException is typically null).
+                        check e.InnerException
+                    | _ -> false
+            check err
+
         member this.CreateSession(uris:Uri[]) = async{
             /// SOAP-level probe: sends GetSystemDateAndTime (unauthenticated) to verify
             /// the endpoint actually responds to ONVIF requests. TCP connectivity alone
@@ -1120,7 +1146,61 @@
                 })
                 fun()->comp
 
-            let MediaGetVideoSources = 
+            // Returns the raw HTTP xAddr for the Media2 service (from GetServices()),
+            // WITHOUT passing through FixUrl.  Used by the HTTP fallback retry so the
+            // original (non-upgraded) URL is preserved.  Returns null when the camera
+            // does not advertise a Media2 service or GetServices returns null/empty.
+            let GetMedia2HttpXAddr =
+                let comp = Async.Memoize(async {
+                    let! services = GetServices()
+                    if services |> IsNull then
+                        return null
+                    else
+                        let service = services.FirstOrDefault(fun (s: Service) -> s.Namespace = "http://www.onvif.org/ver20/media/wsdl")
+                        if service |> IsNull then
+                            return null
+                        else
+                            return new Uri(service.XAddr)
+                })
+                fun () -> comp
+
+            // Returns the raw HTTP xAddr for the Media1 service (from GetCapabilities()),
+            // WITHOUT passing through FixUrl.  Returns null when media capabilities are absent.
+            let GetMedia1HttpXAddr =
+                let comp = Async.Memoize(async {
+                    let! caps = GetCapabilities()
+                    if caps |> IsNull then
+                        return null
+                    elif caps.media |> IsNull then
+                        return null
+                    else
+                        return new Uri(caps.media.xAddr)
+                })
+                fun () -> comp
+
+            // Creates a non-memoized Media2 client channel at an arbitrary URL.
+            // Used by the HTTP fallback retry — a fresh channel is created each retry.
+            let createMedia2ClientAt (url: Uri) : Async<IMedia2> = async {
+                do! Async.SwitchToThreadPool()
+                let useTls = url.Scheme = Uri.UriSchemeHttps
+                let! factory = getMedia2Factory(useTls)
+                let proxy = factory.CreateChannel(new EndpointAddress(url))
+                do! SetupUserNameToken(proxy :?> IClientChannel)
+                return proxy
+            }
+
+            // Creates a non-memoized Media1 client channel at an arbitrary URL.
+            // Used by the HTTP fallback retry — a fresh channel is created each retry.
+            let createMediaClientAt (url: Uri) : Async<IMediaAsync> = async {
+                do! Async.SwitchToThreadPool()
+                let useTls = url.Scheme = Uri.UriSchemeHttps
+                let! factory = getMediaFactory(useTls)
+                let proxy = factory.CreateChannel(new EndpointAddress(url))
+                do! SetupUserNameToken(proxy :?> IClientChannel)
+                return (new MediaAsync(proxy) :> IMediaAsync)
+            }
+
+            let MediaGetVideoSources =
                 let comp = Async.Memoize(async{
                     let! media = GetMediaClient()
                     if media |> NotNull then 
