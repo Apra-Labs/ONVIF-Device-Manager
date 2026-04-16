@@ -62,8 +62,7 @@ namespace odm.tests
             // Pre-create and configure the ServicePoint so Expect100Continue is false
             // before WCF creates its channel factory.
             var sp = ServicePointManager.FindServicePoint(
-                new Uri(string.Format("https://{0}:443/onvif/device_service",
-                    Environment.GetEnvironmentVariable("ODM_TEST_HOST") ?? "192.168.1.190")));
+                new Uri(string.Format("https://{0}:{1}/onvif/device_service", _host, _httpsPort)));
             sp.Expect100Continue = false;
 
             var cred = new NetworkCredential(_user, _pass);
