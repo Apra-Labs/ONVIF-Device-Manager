@@ -584,6 +584,10 @@
 
             if uris.Length = 0 then return failwith("no uri was passed")
 
+            ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13
+            ServicePointManager.Expect100Continue <- false
+            ServicePointManager.ServerCertificateValidationCallback <- fun _ _ _ _ -> true
+
             // Try original URIs first (SOAP-level probe, not just TCP)
             let! httpResult = raceEndpoints uris
             match httpResult with

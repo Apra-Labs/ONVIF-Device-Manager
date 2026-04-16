@@ -1,0 +1,72 @@
+{
+  "sprint": 6,
+  "branch": "feat/media2-support",
+  "updated": "2026-04-16",
+  "phases": [
+    {
+      "phase": 1,
+      "name": "Harness parity: CreateSession(Uri[]) + Media2 test setup",
+      "tasks": [
+        {
+          "id": "1.1",
+          "name": "Apply ServicePointManager settings before raceEndpoints",
+          "status": "done",
+          "file": "onvif/onvif.session/NvtSession.fs"
+        },
+        {
+          "id": "1.2",
+          "name": "Media2IntegrationTests ClassInitialize + ODM_TEST_HTTP_PORT env var",
+          "status": "done",
+          "file": "odm/odm.tests/Media2IntegrationTests.cs"
+        }
+      ],
+      "verify": {
+        "id": "VERIFY 1",
+        "status": "done",
+        "results": {
+          "build": "succeeded, 0 errors",
+          "offline_tests": "80 passed, 0 failed",
+          "integration_smoke": "pending — no live camera in CI"
+        }
+      }
+    },
+    {
+      "phase": 2,
+      "name": "UpgradeScheme honours device port + test-harness hardcode",
+      "tasks": [
+        { "id": "2.1", "status": "pending" },
+        { "id": "2.2", "status": "pending" },
+        { "id": "2.3", "status": "pending" }
+      ],
+      "verify": { "id": "VERIFY 2", "status": "pending" }
+    },
+    {
+      "phase": 3,
+      "name": "HTTP fallback plumbing",
+      "tasks": [
+        { "id": "3.1", "status": "pending" },
+        { "id": "3.2", "status": "pending" }
+      ],
+      "verify": { "id": "VERIFY 3", "status": "pending" }
+    },
+    {
+      "phase": 4,
+      "name": "HTTP fallback wiring",
+      "tasks": [
+        { "id": "4.1", "status": "pending" },
+        { "id": "4.2", "status": "pending" },
+        { "id": "4.3", "status": "pending" }
+      ],
+      "verify": { "id": "VERIFY 4", "status": "pending" }
+    },
+    {
+      "phase": 5,
+      "name": "Final verification",
+      "tasks": [
+        { "id": "5.1", "status": "pending" },
+        { "id": "5.2", "status": "pending" }
+      ],
+      "verify": { "id": "VERIFY 5", "status": "pending" }
+    }
+  ]
+}
