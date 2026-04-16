@@ -1200,6 +1200,34 @@
                 return (new MediaAsync(proxy) :> IMediaAsync)
             }
 
+            // Calls `work media2`. On connection-refused, rebuilds a Media2 client at the
+            // original (non-upgraded) HTTP xAddr and retries once. Any other exception —
+            // including the retry's exception — propagates unchanged.
+            let withMedia2HttpFallback (media2: IMedia2) (work: IMedia2 -> Async<'T>) : Async<'T> = async {
+                try
+                    return! work media2
+                with err when NvtSessionFactory.IsConnectionRefused err ->
+                    let! httpXAddr = GetMedia2HttpXAddr()
+                    if httpXAddr |> IsNull then return raise err
+                    else
+                        let! fallback = createMedia2ClientAt httpXAddr
+                        return! work fallback
+            }
+
+            // Calls `work media1`. On connection-refused, rebuilds a Media1 client at the
+            // original (non-upgraded) HTTP xAddr and retries once. Any other exception —
+            // including the retry's exception — propagates unchanged.
+            let withMedia1HttpFallback (media1: IMediaAsync) (work: IMediaAsync -> Async<'T>) : Async<'T> = async {
+                try
+                    return! work media1
+                with err when NvtSessionFactory.IsConnectionRefused err ->
+                    let! httpXAddr = GetMedia1HttpXAddr()
+                    if httpXAddr |> IsNull then return raise err
+                    else
+                        let! fallback = createMediaClientAt httpXAddr
+                        return! work fallback
+            }
+
             let MediaGetVideoSources =
                 let comp = Async.Memoize(async{
                     let! media = GetMediaClient()
@@ -1750,18 +1778,18 @@
                         let! media2 = GetMedia2Client()
                         if media2 |> NotNull then
                             try
-                                return! getProfilesViaMedia2 media2
+                                return! withMedia2HttpFallback media2 (fun m -> getProfilesViaMedia2 m)
                             with err ->
                                 dbg.Error(err)
                                 let! med = GetMediaClient()
                                 if med |> NotNull then
-                                    return! med.GetProfiles()
+                                    return! withMedia1HttpFallback med (fun m -> m.GetProfiles())
                                 else
                                     return [||]
                         else
                             let! med = GetMediaClient()
                             if med |> NotNull then
-                                return! med.GetProfiles()
+                                return! withMedia1HttpFallback med (fun m -> m.GetProfiles())
                             else
                                 return [||]
                     }
@@ -1780,17 +1808,17 @@
                         let! media2 = GetMedia2Client()
                         if media2 |> NotNull then
                             try
-                                return! getStreamUriViaMedia2 media2 token
+                                return! withMedia2HttpFallback media2 (fun m -> getStreamUriViaMedia2 m token)
                             with err ->
                                 dbg.Error(err)
                                 let! med = GetMediaClient()
-                                let! mediaUri = med.GetStreamUri(streamSetup, token)
+                                let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetStreamUri(streamSetup, token))
                                 let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
                                 mediaUri.uri <- fixedMediaUrl.OriginalString
                                 return mediaUri
                         else
                             let! med = GetMediaClient()
-                            let! mediaUri = med.GetStreamUri(streamSetup, token)
+                            let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetStreamUri(streamSetup, token))
                             let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri))
                             mediaUri.uri <- fixedMediaUrl.OriginalString
                             return mediaUri
@@ -1800,11 +1828,11 @@
                         let! media2 = GetMedia2Client()
                         if media2 |> NotNull then
                             try
-                                return! getSnapshotUriViaMedia2 media2 token
+                                return! withMedia2HttpFallback media2 (fun m -> getSnapshotUriViaMedia2 m token)
                             with err ->
                                 dbg.Error(err)
                                 let! med = GetMediaClient()
-                                let! mediaUri = med.GetSnapshotUri(token)
+                                let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetSnapshotUri(token))
                                 if mediaUri |> NotNull then
                                     if not(String.IsNullOrEmpty(mediaUri.uri)) then
                                         let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri, UriKind.RelativeOrAbsolute))
@@ -1814,7 +1842,7 @@
                                 return mediaUri
                         else
                             let! med = GetMediaClient()
-                            let! mediaUri = med.GetSnapshotUri(token)
+                            let! mediaUri = withMedia1HttpFallback med (fun m -> m.GetSnapshotUri(token))
                             if mediaUri |> NotNull then
                                 if not(String.IsNullOrEmpty(mediaUri.uri)) then
                                     let! fixedMediaUrl = FixUrl(new Uri(mediaUri.uri, UriKind.RelativeOrAbsolute))
@@ -1898,15 +1926,15 @@
                         let! media2 = GetMedia2Client()
                         if media2 |> NotNull then
                             try
-                                return! getVideoSourceConfigurationsViaMedia2 media2
+                                return! withMedia2HttpFallback media2 (fun m -> getVideoSourceConfigurationsViaMedia2 m)
                             with _ ->
                                 let! med = GetMediaClient()
-                                if med |> NotNull then return! med.GetVideoSourceConfigurations()
+                                if med |> NotNull then return! withMedia1HttpFallback med (fun m -> m.GetVideoSourceConfigurations())
                                 else return [||]
                         else
                             let! med = GetMediaClient()
                             if med |> NotNull then
-                                return! med.GetVideoSourceConfigurations()
+                                return! withMedia1HttpFallback med (fun m -> m.GetVideoSourceConfigurations())
                             else
                                 return [||]
                     }
@@ -1915,12 +1943,12 @@
                         let! media2 = GetMedia2Client()
                         if media2 |> NotNull then
                             try
-                                return! getEncoderConfigurationsViaMedia2 media2 ""
+                                return! withMedia2HttpFallback media2 (fun m -> getEncoderConfigurationsViaMedia2 m "")
                             with _ ->
                                 let! med = GetMediaClient()
                                 if med |> NotNull then
                                     try
-                                        return! med.GetVideoEncoderConfigurations()
+                                        return! withMedia1HttpFallback med (fun m -> m.GetVideoEncoderConfigurations())
                                     with
                                         | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
                                             return [||]
@@ -1933,7 +1961,7 @@
                             let! med = GetMediaClient()
                             if med |> NotNull then
                                 try
-                                    return! med.GetVideoEncoderConfigurations()
+                                    return! withMedia1HttpFallback med (fun m -> m.GetVideoEncoderConfigurations())
                                 with
                                     | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
                                         return [||]
@@ -2031,11 +2059,11 @@
                         let! media2 = GetMedia2Client()
                         if media2 |> NotNull then
                             try
-                                return! getEncoderConfigurationsViaMedia2 media2 profToken
+                                return! withMedia2HttpFallback media2 (fun m -> getEncoderConfigurationsViaMedia2 m profToken)
                             with _ ->
                                 let! med = GetMediaClient()
                                 try
-                                    return! med.GetCompatibleVideoEncoderConfigurations(profToken)
+                                    return! withMedia1HttpFallback med (fun m -> m.GetCompatibleVideoEncoderConfigurations(profToken))
                                 with
                                     | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
                                         return! this.GetVideoEncoderConfigurations()
@@ -2045,7 +2073,7 @@
                         else
                             let! med = GetMediaClient()
                             try
-                                return! med.GetCompatibleVideoEncoderConfigurations(profToken)
+                                return! withMedia1HttpFallback med (fun m -> m.GetCompatibleVideoEncoderConfigurations(profToken))
                             with
                                 | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
                                     return! this.GetVideoEncoderConfigurations()
@@ -2109,14 +2137,14 @@
                         let! media2 = GetMedia2Client()
                         if media2 |> NotNull then
                             try
-                                return! setVideoEncoderConfigurationViaMedia2 media2 config
+                                return! withMedia2HttpFallback media2 (fun m -> setVideoEncoderConfigurationViaMedia2 m config)
                             with err ->
                                 dbg.Error(err)
                                 let! med = GetMediaClient()
-                                return! med.SetVideoEncoderConfiguration(config, forcePersistence)
+                                return! withMedia1HttpFallback med (fun m -> m.SetVideoEncoderConfiguration(config, forcePersistence))
                         else
                             let! med = GetMediaClient()
-                            return! med.SetVideoEncoderConfiguration(config, forcePersistence)
+                            return! withMedia1HttpFallback med (fun m -> m.SetVideoEncoderConfiguration(config, forcePersistence))
                     }
 
                     member this.SetAudioSourceConfiguration(config:AudioSourceConfiguration, forcePersistence:bool): Async<unit> = async{
@@ -2148,14 +2176,14 @@
                         let! media2 = GetMedia2Client()
                         if media2 |> NotNull then
                             try
-                                return! getVideoEncoderConfigurationOptionsViaMedia2 media2 configToken profToken
+                                return! withMedia2HttpFallback media2 (fun m -> getVideoEncoderConfigurationOptionsViaMedia2 m configToken profToken)
                             with err ->
                                 dbg.Error(err)
                                 let! med = GetMediaClient()
-                                return! med.GetVideoEncoderConfigurationOptions(configToken, profToken)
+                                return! withMedia1HttpFallback med (fun m -> m.GetVideoEncoderConfigurationOptions(configToken, profToken))
                         else
                             let! med = GetMediaClient()
-                            return! med.GetVideoEncoderConfigurationOptions(configToken, profToken)
+                            return! withMedia1HttpFallback med (fun m -> m.GetVideoEncoderConfigurationOptions(configToken, profToken))
                     }
 
                     member this.GetAudioSourceConfigurationOptions(configToken:string, profToken:string): Async<AudioSourceConfigurationOptions> = async{
