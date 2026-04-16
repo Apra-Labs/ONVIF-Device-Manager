@@ -495,7 +495,8 @@
             if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp then
                 let b = new UriBuilder(url)
                 b.Scheme <- Uri.UriSchemeHttps
-                if b.Port = 80 then b.Port <- 443
+                let httpsPort = if deviceUri.IsDefaultPort then 443 else deviceUri.Port
+                b.Port <- httpsPort
                 b.Uri
             else
                 url
@@ -861,18 +862,8 @@
                 fun() -> comp
 
             // Upgrade an HTTP URL to HTTPS when the device was reached via HTTPS.
-            // ONVIF cameras return capability xAddr values (e.g. PTZ, media, imaging service URLs)
-            // with http:// regardless of how they were connected to — the ONVIF spec does not
-            // mandate scheme-aware xAddr reporting, so cameras always advertise the HTTP address.
-            let UpgradeSchemeIfNeeded (url: Uri) =
-                if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp then
-                    let b = new UriBuilder(url)
-                    b.Scheme <- Uri.UriSchemeHttps
-                    // Map port 80 -> 443; keep other non-default ports (e.g. 8080 stays 8080)
-                    if b.Port = 80 then b.Port <- 443
-                    b.Uri
-                else
-                    url
+            // Delegates to the public static UpgradeScheme — single source of truth.
+            let UpgradeSchemeIfNeeded (url: Uri) = NvtSessionFactory.UpgradeScheme deviceUri url
 
             // Returns true for addresses that are loopback/unroutable and must be replaced with
             // the device's reachable host. Never touch the port — only substitute the host.
