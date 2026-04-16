@@ -136,17 +136,71 @@
           "id": "5.2",
           "name": "Integration tests against Milesight (192.168.1.190)",
           "status": "done",
-          "result": "6/13 passed, 7 failed — camera unreachable",
-          "details": "Credentials successfully decrypted from DPAPI-protected credentials.dat. Connection failures: 192.168.1.190:443 (HTTPS) and :80 (HTTP) actively refused. The camera is offline or unreachable from this network segment."
+          "result": "4/13 passed, 9 failed",
+          "details": {
+            "passed": [
+              "Connect_ToHttpsCamera_Succeeds [10 ms]",
+              "GetSystemDateAndTime_ViaTcpSslStream_Succeeds [443 ms]",
+              "GetSystemDateAndTime_ViaWcfChannel_Succeeds [2 s]",
+              "GetCapabilities_ReturnsValidResult [367 ms]"
+            ],
+            "failed": [
+              {
+                "test": "GetProfiles_ReturnsAtLeastOneProfile [3 s]",
+                "error": "System.Net.Sockets.SocketException: No connection could be made because the target machine actively refused it 192.168.1.190:443"
+              },
+              {
+                "test": "GetStreamUri_ReturnsValidUri [4 s]",
+                "error": "System.Net.Sockets.SocketException: No connection could be made because the target machine actively refused it 192.168.1.190:443"
+              },
+              {
+                "test": "GetProfiles_Media2Camera_ReturnsNonEmptyProfiles [6 s]",
+                "error": "System.Exception: SOAP probe failed for all URIs (including HTTPS fallback)"
+              },
+              {
+                "test": "GetStreamUri_FirstProfile_ReturnsRtspUri [6 s]",
+                "error": "System.Exception: SOAP probe failed for all URIs (including HTTPS fallback)"
+              },
+              {
+                "test": "GetVideoEncoderConfigurationOptions_FirstProfile_ReturnsOptions [6 s]",
+                "error": "System.Exception: SOAP probe failed for all URIs (including HTTPS fallback)"
+              },
+              {
+                "test": "GetVideoEncoderConfigurations_Media2Camera_ReturnsConfigurations [6 s]",
+                "error": "System.Exception: SOAP probe failed for all URIs (including HTTPS fallback)"
+              },
+              {
+                "test": "GetVideoSourceConfigurations_Media2Camera_ReturnsConfigurations [6 s]",
+                "error": "System.Exception: SOAP probe failed for all URIs (including HTTPS fallback)"
+              },
+              {
+                "test": "GetSnapshotUri_FirstProfile_ReturnsUriOrNull [6 s]",
+                "error": "System.Exception: SOAP probe failed for all URIs (including HTTPS fallback)"
+              },
+              {
+                "test": "GetCompatibleVideoEncoderConfigurations_FirstProfile_ReturnsConfigurations [6 s]",
+                "error": "System.Exception: SOAP probe failed for all URIs (including HTTPS fallback)"
+              }
+            ],
+            "notes": [
+              "Credentials successfully decrypted from DPAPI-protected credentials.dat",
+              "Camera at 192.168.1.190 is offline or unreachable",
+              "HTTPS (port 443) actively refused connections",
+              "HTTP (port 80) not responding",
+              "HTTPS fallback (port 8443) also failed"
+            ]
+          }
         }
       ],
       "verify": {
         "id": "VERIFY 5",
         "status": "done",
         "results": {
-          "release_build": "succeeded, 0 errors (MSBuild Release/x64)",
-          "integration_tests": "6/13 passed (credentials decrypted, camera unreachable)",
-          "note": "Target 13/13 not met — camera offline. 6 tests passed before connection failures began."
+          "release_build": "succeeded, exit code 0 (MSBuild Release/x64)",
+          "integration_tests": "4/13 passed, 9 failed",
+          "build_time": "build completed successfully — test assembly at odm/odm.tests/bin/Release/net48/odm.tests.dll",
+          "test_execution_time": "56.8 seconds",
+          "summary": "Target 13/13 not met. Camera at 192.168.1.190 is offline/unreachable. First 4 HTTPS-based tests passed, then connection failures on both HTTPS and HTTP. Media2 tests failed due to SOAP probe failures."
         }
       }
     }
