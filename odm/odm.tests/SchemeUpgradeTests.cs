@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -60,14 +60,14 @@ namespace odm.tests
         public void GenerateHttpsVariants_MultipleUris_DeduplicatesResults()
         {
             var uri = new Uri("http://192.168.1.190:80/onvif/device_service");
-            // Pass the same URI twice — expect deduplicated output
+            // Pass the same URI twice â€” expect deduplicated output
             var input = new[] { uri, uri };
 
             var result = NvtSessionFactory.GenerateHttpsVariants(input);
 
             var distinct = result.Distinct().ToArray();
             Assert.AreEqual(distinct.Length, result.Length,
-                "Output URIs should be deduplicated — no duplicates expected");
+                "Output URIs should be deduplicated â€” no duplicates expected");
         }
         [TestMethod]
         public void IsHttps4xxFromCamera_CommunicationExceptionHttps400_ReturnsTrue()
@@ -139,7 +139,7 @@ namespace odm.tests
             // HTTPS fallback variants.
             //
             // We use localhost with a random open TCP port that accepts connections
-            // but doesn't speak ONVIF — this mimics the "silent port 80" camera behavior.
+            // but doesn't speak ONVIF â€” this mimics the "silent port 80" camera behavior.
 
             var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
             listener.Start();
@@ -150,7 +150,7 @@ namespace odm.tests
                 var httpUri = new Uri(string.Format("http://127.0.0.1:{0}/onvif/device_service", port));
 
                 // CreateSession should try SOAP probe on port, fail, then try HTTPS variants.
-                // HTTPS variants will also fail (no HTTPS listener), so the whole call fails —
+                // HTTPS variants will also fail (no HTTPS listener), so the whole call fails â€”
                 // but the key assertion is that it DOES attempt HTTPS variants (not just TCP).
                 var factory = new NvtSessionFactory(new NetworkCredential("admin", ""));
                 try
@@ -160,7 +160,7 @@ namespace odm.tests
                         FSharpOption<int>.Some(15000),
                         FSharpOption<CancellationToken>.None);
 
-                    Assert.Fail("Expected failure — no real ONVIF device is running");
+                    Assert.Fail("Expected failure â€” no real ONVIF device is running");
                 }
                 catch (Exception ex)
                 {
@@ -180,6 +180,33 @@ namespace odm.tests
             {
                 listener.Stop();
             }
+        }
+
+        [TestMethod]
+        public void UpgradeScheme_SubservicePortDiffersFromDevice_NoUpgrade()
+        {
+            var deviceUri = new Uri("https://192.168.1.10:443/onvif/device_service");
+            var subServiceUri = new Uri("http://192.168.1.10:80/onvif/media_service");
+
+            var result = NvtSessionFactory.UpgradeScheme(deviceUri, subServiceUri);
+
+            Assert.AreEqual(subServiceUri, result,
+                "UpgradeScheme must return input unchanged when port 80 differs from device port 443");
+        }
+
+        [TestMethod]
+        public void UpgradeScheme_SubservicePortMatchesDevice_Upgrades()
+        {
+            var deviceUri = new Uri("https://192.168.1.10:8443/onvif/device_service");
+            var subServiceUri = new Uri("http://192.168.1.10:8443/onvif/media_service");
+
+            var result = NvtSessionFactory.UpgradeScheme(deviceUri, subServiceUri);
+
+            Assert.AreEqual(Uri.UriSchemeHttps, result.Scheme,
+                "UpgradeScheme must upgrade scheme to https when ports match");
+            Assert.AreEqual(8443, result.Port, "Port must be preserved after upgrade");
+            Assert.AreEqual(subServiceUri.AbsolutePath, result.AbsolutePath,
+                "Path must be preserved after upgrade");
         }
     }
 }

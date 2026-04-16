@@ -548,20 +548,20 @@
                 factory.Endpoint.Behaviors.Add(new StripActionMustUnderstandBehavior())
             factory
 
-        /// Upgrades an HTTP URL to HTTPS when the session's device was reached via HTTPS.
-        /// Maps port 80 -> 443; keeps other non-standard ports unchanged.
-        /// Publicly accessible for unit testing (mirrors the private UpgradeSchemeIfNeeded closure).
+        /// Upgrades an HTTP URL to HTTPS only when the sub-service port exactly matches
+        /// the device port. Cameras that advertise sub-services on port 80 while the
+        /// device service is on port 443 are genuinely HTTP-only — upgrading them
+        /// causes connection-refused (bug #26). Only a port-exact match is safe to upgrade.
         static member UpgradeScheme (deviceUri: Uri) (url: Uri) : Uri =
-            if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp then
+            if deviceUri.Scheme = Uri.UriSchemeHttps && url.Scheme = Uri.UriSchemeHttp && url.Port = deviceUri.Port then
                 let b = new UriBuilder(url)
                 b.Scheme <- Uri.UriSchemeHttps
-                let httpsPort = if deviceUri.IsDefaultPort then 443 else deviceUri.Port
-                b.Port <- httpsPort
+                b.Port <- deviceUri.Port
                 let result = b.Uri
-                log.WriteInfo(sprintf "[UpgradeScheme] deviceUri=%s input=%s → output=%s" (deviceUri.ToString()) (url.ToString()) (result.ToString()))
+                log.WriteInfo(sprintf "[UpgradeScheme] deviceUri=%s input=%s output=%s" (deviceUri.ToString()) (url.ToString()) (result.ToString()))
                 result
             else
-                log.WriteInfo(sprintf "[UpgradeScheme] no change: %s" (url.ToString()))
+                log.WriteInfo(sprintf "[UpgradeScheme] no change (port-mismatch or already https): %s" (url.ToString()))
                 url
 
         /// Generates HTTPS URI variants from HTTP URIs for scheme-upgrade fallback.
