@@ -74,6 +74,7 @@ namespace odm.ui.core
 
         private List<Account> Load()
         {
+            log.WriteInfo(string.Format("[CredentialStore] Load() start — {0:O}", DateTime.Now));
             // Try encrypted store first
             if (File.Exists(_storePath))
             {
@@ -87,7 +88,9 @@ namespace odm.ui.core
                     using (var reader = new StringReader(xml))
                     {
                         var list = (CredentialList)serializer.Deserialize(reader);
-                        return list.Items ?? new List<Account>();
+                        var items = list.Items ?? new List<Account>();
+                        log.WriteInfo(string.Format("[CredentialStore] Load() complete (encrypted) — storeCount={0} — {1:O}", items.Count, DateTime.Now));
+                        return items;
                     }
                 }
                 catch (Exception err)
@@ -120,6 +123,7 @@ namespace odm.ui.core
                     // Only delete old file after successful write
                     File.Delete(_legacyPath);
 
+                    log.WriteInfo(string.Format("[CredentialStore] Load() complete (migrated) — storeCount={0} — {1:O}", migrated.Count, DateTime.Now));
                     return migrated;
                 }
                 catch (Exception err)
@@ -128,7 +132,9 @@ namespace odm.ui.core
                 }
             }
 
-            return new List<Account>();
+            var empty = new List<Account>();
+            log.WriteInfo(string.Format("[CredentialStore] Load() complete — storeCount={0} — {1:O}", empty.Count, DateTime.Now));
+            return empty;
         }
 
         private void Save()

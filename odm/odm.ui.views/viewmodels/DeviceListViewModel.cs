@@ -353,6 +353,7 @@ namespace odm.ui.viewModels {
 		CompositeDisposable IdentitySubscriptions = new CompositeDisposable();
 
 		public void LoadDevices() {
+			log.WriteInfo(string.Format("[AutoConnect] LoadDevices() — discovery starting — {0:O}", DateTime.Now));
 			deviceManager = new NvtManager();
 			try {
 				//currentAccount = LoadCurrentAccount();
@@ -430,6 +431,7 @@ namespace odm.ui.viewModels {
 		}
 		void SessionProcess(DeviceDescriptionHolder devHolder, bool publishEvent) {
 			var creds = GetAllNetworkCredentials();
+			log.WriteInfo(string.Format("[AutoConnect] SessionProcess — credentialCount={0} (excl anonymous) — {1:O}", creds.Count(c => c != null), DateTime.Now));
 			TrySessionWithCredentials(devHolder, publishEvent, creds, 0);
 		}
 
