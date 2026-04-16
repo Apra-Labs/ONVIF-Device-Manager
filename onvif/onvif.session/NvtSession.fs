@@ -249,16 +249,23 @@
 
     type NvtSessionFactory(credentials: NetworkCredential) = class
 
-        static let AlternateImplementation (comp:Async<'T>) (altComp:Async<'T>):Async<'T> = 
+        static let AlternateImplementation (comp:Async<'T>) (altComp:Async<'T>):Async<'T> =
             let tramp = new Trampoline()
             let useAlt = false
             let impl = async{
                 try
                     return! comp
-                with 
+                with
                     | :? FaultException as fault when (fault.Code.SubCode.Name) = "ActionNotSupported" && (fault.Code.SubCode.Namespace) = "http://www.onvif.org/ver10/error" ->
                         return! altComp
-                    | err -> 
+                    | :? FaultException as fault ->
+                        let subCode =
+                            if fault.Code.SubCode |> IsNull then "(none)"
+                            else sprintf "%s:%s" fault.Code.SubCode.Namespace fault.Code.SubCode.Name
+                        log.WriteInfo(sprintf "[AlternateImplementation] SOAP fault code=%s subCode=%s reason='%s'" fault.Code.Name subCode fault.Message)
+                        dbg.Error(fault)
+                        return raise fault
+                    | err ->
                         dbg.Error(err)
                         return raise err
             }
@@ -757,7 +764,10 @@
                     let! secToken = GetSecurityUserNameToken()
                     let paramCol = channel.GetProperty<ChannelParameterCollection>()
                     paramCol.Add(secToken)
-                    log.WriteInfo("[SetupUserNameToken] applied username token to channel")
+                    let addr =
+                        try (channel :?> IContextChannel).RemoteAddress.Uri.ToString()
+                        with _ -> "(unknown)"
+                    log.WriteInfo(sprintf "[SetupUserNameToken] applied username token to channel at %s" addr)
             }
 
             let GetDeviceClient = 
@@ -921,13 +931,16 @@
             let GetMediaClient =
                 let comp = Async.Memoize(async{
                     dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetMediaClient")
-                    let! eps = GetResolvedEndpoints()
-                    match eps.Media1XAddr with
-                    | None -> return null
-                    | Some xaddr ->
+                    let! caps = GetCapabilities()
+                    let xaddr = caps |> IfNotNull(fun x->x.media |> IfNotNull(fun x->x.xAddr))
+                    log.WriteInfo(sprintf "[GetMediaClient] caps.media.xAddr=%s" (if xaddr |> IsNull then "null" else xaddr))
+                    if IsNull(xaddr) then
+                        return null
+                    else
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
+                        log.WriteInfo(sprintf "[GetMediaClient] creating Media1 channel at %s (useTls=%b)" (url.ToString()) useTls)
                         let! factory = getMediaFactory(useTls)
                         let endpointAddr = new EndpointAddress(url)
                         let proxy = factory.CreateChannel(endpointAddr)
@@ -1133,16 +1146,21 @@
             let GetMedia2Client =
                 let comp = Async.Memoize(async{
                     dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetMedia2Client")
-                    let! eps = GetResolvedEndpoints()
-                    if not eps.HasMedia2 then
+                    let! services = GetServices()
+                    if services |> IsNull then
+                        log.WriteInfo("[GetMedia2Client] GetServices() returned null — no Media2")
                         return null
                     else
-                        match eps.Media2XAddr with
-                        | None -> return null
-                        | Some xaddr ->
+                        let service = services.FirstOrDefault(fun (s:Service) -> s.Namespace = "http://www.onvif.org/ver20/media/wsdl")
+                        if service |> IsNull then
+                            log.WriteInfo("[GetMedia2Client] Media2 service not found in GetServices() result")
+                            return null
+                        else
                             do! Async.SwitchToThreadPool()
-                            let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
+                            log.WriteInfo(sprintf "[GetMedia2Client] found Media2 service xAddr=%s" service.XAddr)
+                            let! url = FixUrl(new Uri(service.XAddr, UriKind.RelativeOrAbsolute))
                             let useTls = url.Scheme = Uri.UriSchemeHttps
+                            log.WriteInfo(sprintf "[GetMedia2Client] creating Media2 channel at %s (useTls=%b)" (url.ToString()) useTls)
                             let! factory = getMedia2Factory(useTls)
                             let endpointAddr = new EndpointAddress(url)
                             let proxy = factory.CreateChannel(endpointAddr)
@@ -1229,6 +1247,12 @@
                         log.WriteInfo(sprintf "[withMedia2HttpFallback] connection-refused on primary, retrying at httpXAddr=%s" (httpXAddr.ToString()))
                         let! fallback = createMedia2ClientAt httpXAddr
                         return! work fallback
+                | :? FaultException as fault ->
+                    let subCode =
+                        if fault.Code.SubCode |> IsNull then "(none)"
+                        else sprintf "%s:%s" fault.Code.SubCode.Namespace fault.Code.SubCode.Name
+                    log.WriteInfo(sprintf "[withMedia2HttpFallback] SOAP fault code=%s subCode=%s reason='%s'" fault.Code.Name subCode fault.Message)
+                    return raise fault
                 | err ->
                     log.WriteInfo(sprintf "[withMedia2HttpFallback] non-retryable exception (%s): propagating" (err.GetType().Name))
                     return raise err
@@ -1248,6 +1272,12 @@
                         log.WriteInfo(sprintf "[withMedia1HttpFallback] connection-refused on primary, retrying at httpXAddr=%s" (httpXAddr.ToString()))
                         let! fallback = createMediaClientAt httpXAddr
                         return! work fallback
+                | :? FaultException as fault ->
+                    let subCode =
+                        if fault.Code.SubCode |> IsNull then "(none)"
+                        else sprintf "%s:%s" fault.Code.SubCode.Namespace fault.Code.SubCode.Name
+                    log.WriteInfo(sprintf "[withMedia1HttpFallback] SOAP fault code=%s subCode=%s reason='%s'" fault.Code.Name subCode fault.Message)
+                    return raise fault
                 | err ->
                     log.WriteInfo(sprintf "[withMedia1HttpFallback] non-retryable exception (%s): propagating" (err.GetType().Name))
                     return raise err
