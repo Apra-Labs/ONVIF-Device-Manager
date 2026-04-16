@@ -94,11 +94,33 @@
       "phase": 4,
       "name": "HTTP fallback wiring",
       "tasks": [
-        { "id": "4.1", "status": "pending" },
-        { "id": "4.2", "status": "pending" },
-        { "id": "4.3", "status": "pending" }
+        {
+          "id": "4.1",
+          "name": "withMedia2HttpFallback combinator + wire into 8 Media2 call sites",
+          "status": "done",
+          "file": "onvif/onvif.session/NvtSession.fs"
+        },
+        {
+          "id": "4.2",
+          "name": "withMedia1HttpFallback combinator + wire into 8 Media1 branches",
+          "status": "done",
+          "file": "onvif/onvif.session/NvtSession.fs"
+        },
+        {
+          "id": "4.3",
+          "name": "Unit tests: MediaHttpFallbackTests — combinator behaviour",
+          "status": "done",
+          "file": "odm/odm.tests/MediaHttpFallbackTests.cs"
+        }
       ],
-      "verify": { "id": "VERIFY 4", "status": "pending" }
+      "verify": {
+        "id": "VERIFY 4",
+        "status": "done",
+        "results": {
+          "build": "succeeded, 0 errors (dotnet build)",
+          "offline_tests": "91 passed, 0 failed (88 baseline + 3 new MediaHttpFallbackTests)"
+        }
+      }
     },
     {
       "phase": 5,
