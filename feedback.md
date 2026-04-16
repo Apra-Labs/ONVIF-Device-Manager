@@ -1,90 +1,98 @@
-# Sprint 6 — Milesight Camera Compatibility Fixes — Plan Review
+# Sprint 6 — Milesight Camera Compatibility Fixes — Plan Re-Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-16 14:30:00+05:30
-**Branch reviewed:** `feat/media2-support` @ `875b310`
-**Verdict:** CHANGES NEEDED
+**Date:** 2026-04-16 15:00:00+05:30
+**Branch reviewed:** `feat/media2-support` @ `3e8e7b6`
+**Verdict:** APPROVED
 
 ---
 
-## 1. "Done" criteria per task
-**PASS** — Every task has a concrete `Done:` block. Build commands, test filters, and Milesight-specific acceptance observations are explicit. No "implement X" without a measurable outcome.
+## Context
 
-## 2. Cohesion within tasks / coupling between tasks
-**PASS** — Phase 1 is harness/session bootstrap, Phase 2 is scheme mapping, Phase 3 is fallback plumbing (pure helpers), Phase 4 is wiring. Each task edits a tight file set and leaves combinators unused until the next phase — clean staging.
+Re-review of `PLAN.md` after the author addressed the 3 CHANGES NEEDED items from `dae1026`:
+1. Fix A scope disclaimer (Milesight unblocker attribution)
+2. Exception taxonomy alignment between Task 3.1 detector and risk register
+3. Risk register entries for `ServerCertificateValidationCallback` and `SecurityProtocol` mutation
 
-## 3. Shared abstractions in earliest tasks
-**PASS** — `IsConnectionRefused` detector, `GetMedia{1,2}HttpXAddr`, `createMedia{2,}ClientAt` are introduced in Phase 3 before Phase 4 wires them into 8 call sites. Single-source-of-truth fix for `UpgradeScheme` vs. `UpgradeSchemeIfNeeded` (Task 2.1 bullet 2) is particularly good — eliminates pre-existing drift.
+---
 
-## 4. Riskiest assumption validated first
-**PASS** — Task 1.1 proves TLS/Expect100Continue settings reach the SOAP probe against the real Milesight at `192.168.1.190`. This is the load-bearing assumption for everything downstream (without it, you cannot reach `GetServices()` to discover the Media2 xAddr for fallback).
+## 1. Fix A scope — explicit non-unblocker callout
+**PASS** — PLAN.md:69 (Task 2.1) now contains:
 
-## 5. DRY / reuse of early abstractions in later tasks
-**PASS** — `withMedia2HttpFallback` / `withMedia1HttpFallback` both consume the Task 3.1 detector. Task 2.1 collapses two copies of `UpgradeScheme` into one. Task 4.1 call-site pattern is identical for all 8 methods.
+> "For the Milesight camera (`https://192.168.1.190:443`), `deviceUri.IsDefaultPort = true` so `httpsPort = 443` — Fix A produces the same URL as today. Fix A is a correctness improvement for cameras with non-default HTTPS ports (e.g. 8443). Fix B (HTTP fallback, Phase 3-4) is the actual Milesight unblocker."
 
-## 6. 2–3 work tasks per phase + VERIFY checkpoint
-**PASS** — Phase 1: 2 tasks + VERIFY 1. Phase 2: 3 tasks + VERIFY 2. Phase 3: 2 tasks + VERIFY 3. Phase 4: 3 tasks + VERIFY 4. Phase 5: 2 tasks + VERIFY 5. Structurally conformant.
+Unambiguous. An implementer shipping only Phase 2 and testing against Milesight will no longer conclude Fix A is broken. The note sits directly inside the task where the mis-attribution risk lives, which is the right location.
 
-## 7. One-session task sizing
-**PASS** — All tasks are "cheap" or "standard". Task 4.1 touches 8 call sites but each is a mechanical one-line wrap; well within one session.
+## 2. Exception taxonomy — detector ↔ risk register reconciled
+**PASS** — Task 3.1 (PLAN.md:117-118) now enumerates exactly:
+- `WebException` with `Status ∈ {ConnectFailure}`
+- `SocketException` with `SocketErrorCode ∈ {ConnectionRefused; ConnectionReset}`
+- `CommunicationException` whose inner matches
 
-## 8. Dependency ordering
-**PASS** — Detector (3.1) precedes combinator (4.1/4.2); `ClassInitialize` harness (1.2) precedes tests that rely on it; `UpgradeScheme` fix (2.1) precedes its test rewrite (2.2).
+`SecureChannelFailure`, `HostUnreachable`, and `TimedOut` are removed. Matches the risk register entry at PLAN.md:15 verbatim. The five unit tests in the Done block (PLAN.md:124-128) are still consistent with the narrowed set. The "HTTPS→HTTP silent downgrade masking a TLS regression" scenario is now closed off.
 
-## 9. Unambiguous task specifications
-**NOTE** — Task 4.1 enumerates call sites by line number (1600, 1630, 1650, 1748, 1765, 1881, 1959, 1998). These are fragile under rebase/insertions earlier in the file. Consider adding the matching method name for each line (e.g. `GetProfiles @ 1600`) so a later implementer can re-anchor after drift. Low-severity but easy to harden.
+## 3. Risk register — two new entries present
+**PASS** — Two new rows at PLAN.md:21-22:
 
-## 10. Hidden dependencies
-**NOTE** — Task 3.1's `GetMedia1HttpXAddr` depends on `GetCapabilities()`, and `GetMedia2HttpXAddr` depends on `GetServices()`. The risk register acknowledges the `GetCapabilities` dependency; it does not acknowledge the `GetServices()` dependency for the Media2 path. If `GetServices()` itself is the call that just failed with ConnectionRefused, the memoized result may be absent — worth a one-line note.
+### 3a. ServerCertificateValidationCallback permanent/process-wide bypass
+> "`ServerCertificateValidationCallback <- fun _ _ _ _ -> true` is a permanent, process-wide bypass — not scoped to the probe. Any subsequent WCF call in the process will accept invalid certs. | Matches existing behavior in `HttpsIntegrationTests.ClassInitialize`; production entry point is application startup before any other WCF traffic. Document a TODO to scope this narrowly (e.g. restore previous callback after probe) in a future sprint."
 
-## 11. Risk register completeness
-**FAIL** — The register is substantive (7 entries) and the coverage on memoization/closure drift is strong, but **three safety-relevant risks are missing**:
+Acknowledges scope (process-wide), consistency with existing harness, and defers tightening to a future sprint with a concrete mitigation sketch. Acceptable.
 
-### 11a. `ServerCertificateValidationCallback` is globally and permanently permissive (HIGH)
-Task 1.1 sets `ServicePointManager.ServerCertificateValidationCallback <- fun _ _ _ _ -> true` — this globally disables cert validation for every HTTPS client in the .NET process for the remainder of its lifetime. The risk register mentions ServicePointManager *mutation* generally but does not call out that cert-chain validation is bypassed for cameras with valid certs as well. Mitigation the plan should reference: narrow the callback to "accept only if the current call is an ONVIF probe" (via the `SslPolicyErrors` / sender context), or document the scope explicitly in a comment at the mutation point.
+### 3b. SecurityProtocol replacement (not additive)
+> "`SecurityProtocol <- Tls12` replaces prior `SecurityProtocol` flags (not additive). If a TLS 1.3-only camera is connected mid-session after this runs, it will fail. | Use `|||` (bitwise OR): `ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13` to preserve existing capabilities rather than replacing them."
 
-### 11b. `SecurityProtocol <- Tls12` replaces rather than augments (MEDIUM)
-`ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12` clobbers whatever was previously set (including Tls13 / SystemDefault). Against a modern camera that supports only TLS 1.3, this would break connectivity mid-process. Should be `SecurityProtocol <- SecurityProtocol ||| Tls12 ||| Tls13` (or `SystemDefault`). Not acknowledged in the register.
+Mitigation is correctly propagated into Task 1.1 (PLAN.md:31), which now sets `SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13` rather than the replacement form. Fix ↔ mitigation alignment holds.
 
-### 11c. HTTP fallback masking a real HTTPS TLS regression (MEDIUM — contradicts risk-register claim)
-Task 3.1 declares the detector matches `WebException` with **`SecureChannelFailure`** (TLS handshake failure) and `SocketException` with **`TimedOut`**. The risk register, however, states "Fallback only triggers on `WebException` with `ConnectFailure` or `SocketException` with `ConnectionRefused`/`ConnectionReset`; other exceptions propagate unchanged." These are in direct conflict. The broader taxonomy in Task 3.1 means a camera with a cert/TLS mismatch (or a transient TLS timeout) would be silently downgraded to plain HTTP — exactly the "HTTPS regression masked" case the register meant to exclude. Either:
-- restrict the detector to `{ConnectFailure, ConnectionRefused, ConnectionReset}` (matching the register), or
-- explicitly document that HTTPS→HTTP silent downgrade is acceptable under `SecureChannelFailure` / `TimedOut` and justify why.
+## 4. Carryover from previous "should change (low)" findings
+**NOTE** — Partial credit:
+- **Previous Section 9 (line-number anchors with method names):** RESOLVED. Task 4.1 at PLAN.md:168 now enumerates call sites as `GetProfiles (1600), GetStreamUri (1630), GetSnapshotUri (1650), GetVideoSourceConfigurations (1748), GetVideoEncoderConfigurations (1765), GetCompatibleVideoEncoderConfigurations (1881), SetVideoEncoderConfiguration (1959), GetVideoEncoderConfigurationOptions (1998)`. Re-anchoring after drift is now trivial.
+- **Previous Section 10 (`GetServices()` dependency on Media2 path):** UNRESOLVED. The risk register still only names the `GetCapabilities()` dependency for the Media1 HttpXAddr path (row 6); the symmetric dependency on `GetServices()` for the Media2 HttpXAddr is not called out. Low severity — does not block approval.
+- **Previous Section 13 (test pinning decision on `SecureChannelFailure`):** N/A. Now that the detector's taxonomy is narrow and explicit, the existing `FaultException → false` and `new Exception("random") → false` tests already anchor "non-listed exception → no fallback." A dedicated `SecureChannelFailure` test would be marginal; not a blocker.
 
-## 12. Fix A vs Fix B ordering / Milesight unblocker attribution
-**FAIL** — This is the central semantic finding.
+---
 
-For the Milesight at `192.168.1.190`, the device URI is `https://192.168.1.190:443/device_service`. Because `443` is the default HTTPS port, `deviceUri.IsDefaultPort = true`, so Task 2.1's new formula yields `httpsPort = 443` — **identical to the current hardcoded `if b.Port = 80 then b.Port <- 443`**. Fix A therefore produces exactly the same URL (`https://192.168.1.190:443/onvif/Media`) as today on this camera. The camera still RSTs that port. **Fix A alone does not unblock Milesight.** Fix B (HTTP fallback) is the actual unblocker.
+## 5. Final pass on overall plan quality
 
-The plan's structure (Phase 2 then Phases 3–4) is correctly ordered, but this non-obvious point is implicit and easy to miss. An implementer who ships Phase 2 and tests against Milesight in isolation will conclude Fix A is broken. Require:
-- One sentence in the Issue #26 section stating "Fix A addresses cameras with non-default HTTPS ports (e.g. `8443`); Fix B is what unblocks the Milesight case where device is HTTPS on the default port 443 and media is HTTP on port 80."
-- Matching note in the risk register entry for Fix A behavior change.
+### Phase structure
+**PASS** — 5 phases with a VERIFY after each. Phase 1 bootstraps harness + session settings; Phase 2 fixes scheme mapping; Phase 3 lays fallback plumbing (unused); Phase 4 wires it; Phase 5 closes with Release build + integration. Structurally clean.
 
-## 13. Test coverage — required artifacts
-**PASS** — All four named artifacts are present in the plan:
-- `ConnectionRefusedDetectorTests` — Task 3.1 (5 cases listed)
-- `MediaHttpFallbackTests` — Task 4.3 (3 cases listed)
-- Updated `FixUrlHttpsTests` — Task 2.2 (2 new/rewritten cases, existing coverage preserved)
+### Task ordering
+**PASS** — Dependencies flow: Task 1.1 (global settings) → Task 1.2 (test harness) → Phase 2 scheme fix → Task 3.1/3.2 (detector + factories) → Task 4.1/4.2 (combinators) → Task 4.3 (tests) → Phase 5. No forward references.
+
+### Done criteria
+**PASS** — Every task has measurable, concrete `Done:` outcomes (build exit codes, specific test names, grep checks, Milesight-specific acceptance observations). No "implement X" without an exit condition.
+
+### Test coverage
+**PASS** — Required artifacts all present:
+- `ConnectionRefusedDetectorTests` — Task 3.1 (5 cases)
+- `MediaHttpFallbackTests` — Task 4.3 (3 cases: primary refused + fallback success, fault propagates, null xAddr propagates)
+- Updated `FixUrlHttpsTests` — Task 2.2 (2 rewritten cases, existing 3 preserved)
 - `ODM_TEST_HTTP_PORT` plumbing — Task 1.2
+- Integration acceptance tied to 13/13 on 192.168.1.190 in VERIFY 5
 
-Gap worth noting: no test asserts that a `SecureChannelFailure` does **not** trigger fallback (or does, if the broader taxonomy is kept). Add one test that pins the decision.
+### Coverage of the stated Milesight failure set
+**PASS** — Plan addresses all 9 failing integration tests from the diagnosis in `requirements.md`: Phase 1 unblocks the 7 `Media2IntegrationTests` (SOAP probe); Phase 3–4 unblock the 2 `HttpsIntegrationTests` failures (`GetProfiles`, `GetStreamUri`). The 4 already-passing tests are protected by baseline checks in each VERIFY.
+
+### Single-source-of-truth preserved
+**PASS** — Task 2.1 bullet 2 still rewrites `UpgradeSchemeIfNeeded` to delegate to the static `UpgradeScheme`, eliminating a pre-existing drift hazard. Good hygiene.
 
 ---
 
 ## Summary
 
-**Passed (10):** Done-criteria, cohesion/coupling, shared abstractions, risk-first validation, DRY, phase structure, task sizing, dependency order, test coverage, `UpgradeScheme`/closure drift elimination.
+**Passed (all critical):**
+- Fix A scope note explicitly deflates the Milesight unblocker expectation (Section 1).
+- Detector taxonomy is narrowed and matches the risk register (Section 2).
+- Risk register gains the two safety-relevant entries; Task 1.1 carries the `|||` mitigation through (Section 3).
+- Task 4.1 call-site enumeration now includes method names (Section 4).
+- Overall plan quality: phases, ordering, done criteria, and test coverage hold (Section 5).
 
-**Must change (3):**
-1. **Fix A does not unblock Milesight** — add an explicit callout that Fix A is for non-default HTTPS ports and Fix B is the Milesight unblocker. (Section 12)
-2. **Exception taxonomy in Task 3.1 contradicts the risk register** — reconcile: either narrow the detector to `{ConnectFailure, ConnectionRefused, ConnectionReset}` or update the risk register to acknowledge and justify HTTPS→HTTP silent downgrade under `SecureChannelFailure`/`TimedOut`. (Section 11c)
-3. **Risk register must add two entries** — (a) `ServerCertificateValidationCallback` is globally permissive for the life of the process; (b) `SecurityProtocol <- Tls12` replaces rather than augments. Prefer `|||` OR with existing setting. (Section 11a, 11b)
+**Not blocking:**
+- `GetServices()` dependency for the Media2 HttpXAddr memoization is still not called out in the risk register (Section 4). Author may want to add one line; not a merge blocker.
 
-**Should change (low):**
-- Task 4.1 line-number anchors should be paired with method names (Section 9).
-- Add `GetServices()` dependency note to the Media2 HttpXAddr memoization risk entry (Section 10).
-- Add a test that pins the detector's behavior on `SecureChannelFailure` (Section 13).
+**Deferred:**
+- Scoped cert-validation callback (acknowledged as future-sprint TODO in risk register row 8).
+- Out-of-Scope list (issues #20, #19, #14, Media2 audio/PTZ/analytics) remains accurate.
 
-**Deferred / out of scope:** Acknowledged Out-of-Scope list is accurate and consistent with requirements.md.
-
-Recommend a small revision on the plan (section 12 and section 11 fixes) before implementation starts. None of the findings require restructuring the phases.
+**Recommendation:** APPROVED to proceed with implementation. Phase 1 (TLS/Expect settings) is correctly positioned as the load-bearing first task — failing there halts the sprint before any further plumbing work is wasted. All three CHANGES NEEDED items from the prior review are cleanly resolved.
