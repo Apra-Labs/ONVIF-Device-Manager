@@ -1,268 +1,150 @@
-# ODM Sprint 6 — Milesight Camera Compatibility Fixes
+# Sprint 7 — Camera Compatibility Fixes (#25, #26, #29, #30)
 
-## Branch
-`feat/media2-support` (adds commits to open PR #23 — base `development`). No new branch.
+## Goal
 
-## Issues Addressed
-- **#25** — `NvtSession.CreateSession(Uri[])` SOAP probe fails against cameras that require TLS 1.2 + `Expect: 100-Continue` disabled + relaxed cert validation.
-- **#26** — `UpgradeScheme` rewrites `http://camera:80/onvif/Media` to `https://camera:443/...` when the device URI is HTTPS, even on cameras that serve the media service only over HTTP (e.g. Milesight at 192.168.1.190). Test harness also hardcodes `:443`.
+Fix four open issues using an integration-test-first approach on odm-ssdev (which has real cameras on the 10.102.10.x network). For each issue:
+1. Run an integration test to confirm and understand the bug
+2. Write a failing unit test that exposes the root cause
+3. Fix the code until both unit and integration tests pass
 
-## Risk Register
-
-| Risk | Mitigation |
-|------|-----------|
-| Fix A behavior change (port remapping) breaks existing cameras that served media on `http://host:8080` with an HTTPS device URI | Covered by updated unit test; manual integration test against Milesight + regression smoke on Hikvision HTTPS camera |
-| HTTP fallback retry masks legitimate auth/WCF errors | Fallback only triggers on `WebException` with `ConnectFailure` or `SocketException` with `ConnectionRefused`/`ConnectionReset`; other exceptions propagate unchanged |
-| Global `ServicePointManager` mutation in `CreateSession(Uri[])` impacts other callers in the process | Matches the setting already applied by `HttpsIntegrationTests.ClassInitialize`; production entry point to `CreateSession(Uri[])` is application startup where no other WCF traffic runs |
-| `UpgradeScheme` currently tested via `FixUrlHttpsTests` — tests must be updated without losing coverage | Keep existing `HttpUrl_WhenSessionIsHttps` + `HttpsUrl_Unchanged` + `HttpUrl_WhenSessionIsHttp_Unchanged` passing; rewrite `NonStandardHttpPort` test to assert new port-mapping contract |
-| Memoized Media1/Media2 clients use upgraded URLs; HTTP fallback must construct a second non-memoized client | New helper creates an on-demand channel at the original HTTP xAddr and aborts it after the retry completes |
-| `GetMedia1HttpXAddr` depends on `GetCapabilities()` — if device call itself fails, fallback cannot proceed | Fallback helper returns `null` when upstream calls fail; caller then propagates original connection-refused exception unchanged |
-| `UpgradeScheme` (public static) and `UpgradeSchemeIfNeeded` (private closure) could drift | Phase 2 rewrites `UpgradeSchemeIfNeeded` to delegate to the static member — single source of truth |
-| `ServerCertificateValidationCallback <- fun _ _ _ _ -> true` is a permanent, process-wide bypass — not scoped to the probe. Any subsequent WCF call in the process will accept invalid certs. | Matches existing behavior in `HttpsIntegrationTests.ClassInitialize`; production entry point is application startup before any other WCF traffic. Document a TODO to scope this narrowly (e.g. restore previous callback after probe) in a future sprint. |
-| `SecurityProtocol <- Tls12` replaces prior `SecurityProtocol` flags (not additive). If a TLS 1.3-only camera is connected mid-session after this runs, it will fail. | Use `\|\|\|` (bitwise OR): `ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 \|\|\| SecurityProtocolType.Tls13` to preserve existing capabilities rather than replacing them. |
+All work stays on `feat/media2-support`. Reviewer: odm-rev.
 
 ---
 
-## Phase 1 — Harness parity: CreateSession(Uri[]) + Media2 test setup (Issue #25)
+## Phase 1 — Issue #26: UpgradeScheme Breaks HTTP Sub-Services
 
-### Task 1.1 — Apply ServicePointManager settings before `raceEndpoints`
-- **Files:** `onvif/onvif.session/NvtSession.fs:514-569` (`CreateSession(uris:Uri[])`)
-- **What:** Immediately after the `uris.Length = 0` guard (currently line 569) and before `let! httpResult = raceEndpoints uris` (line 572), set:
-  - `ServicePointManager.SecurityProtocol <- SecurityProtocolType.Tls12 ||| SecurityProtocolType.Tls13`
-  - `ServicePointManager.Expect100Continue <- false`
-  - `ServicePointManager.ServerCertificateValidationCallback <- fun _ _ _ _ -> true`
+**Root cause (from logs):** When the device service is HTTPS, `UpgradeScheme` blindly promotes all sub-service URLs to HTTPS, using the device port (e.g. 443). But sub-services advertised on `http://<host>:80/...` by the camera are genuinely HTTP-only. Upgrading them causes connection-refused on port 443 for those sub-services.
 
-  The global `Expect100Continue = false` flag propagates to any new `ServicePoint` created by probe channels; the per-ServicePoint override already set at line 660 (for `CreateSession(deviceUri)`) continues to work unchanged.
-- **Done:**
-  - `dotnet build odm/odm.tests/odm.tests.csproj -v quiet` → 0 errors
-  - `SchemeUpgradeTests.SoapProbe_OnSilentPort_TriggersHttpsFallback` still passes
-  - Against Milesight `192.168.1.190` from a clean process: invoking `CreateSession(new[] { new Uri("http://192.168.1.190:80/onvif/device_service") })` returns a session (no `failwith "SOAP probe failed for all URIs"`). Proves TLS/Expect settings reach the SOAP probe.
-- **Tier:** cheap
+**Fix direction:** `UpgradeScheme` should only upgrade a sub-service URL when the URL is on the same port as the device service (meaning the camera likely intends the same endpoint). Never upgrade when the port differs. Better still: if the URL came from `GetCapabilities`/`GetServices`, it is authoritative — add a `useVerbatim` path that bypasses upgrade entirely for those.
 
-### Task 1.2 — Media2IntegrationTests ClassInitialize + `ODM_TEST_HTTP_PORT` env var
-- **Files:** `odm/odm.tests/Media2IntegrationTests.cs:32-41` (`CreateSession`), add `ClassInitialize` (no existing one)
-- **What:**
-  - Add `[ClassInitialize]` that reads `.env` (mirror of `HttpsIntegrationTests.cs:23-43`) and applies the same `ServicePointManager` trio.
-  - Rewrite `CreateSession()` body so the URI honours `ODM_TEST_HTTP_PORT` (default `"80"`):
-    ```csharp
-    var port = Environment.GetEnvironmentVariable("ODM_TEST_HTTP_PORT") ?? "80";
-    var uri = new Uri(string.Format("http://{0}:{1}/onvif/device_service", TestHost, port));
-    ```
-- **Done:**
-  - Build passes; `TestCategory!=Integration` run unchanged (0 new failures).
-  - With `ODM_TEST_HOST=192.168.1.190` (no `ODM_TEST_HTTP_PORT` set), all 7 `Media2IntegrationTests` reach `GetProfiles()` and fail only on the Milesight-specific HTTPS→HTTP fallback bug (addressed Phase 3), not on `CreateSession`.
-- **Tier:** cheap
+### Tasks
 
-### VERIFY 1
-- [ ] `dotnet build odm/odm.tests/odm.tests.csproj -v quiet` → Build succeeded, 0 errors
-- [ ] `vstest.console.exe odm.tests.dll --TestCaseFilter:"TestCategory!=Integration"` → all pass (baseline preserved)
-- [ ] Integration smoke against Milesight: Media2 tests progress past `CreateSession()` (no "SOAP probe failed for all URIs")
+**1.1** [integration] Reproduce #26 with integration test
+Write `SchemeUpgradeIntegrationTests.cs` with test `UpgradeScheme_HttpSubservice_IsNotUpgraded`:
+- Set `ODM_TEST_HOST=10.102.10.7` (HTTP camera, fails with current code)
+- Create session, call `GetCapabilities` or `GetServices`, capture sub-service URLs
+- Assert all returned sub-service URLs still use HTTP scheme (not HTTPS)
+- Run; confirm test fails with current code to establish the bug
 
----
+**1.2** [unit] Write failing unit test for port-mismatch guard
+Add to `SchemeUpgradeTests.cs`: `UpgradeScheme_SubservicePortDiffersFromDevice_NoUpgrade`
+- `deviceUri = https://192.168.1.10:443/...`, `subServiceUri = http://192.168.1.10:80/...`
+- Assert result equals input (no upgrade because ports differ: 80 ≠ 443)
+- Also add: `UpgradeScheme_SubservicePortMatchesDevice_Upgrades`
+- `deviceUri = https://192.168.1.10:8443/...`, `subServiceUri = http://192.168.1.10:8443/...`
+- Assert result is upgraded to HTTPS (port matches)
+- Run; confirm first test fails, second test passes
 
-## Phase 2 — UpgradeScheme honours device port + test-harness hardcode (Issue #26 Fix A + Fix C)
+**1.3** [fix] Patch `NvtSession.fs` `UpgradeScheme`
+In `NvtSessionFactory.UpgradeScheme` (around line 485), add port-matching guard:
+Only upgrade when:
+  `url.Port = deviceUri.Port`  (same non-standard port — upgrade makes sense)
+  OR (`url.IsDefaultPort` OR `url.Port = 80`) AND `deviceUri.IsDefaultPort`
+    (both on their respective defaults — the canonical 80→443 upgrade)
+Any other port mismatch: return `url` unchanged.
 
-### Task 2.1 — UpgradeScheme maps HTTP→HTTPS via deviceUri port; make closure delegate
-- **Files:**
-  - `onvif/onvif.session/NvtSession.fs:478-485` (static `UpgradeScheme`)
-  - `onvif/onvif.session/NvtSession.fs:771-779` (private `UpgradeSchemeIfNeeded` closure in `CreateSession(deviceUri)`)
-- **Scope note:** For the Milesight camera (`https://192.168.1.190:443`), `deviceUri.IsDefaultPort = true` so `httpsPort = 443` — Fix A produces the same URL as today. Fix A is a correctness improvement for cameras with non-default HTTPS ports (e.g. 8443). Fix B (HTTP fallback, Phase 3-4) is the actual Milesight unblocker.
-- **What:**
-  1. In `UpgradeScheme` (478-485) replace `if b.Port = 80 then b.Port <- 443` with
-     ```fsharp
-     let httpsPort = if deviceUri.IsDefaultPort then 443 else deviceUri.Port
-     b.Port <- httpsPort
-     ```
-  2. Rewrite `UpgradeSchemeIfNeeded` (771-779) to delegate to the static: `let UpgradeSchemeIfNeeded (url: Uri) = NvtSessionFactory.UpgradeScheme deviceUri url` — single source of truth, no drift.
-- **Done:** Closure body is a one-liner delegating to the static; build passes.
-- **Tier:** cheap
-
-### Task 2.2 — Update FixUrlHttpsTests to reflect new port-mapping contract
-- **Files:** `odm/odm.tests/FixUrlHttpsTests.cs:44-55, 77-91`
-- **What:**
-  - Keep `UpgradeScheme_HttpUrl_Port80_WhenSessionIsHttps_ReturnsHttpsPort443` passing (default port 443 case still maps 80→443).
-  - Rename/rewrite `UpgradeScheme_NonStandardHttpPort_MapsToSameNonStandardHttpsPort` → `UpgradeScheme_HttpUrl_MapsToDeviceHttpsPort` asserting: input `http://host:8080/...` with device `https://host/...` maps to `https://host:443/...` (port from device, not from the URL).
-  - Add `UpgradeScheme_HttpUrl_WithNonDefaultHttpsDevicePort_MapsToDevicePort`: device `https://host:8443/...`, input `http://host:80/...` → result port 8443.
-- **Done:** All 5 tests in `FixUrlHttpsTests` pass after changes.
-- **Tier:** cheap
-
-### Task 2.3 — Remove hardcoded `:443` from HttpsIntegrationTests (Fix C)
-- **Files:** `odm/odm.tests/HttpsIntegrationTests.cs:64-66`
-- **What:** Replace the hardcoded
-  ```csharp
-  new Uri(string.Format("https://{0}:443/onvif/device_service", host))
-  ```
-  with a build from `_host` + `_httpsPort`:
-  ```csharp
-  new Uri(string.Format("https://{0}:{1}/onvif/device_service", _host, _httpsPort))
-  ```
-  (The ClassInitialize code above already populates `_httpsPort` from `ODM_TEST_HTTPS_PORT` default 443.)
-- **Done:** Test still passes against Milesight at port 443; would also pass if `ODM_TEST_HTTPS_PORT=8443`.
-- **Tier:** cheap
-
-### VERIFY 2
-- [ ] `dotnet build odm/odm.tests/odm.tests.csproj -v quiet` → 0 errors
-- [ ] `vstest.console.exe ... --TestCaseFilter:"TestCategory!=Integration"` → all pass including updated FixUrlHttpsTests
-- [ ] No lingering `"https://.*:443"` string literals in `odm/odm.tests/HttpsIntegrationTests.cs` (grep check)
+**V1** VERIFY 1 — build Release x64, run all unit tests (offline), run integration test with `ODM_TEST_HOST=10.102.10.7`
 
 ---
 
-## Phase 3 — HTTP fallback for media service calls (Issue #26 Fix B) — part 1: plumbing
+## Phase 2 — Issue #30: RTSP Regression vs v2.2.252.x
 
-### Task 3.1 — Connection-refused detector + original-HTTP-xAddr memoization
-- **Files:** `onvif/onvif.session/NvtSession.fs` — add new helpers inside `CreateSession(deviceUri)` immediately after `GetMedia2Client` ends (current line 1054) and before `MediaGetVideoSources` (current line 1056)
-- **What:**
-  1. Expose detector as `static member IsConnectionRefused (err: exn) : bool` on `NvtSessionFactory` (so unit tests can call it). Returns true when unwrapping any level of `AggregateException` / `InnerException` reveals:
-     - `WebException` with `Status ∈ {ConnectFailure}`
-     - `SocketException` with `SocketErrorCode ∈ {ConnectionRefused; ConnectionReset}`
-     - `CommunicationException` whose inner matches
-  2. Add memoized `GetMedia2HttpXAddr : unit -> Async<Uri>` — reads `GetServices()`, finds the Media2 service entry, returns `new Uri(service.XAddr)` without passing it through `FixUrl`. Returns `null` on absent service / absent services array.
-  3. Add memoized `GetMedia1HttpXAddr : unit -> Async<Uri>` — reads `GetCapabilities()`, returns `new Uri(caps.media.xAddr)` without `FixUrl`. Returns `null` when media caps are null.
-- **Done:**
-  - Build passes.
-  - New test class `odm/odm.tests/ConnectionRefusedDetectorTests.cs` covers:
-    - WebException(ConnectFailure) → true
-    - SocketException(ConnectionRefused) wrapped in AggregateException → true
-    - CommunicationException wrapping SocketException → true
-    - FaultException → false
-    - new Exception("random") → false
-- **Tier:** standard
+**Root cause (hypothesis from logs):** Cameras that streamed fine in v2.2.252.x now hang or fail in current build. `ServicePointManager.Expect100Continue = false` and `withMedia1HttpFallback` are Sprint 6 candidates. However RTSP is not HTTP so those shouldn't affect RTSP directly — more likely `GetStreamUri` is returning an incorrectly upgraded URI (overlap with #26). Phase 2 first checks whether Phase 1 fix resolves this.
 
-### Task 3.2 — Fallback client factories (non-memoized, per retry)
-- **Files:** `onvif/onvif.session/NvtSession.fs` — add near task 3.1 helpers
-- **What:** Add two helpers:
-  ```fsharp
-  let createMedia2ClientAt (url: Uri) : Async<IMedia2> = async {
-      do! Async.SwitchToThreadPool()
-      let useTls = url.Scheme = Uri.UriSchemeHttps
-      let! factory = getMedia2Factory(useTls)
-      let proxy = factory.CreateChannel(new EndpointAddress(url))
-      do! SetupUserNameToken(proxy :?> IClientChannel)
-      return proxy
-  }
-  let createMediaClientAt (url: Uri) : Async<IMediaAsync> = async {
-      do! Async.SwitchToThreadPool()
-      let useTls = url.Scheme = Uri.UriSchemeHttps
-      let! factory = getMediaFactory(useTls)
-      let proxy = factory.CreateChannel(new EndpointAddress(url))
-      do! SetupUserNameToken(proxy :?> IClientChannel)
-      return (new MediaAsync(proxy) :> IMediaAsync)
-  }
-  ```
-- **Done:** Build passes; helpers unused until Phase 4 wires them in.
-- **Tier:** cheap
+### Tasks
 
-### VERIFY 3
-- [ ] `dotnet build onvif/onvif.session/onvif.session.fsproj` → 0 errors
-- [ ] `dotnet build odm/odm.tests/odm.tests.csproj` → 0 errors
-- [ ] `vstest.console.exe ... --TestCaseFilter:"TestCategory!=Integration"` → baseline green + new `ConnectionRefusedDetectorTests` pass
-- [ ] No behavior change on integration tests (plumbing only, not yet wired)
+**2.1** [integration] Confirm RTSP regression
+Add `RtspRegressionIntegrationTests.cs` with test `GetStreamUri_Camera_ReturnsUnmodifiedRtspUrl`:
+- Connect to a camera with RTSP at `ODM_TEST_HOST` (try 10.102.10.97 or similar)
+- Call `GetStreamUri`, assert URI scheme is `rtsp://`
+- Assert URI host matches `ODM_TEST_HOST` (not been rewritten)
+- Run BEFORE applying Phase 1 fix; capture exact URI returned and any failure
+
+**2.2** [diagnose] Check if #26 fix resolves #30
+After Phase 1 fix, re-run `GetStreamUri` integration test. If stream URI is now correct and RTSP works, close #30 as fixed-by-#26. If RTSP still fails:
+- Add targeted logging: log full stream URI before returning from `GetStreamUri`
+- Log any exception during RTSP teardown (look for it in UI activities, not NvtSession)
+- Capture fresh logs with cameras connected
+
+**2.3** [unit] Write unit test for stream URI fidelity
+Add `StreamUriTests.cs`:
+- `GetStreamUri_HttpCamera_ReturnsUnmodifiedRtspUri`: given session over HTTP camera returning `rtsp://10.102.10.97:554/stream1` from Media1, assert the URI is returned unchanged (not scheme-upgraded)
+- This test should pass after Phase 1 fix
+
+**2.4** [fix — if #26 fix is not sufficient]
+If RTSP still fails after Phase 1:
+- Investigate `withMedia1HttpFallback` — confirm it is not retrying RTSP-related SOAP calls in a way that corrupts session state
+- Investigate whether `Expect100Continue = false` affects any HTTP tunnelled RTSP path
+- Write targeted fix; add unit test; document root cause in issue #30
+
+**V2** VERIFY 2 — build Release x64, run all unit tests, run RTSP integration test
 
 ---
 
-## Phase 4 — HTTP fallback wiring (Issue #26 Fix B) — part 2: per-operation retry
+## Phase 3 — Issue #29: Startup Race Condition (Credential Store vs Auto-Connect)
 
-### Task 4.1 — Media2 HTTP-fallback combinator + wire into Media2 calls
-- **Files:** `onvif/onvif.session/NvtSession.fs`
-  - Combinator: add after Task 3.2 helpers (after `createMedia2ClientAt`)
-  - Call sites: `GetProfiles` (1600), `GetStreamUri` (1630), `GetSnapshotUri` (1650), `GetVideoSourceConfigurations` (1748), `GetVideoEncoderConfigurations` (1765), `GetCompatibleVideoEncoderConfigurations` (1881), `SetVideoEncoderConfiguration` (1959), `GetVideoEncoderConfigurationOptions` (1998)
-- **What:**
-  1. Add combinator
-     ```fsharp
-     // Calls `work media2`. On connection-refused, rebuilds a Media2 client at the
-     // original (non-upgraded) HTTP xAddr and retries once. Any other exception —
-     // including the retry's exception — propagates unchanged.
-     let withMedia2HttpFallback (media2: IMedia2) (work: IMedia2 -> Async<'T>) : Async<'T> = async {
-         try
-             return! work media2
-         with err when NvtSessionFactory.IsConnectionRefused err ->
-             let! httpXAddr = GetMedia2HttpXAddr()
-             if httpXAddr |> IsNull then return raise err
-             else
-                 let! fallback = createMedia2ClientAt httpXAddr
-                 return! work fallback
-     }
-     ```
-  2. At each call site that currently reads `return! getXViaMedia2 media2 ...`, rewrite as `return! withMedia2HttpFallback media2 (fun m -> getXViaMedia2 m ...)`. The outer `try ... with err -> Media1 fallback` remains unchanged.
-- **Done:**
-  - Build passes; each of the 8 methods uses `withMedia2HttpFallback`.
-  - No method retries on `FaultException` (guarded by `IsConnectionRefused`).
-- **Tier:** standard
+**Root cause:** ODM launches discovery and auto-connect in parallel with DPAPI credential store loading from disk. If the store hasn't finished loading (`storeCount = 0`), auto-connect uses no credentials — all cameras fail auth. Retrying after ~10 seconds works because the store has loaded by then.
 
-### Task 4.2 — Media1 HTTP-fallback combinator + wire into Media1 branches
-- **Files:** `onvif/onvif.session/NvtSession.fs` — same 8 member implementations as 4.1, Media1 branches
-- **What:**
-  1. Add combinator
-     ```fsharp
-     let withMedia1HttpFallback (media1: IMediaAsync) (work: IMediaAsync -> Async<'T>) : Async<'T> = async {
-         try
-             return! work media1
-         with err when NvtSessionFactory.IsConnectionRefused err ->
-             let! httpXAddr = GetMedia1HttpXAddr()
-             if httpXAddr |> IsNull then return raise err
-             else
-                 let! fallback = createMediaClientAt httpXAddr
-                 return! work fallback
-     }
-     ```
-  2. Wrap each `let! med = GetMediaClient()` + direct-call pair in the Media1 branches with `withMedia1HttpFallback med (fun m -> m.GetProfiles())`, etc. Preserve all existing `FaultException ActionNotSupported` handling — only the transport-layer retry is new.
-- **Done:**
-  - Build passes.
-  - Against Milesight `192.168.1.190` via HTTPS session (device HTTPS, media HTTP):
-    - `HttpsIntegrationTests.GetProfiles_ReturnsAtLeastOneProfile` passes
-    - `HttpsIntegrationTests.GetStreamUri_ReturnsValidUri` passes
-- **Tier:** standard
+### Tasks
 
-### Task 4.3 — Unit tests: combinator behavior
-- **Files:** `odm/odm.tests/MediaHttpFallbackTests.cs` (new)
-- **What:**
-  - Fake IMedia2/IMediaAsync that throws a chosen exception.
-  - Test a: primary throws `WebException(ConnectFailure)` → fallback client is invoked and returns success.
-  - Test b: primary throws `FaultException` (not connection-refused) → no fallback invoked; exception propagates.
-  - Test c: fallback xAddr is null → exception propagates.
-- **Done:** All three tests pass; total offline test count increases.
-- **Tier:** standard
+**3.1** [diagnose] Add timing logs to credential store and auto-connect
+- Find where `CredentialStore` loads from disk (constructor or `Load()`)
+- Find where auto-connect / discovery-triggered connection fires (main window `Loaded` event or `DiscoveryActivity`)
+- Add `log.WriteInfo` with timestamps at: store load start, store load complete, storeCount at complete, auto-connect trigger, credentialCount at trigger
+- Build, launch ODM on odm-ssdev, immediately watch `logs/net.log` — measure gap between store-load-complete and auto-connect trigger
 
-### VERIFY 4
-- [ ] `dotnet build odm/odm.tests/odm.tests.csproj` → 0 errors
-- [ ] `vstest.console.exe ... --TestCaseFilter:"TestCategory!=Integration"` → all pass (baseline + new MediaHttpFallbackTests)
-- [ ] Against Milesight `192.168.1.190` via HTTPS session:
-  - `HttpsIntegrationTests.GetProfiles_ReturnsAtLeastOneProfile` passes
-  - `HttpsIntegrationTests.GetStreamUri_ReturnsValidUri` passes
-- [ ] Against Milesight `192.168.1.190` via HTTP session (Media2IntegrationTests): 7/7 pass
+**3.2** [unit] Write failing unit test for race condition
+Add `StartupRaceTests.cs`:
+- `AutoConnect_BeforeStoreLoaded_DoesNotConnect`: set up `CredentialStore` via reflection so `_credentials` is empty but store file exists with content (simulating "not yet loaded")
+- Call the auto-connect path; assert it defers / returns without attempting connection
+- This test should fail with current code (it proceeds with storeCount=0)
+
+**3.3** [fix] Gate auto-connect on credential store readiness
+Pick the simplest option that works:
+- Add `bool IsLoaded` to `CredentialStore`; set to `true` after `Load()` completes
+- In auto-connect trigger, check `IsLoaded`; if false, subscribe to `Loaded` event and defer
+- OR: load credential store synchronously before starting discovery (DPAPI is usually <100ms — acceptable)
+- Make unit test 3.2 pass
+
+**V3** VERIFY 3 — build Release x64, run unit tests, launch ODM 5 times: camera must connect on first try every time
 
 ---
 
-## Phase 5 — Final verification
+## Phase 4 — Issue #25: TLS Probe / Milesight Compatibility
 
-### Task 5.1 — Release x64 build
-- **Files:** none (build only)
-- **What:** Run
-  ```
-  & 'C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe' \
-      'C:\akhil\git\ONVIF-Device-Manager\odm.sln' /p:Configuration=Release /p:Platform=x64 /v:minimal
-  ```
-- **Done:** Exit code 0, no new errors vs. current baseline.
-- **Tier:** cheap
+**Context:** Milesight camera at `192.168.1.190` may not be on odm-ssdev's network (10.102.10.x subnet). Handle both cases.
 
-### Task 5.2 — Full integration test pass against Milesight
-- **Files:** none (test run)
-- **What:** With `ODM_TEST_HOST=192.168.1.190`, `ODM_TEST_HTTPS_PORT=443`, `ODM_TEST_HTTP_PORT=80`, `ODM_TEST_USER`/`PASS` set, run
-  ```
-  vstest.console.exe odm.tests.dll --TestCaseFilter:"TestCategory=Integration"
-  ```
-- **Done:** 13/13 tests pass. Acceptance criteria section of `requirements.md` is satisfied.
-- **Tier:** cheap
+### Tasks
 
-### VERIFY 5
-- [ ] Release x64 build: PASSED, 0 new errors
-- [ ] 13/13 integration tests against 192.168.1.190 PASS
-- [ ] All offline unit tests PASS
-- [ ] PR #23 comment thread updated noting Sprint 6 commits rebased on top
+**4.1** [probe] Check network reachability
+Run: `Test-NetConnection -ComputerName 192.168.1.190 -Port 80`
+- If NOT reachable: set task 4.2–4.4 and V4 to `blocked` in progress.json with note "192.168.1.190 not reachable from odm-ssdev — needs testing on odm-dev". STOP Phase 4. Push and notify PM.
+- If reachable: continue to 4.2
+
+**4.2** [integration] Reproduce TLS probe failure
+Write `TlsProbeIntegrationTests.cs`:
+- `TlsProbe_MilesightCamera_ConnectsSuccessfully`: create session against `ODM_TEST_HOST=192.168.1.190` with Milesight credentials
+- Assert session is not null; assert GetProfiles returns at least one profile
+- Run; capture exact exception from logs
+
+**4.3** [diagnose] Identify TLS probe root cause
+Candidates from logs:
+- `GenerateHttpsVariants` produces wrong port for Milesight
+- Milesight responds slowly — SOAP probe timeouts
+- TLS certificate rejection (should be bypassed globally)
+- Authentication failure at probe time
+
+**4.4** [fix] Fix TLS probe
+Targeted fix in `NvtSession.fs` or `NvtSessionFactory` based on 4.3. Add unit test.
+
+**V4** VERIFY 4 — build Release x64, run all unit tests, run TLS probe integration test against 192.168.1.190 (if reachable)
 
 ---
 
-## Out of Scope (per `requirements.md`)
-- Issues #20, #19, #14 — separate backlog items
-- Media2 audio / PTZ / analytics / metadata operations
-- Any change to Media2 feature logic shipped in PR #23
+## Completion Criteria
+
+All verify checkpoints pass:
+- Release x64 build: clean
+- Unit tests (offline): all pass, no regression against existing 91 tests
+- Integration tests: all new tests pass against real cameras on 10.102.10.x
+- After V4: push `feat/media2-support`, notify PM for odm-rev review

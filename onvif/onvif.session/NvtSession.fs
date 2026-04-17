@@ -564,6 +564,20 @@
                     | _ -> false
             check err
 
+        /// Returns true when the exception is an HTTP 4xx response from SslStreamRequestChannel
+        /// on an HTTPS-upgraded sub-service URL.  This occurs when UpgradeScheme maps a
+        /// sub-service URL to HTTPS but the camera only serves that sub-service over HTTP
+        /// (e.g. Milesight cameras whose /onvif/Media path returns 400 on port 443).
+        /// The HTTP fallback path should be tried instead.
+        static member IsHttps4xxFromCamera (err: exn) : bool =
+            match err with
+            | :? CommunicationException ->
+                // SslStreamRequestChannel raises: "HTTP NNN received from camera at <uri>"
+                // A 4xx on an https:// URI means the camera accepted TLS but rejected the path.
+                err.Message.StartsWith("HTTP 4") &&
+                err.Message.Contains("received from camera at https://")
+            | _ -> false
+
         member this.CreateSession(uris:Uri[]) = async{
             /// SOAP-level probe: sends GetSystemDateAndTime (unauthenticated) to verify
             /// the endpoint actually responds to ONVIF requests. TCP connectivity alone
@@ -949,6 +963,7 @@
                         log.WriteInfo(sprintf "[GetMediaClient] creating Media1 channel at %s (useTls=%b)" (url.ToString()) useTls)
                         let! factory = getMediaFactory(useTls)
                         let endpointAddr = new EndpointAddress(url)
+                        try ServicePointManager.FindServicePoint(url).Expect100Continue <- false with _ -> ()
                         let proxy = factory.CreateChannel(endpointAddr)
                         do! SetupUserNameToken(proxy :?> IClientChannel)
                         return (new MediaAsync(proxy) :> IMediaAsync)
@@ -1169,6 +1184,7 @@
                             log.WriteInfo(sprintf "[GetMedia2Client] creating Media2 channel at %s (useTls=%b)" (url.ToString()) useTls)
                             let! factory = getMedia2Factory(useTls)
                             let endpointAddr = new EndpointAddress(url)
+                            try ServicePointManager.FindServicePoint(url).Expect100Continue <- false with _ -> ()
                             let proxy = factory.CreateChannel(endpointAddr)
                             do! SetupUserNameToken(proxy :?> IClientChannel)
                             return proxy
@@ -1222,6 +1238,7 @@
                 do! Async.SwitchToThreadPool()
                 let useTls = url.Scheme = Uri.UriSchemeHttps
                 let! factory = getMedia2Factory(useTls)
+                try ServicePointManager.FindServicePoint(url).Expect100Continue <- false with _ -> ()
                 let proxy = factory.CreateChannel(new EndpointAddress(url))
                 do! SetupUserNameToken(proxy :?> IClientChannel)
                 return proxy
@@ -1234,23 +1251,24 @@
                 do! Async.SwitchToThreadPool()
                 let useTls = url.Scheme = Uri.UriSchemeHttps
                 let! factory = getMediaFactory(useTls)
+                try ServicePointManager.FindServicePoint(url).Expect100Continue <- false with _ -> ()
                 let proxy = factory.CreateChannel(new EndpointAddress(url))
                 do! SetupUserNameToken(proxy :?> IClientChannel)
                 return (new MediaAsync(proxy) :> IMediaAsync)
             }
 
-            // Calls `work media2`. On connection-refused, rebuilds a Media2 client at the
-            // original (non-upgraded) HTTP xAddr and retries once. Any other exception —
-            // including the retry's exception — propagates unchanged.
+            // Calls `work media2`. On connection-refused or HTTP 4xx on an HTTPS-upgraded URL
+            // (e.g. camera returns 400 for media service at HTTPS but only serves it over HTTP),
+            // rebuilds a Media2 client at the original (non-upgraded) HTTP xAddr and retries once.
             let withMedia2HttpFallback (media2: IMedia2) (work: IMedia2 -> Async<'T>) : Async<'T> = async {
                 try
                     return! work media2
                 with
-                | err when NvtSessionFactory.IsConnectionRefused err ->
+                | err when NvtSessionFactory.IsConnectionRefused err || NvtSessionFactory.IsHttps4xxFromCamera err ->
                     let! httpXAddr = GetMedia2HttpXAddr()
                     if httpXAddr |> IsNull then return raise err
                     else
-                        log.WriteInfo(sprintf "[withMedia2HttpFallback] connection-refused on primary, retrying at httpXAddr=%s" (httpXAddr.ToString()))
+                        log.WriteInfo(sprintf "[withMedia2HttpFallback] %s on primary, retrying at httpXAddr=%s" (err.GetType().Name) (httpXAddr.ToString()))
                         let! fallback = createMedia2ClientAt httpXAddr
                         return! work fallback
                 | :? FaultException as fault ->
@@ -1264,18 +1282,18 @@
                     return raise err
             }
 
-            // Calls `work media1`. On connection-refused, rebuilds a Media1 client at the
-            // original (non-upgraded) HTTP xAddr and retries once. Any other exception —
-            // including the retry's exception — propagates unchanged.
+            // Calls `work media1`. On connection-refused or HTTP 4xx on an HTTPS-upgraded URL
+            // (e.g. camera returns 400 for media service at HTTPS but only serves it over HTTP),
+            // rebuilds a Media1 client at the original (non-upgraded) HTTP xAddr and retries once.
             let withMedia1HttpFallback (media1: IMediaAsync) (work: IMediaAsync -> Async<'T>) : Async<'T> = async {
                 try
                     return! work media1
                 with
-                | err when NvtSessionFactory.IsConnectionRefused err ->
+                | err when NvtSessionFactory.IsConnectionRefused err || NvtSessionFactory.IsHttps4xxFromCamera err ->
                     let! httpXAddr = GetMedia1HttpXAddr()
                     if httpXAddr |> IsNull then return raise err
                     else
-                        log.WriteInfo(sprintf "[withMedia1HttpFallback] connection-refused on primary, retrying at httpXAddr=%s" (httpXAddr.ToString()))
+                        log.WriteInfo(sprintf "[withMedia1HttpFallback] %s on primary, retrying at httpXAddr=%s" (err.GetType().Name) (httpXAddr.ToString()))
                         let! fallback = createMediaClientAt httpXAddr
                         return! work fallback
                 | :? FaultException as fault ->

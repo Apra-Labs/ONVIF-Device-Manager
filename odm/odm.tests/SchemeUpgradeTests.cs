@@ -70,6 +70,67 @@ namespace odm.tests
                 "Output URIs should be deduplicated — no duplicates expected");
         }
         [TestMethod]
+        public void IsHttps4xxFromCamera_CommunicationExceptionHttps400_ReturnsTrue()
+        {
+            // SslStreamRequestChannel raises CommunicationException("HTTP 400 received from camera at https://...")
+            // when camera returns 400 on an HTTPS-upgraded sub-service URL (e.g. Milesight /onvif/Media).
+            var ex = new System.ServiceModel.CommunicationException(
+                "HTTP 400 received from camera at https://192.168.1.190/onvif/Media");
+
+            Assert.IsTrue(NvtSessionFactory.IsHttps4xxFromCamera(ex),
+                "HTTP 4xx CommunicationException from HTTPS camera should return true");
+        }
+
+        [TestMethod]
+        public void IsHttps4xxFromCamera_CommunicationExceptionHttps404_ReturnsTrue()
+        {
+            var ex = new System.ServiceModel.CommunicationException(
+                "HTTP 404 received from camera at https://192.168.1.190:8443/onvif/Media");
+
+            Assert.IsTrue(NvtSessionFactory.IsHttps4xxFromCamera(ex),
+                "HTTP 404 CommunicationException from HTTPS camera should return true");
+        }
+
+        [TestMethod]
+        public void IsHttps4xxFromCamera_CommunicationExceptionHttp400_ReturnsFalse()
+        {
+            // HTTP (not HTTPS) endpoint returning 400 — should NOT trigger HTTPS fallback
+            var ex = new System.ServiceModel.CommunicationException(
+                "HTTP 400 received from camera at http://192.168.1.190/onvif/Media");
+
+            Assert.IsFalse(NvtSessionFactory.IsHttps4xxFromCamera(ex),
+                "HTTP 400 from plain HTTP endpoint must not trigger HTTPS-specific fallback");
+        }
+
+        [TestMethod]
+        public void IsHttps4xxFromCamera_CommunicationException500_ReturnsFalse()
+        {
+            // 5xx errors are server errors, not the HTTPS-upgrade rejection pattern
+            var ex = new System.ServiceModel.CommunicationException(
+                "HTTP 500 received from camera at https://192.168.1.190/onvif/Media");
+
+            Assert.IsFalse(NvtSessionFactory.IsHttps4xxFromCamera(ex),
+                "HTTP 5xx does not match the HTTPS 4xx rejection pattern");
+        }
+
+        [TestMethod]
+        public void IsHttps4xxFromCamera_ConnectionRefused_ReturnsFalse()
+        {
+            var ex = new System.Net.WebException("Connection refused",
+                System.Net.WebExceptionStatus.ConnectFailure);
+
+            Assert.IsFalse(NvtSessionFactory.IsHttps4xxFromCamera(ex),
+                "Connection-refused errors are not HTTPS 4xx camera rejections");
+        }
+
+        [TestMethod]
+        public void IsHttps4xxFromCamera_NullException_ReturnsFalse()
+        {
+            Assert.IsFalse(NvtSessionFactory.IsHttps4xxFromCamera(null),
+                "Null exception must return false");
+        }
+
+        [TestMethod]
         public void SoapProbe_OnSilentPort_TriggersHttpsFallback()
         {
             // Simulate the real-world scenario: camera has port 80 TCP-open but
