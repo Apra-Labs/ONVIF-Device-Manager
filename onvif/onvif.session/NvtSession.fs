@@ -247,6 +247,57 @@
         end
     end
 
+    /// WCF endpoint behavior that strips <Action mustUnderstand="1"> from outgoing SOAP
+    /// requests and marks all response mustUnderstand headers as understood.
+    /// gSOAP cameras (e.g. Milesight) return HTTP 400 when WCF sends this header;
+    /// SslStreamTransport handles it at the raw-byte level, this mirrors that for the
+    /// plain HTTP transport used in HTTP fallback paths.
+    /// Applied only to non-WS-Addressing HTTP channels (wsAddressing channels need Action
+    /// for operation dispatch and are not affected by Milesight's 400 behaviour).
+    type StripActionMustUnderstandBehavior() = class
+        let actionPattern =
+            Text.RegularExpressions.Regex(
+                "<(?:[a-zA-Z0-9_]+:)?Action\\s[^>]*mustUnderstand=\"1\"[^>]*>.*?</(?:[a-zA-Z0-9_]+:)?Action>",
+                Text.RegularExpressions.RegexOptions.Singleline ||| Text.RegularExpressions.RegexOptions.Compiled)
+        let emptyHeaderPattern =
+            Text.RegularExpressions.Regex(
+                "<(?:[a-zA-Z0-9_]+:)?Header\\s*>\\s*</(?:[a-zA-Z0-9_]+:)?Header>",
+                Text.RegularExpressions.RegexOptions.Singleline ||| Text.RegularExpressions.RegexOptions.Compiled)
+
+        let inspector = {
+            new IClientMessageInspector with
+                override _.AfterReceiveReply(reply: byref<System.ServiceModel.Channels.Message>, _) =
+                    // gSOAP responses include Action mustUnderstand="1"; mark as understood
+                    // so WCF's ServiceChannel.HandleReply does not throw a MustUnderstand fault.
+                    let hdrs = reply.Headers
+                    for i = 0 to hdrs.Count - 1 do
+                        if hdrs.[i].MustUnderstand then
+                            try hdrs.UnderstoodHeaders.Add(hdrs.[i]) with _ -> ()
+                override _.BeforeSendRequest(request: byref<System.ServiceModel.Channels.Message>, _: IClientChannel) =
+                    let buffer = request.CreateBufferedCopy(System.Int32.MaxValue)
+                    let version = buffer.CreateMessage().Version
+                    let sb = Text.StringBuilder()
+                    let settings = Xml.XmlWriterSettings(OmitXmlDeclaration = true)
+                    let writer = Xml.XmlWriter.Create(sb, settings)
+                    buffer.CreateMessage().WriteMessage(writer)
+                    writer.Flush()
+                    (writer :> System.IDisposable).Dispose()
+                    let xml = sb.ToString()
+                    let stripped = actionPattern.Replace(xml, "")
+                    let stripped2 = emptyHeaderPattern.Replace(stripped, "")
+                    let reader = Xml.XmlReader.Create(new IO.StringReader(stripped2))
+                    request <- System.ServiceModel.Channels.Message.CreateMessage(reader, System.Int32.MaxValue, version)
+                    null
+        }
+
+        interface IEndpointBehavior with
+            override _.AddBindingParameters(_, _) = ()
+            override _.ApplyClientBehavior(_, clientRuntime) =
+                clientRuntime.MessageInspectors.Add(inspector)
+            override _.ApplyDispatchBehavior(_, _) = ()
+            override _.Validate(_) = ()
+    end
+
     type NvtSessionFactory(credentials: NetworkCredential) = class
 
         static let AlternateImplementation (comp:Async<'T>) (altComp:Async<'T>):Async<'T> =
@@ -491,8 +542,10 @@
             binding.ReceiveTimeout <- TimeSpan.FromMinutes(3.0)
             
             let factory = new ChannelFactory<'T>(binding)
-            if securityToken then 
+            if securityToken then
                 factory.Endpoint.Behaviors.Add(new CustomBehavior())
+            if not useTls && not wsAddressing then
+                factory.Endpoint.Behaviors.Add(new StripActionMustUnderstandBehavior())
             factory
 
         /// Upgrades an HTTP URL to HTTPS when the session's device was reached via HTTPS.
