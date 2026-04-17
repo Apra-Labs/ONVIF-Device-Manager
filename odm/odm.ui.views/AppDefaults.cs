@@ -57,7 +57,9 @@ namespace odm.ui {
 		}
 		static public string ConfigFolderPath {
 			get {
-				string path = AppDataPath + @"config\";
+				string path = Path.Combine(
+					Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+					@"Synesis\Onvif Device Manager\config\");
 				if (!Directory.Exists(path))
 					Directory.CreateDirectory(path);
 				return path;
