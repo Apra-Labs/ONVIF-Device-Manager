@@ -128,6 +128,53 @@ The F# `NvtSessionFactory` accepts one `NetworkCredential` at construction time 
 
 ---
 
+## WS-Discovery (`onvif/onvif.discovery/`)
+
+**File:** `onvif/onvif.discovery/NvtDiscovery.fs`
+
+ONVIF WS-Discovery is implemented in F# using `System.ServiceModel.Discovery` (WCF). The
+key types are:
+
+| Type | Description |
+|------|-------------|
+| `NvtManager` | Concrete class; manages the discovery lifecycle |
+| `INvtManager` | Interface — `Discover(TimeSpan)`, `Observe()` |
+| `INvtNode` | Represents one discovered camera; has `identity: NvtIdentity` |
+| `NvtIdentity` | `endpointReference`, `uris: Uri[]`, `scopes: Uri[]` |
+| `WsDiscoveryObservable` | Low-level WCF `DiscoveryClient` wrapped as `IObservable<WsDiscoveredEndpoint>` |
+
+### Usage pattern
+
+```csharp
+var manager = new NvtManager();
+var nvtMgr  = (INvtManager)manager;
+using (nvtMgr.Observe().Subscribe(myObserver))  // subscribe first
+using (nvtMgr.Discover(TimeSpan.FromSeconds(5))) // then probe
+{
+    Thread.Sleep(6000);  // wait for probe window + buffer
+}
+// myObserver.Nodes now contains all discovered INvtNode instances
+```
+
+### Probe types
+
+`Discover()` fires two WCF probes in parallel — one for each contract type cameras
+advertise:
+
+- `NetworkVideoTransmitter` — `http://www.onvif.org/ver10/network/wsdl`
+- `Device` — `http://www.onvif.org/ver10/device/wsdl`
+
+Each probe uses `FindCriteria.Duration = TimeSpan.MaxValue` + a `Timeout()` operator to
+honour the caller-specified duration. Responses are deduplicated by endpoint reference.
+
+### Hello/Bye announcements
+
+`NvtManager` also implements an announcement service host (`UdpAnnouncementEndpoint`) that
+passively receives Hello and Bye multicast announcements from cameras as they come online
+or go offline. This is the mechanism that drives the live device list updates in the UI.
+
+---
+
 ## Test Architecture
 
 ### Unit/integration tests (`odm/odm.tests/`)
@@ -138,6 +185,27 @@ MSTest project targeting .NET 4.8. Tests are split by category:
 - **Integration** (`[TestCategory("Integration")]`) — skipped in CI via `Assert.Inconclusive` when `ODM_TEST_HOST` env var is absent; run manually against a real camera
 
 The test project references `onvif.session.dll` and its dependencies from the Release output directory.
+
+### Camera Compatibility Sweep (`CameraCompatibilitySweepTests`)
+
+**File:** `odm/odm.tests/CameraCompatibilitySweepTests.cs`
+
+Mirrors the real ODM UI workflow in a test:
+
+1. Reads `CredentialStore.Instance.GetAll()` — DPAPI-decrypted credentials, same file ODM uses.
+2. Runs `NvtManager` WS-Discovery for 5 seconds — finds cameras on the local network.
+3. For each discovered camera, tries every stored credential (then anonymous) via
+   `NvtSessionFactory.CreateSession(identity.uris)` — exact same multi-URI probe ODM uses.
+4. For authenticated cameras: `GetProfiles()` → `GetStreamUri()` to get the RTSP URL.
+5. For each RTSP URL: TCP socket probe to the RTSP port (default 554) to verify reachability.
+
+The test never asserts pass/fail — it is always green as long as at least one camera could
+be authenticated. It writes a Markdown report to the test output directory (or
+`ODM_SWEEP_REPORT_DIR`). The test is `Inconclusive` (orange in CI) when no cameras are
+found or none authenticate.
+
+To run: place the test DLL in an environment with ODM already configured (credentials.dat
+present) and on the same network as the cameras.
 
 ### E2E UI tests (planned — `odm/odm.e2e-tests/`)
 

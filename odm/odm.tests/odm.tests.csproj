@@ -35,6 +35,26 @@
       <HintPath>$(OdmViewsBin)onvif.session.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="onvif.discovery">
+      <HintPath>$(OdmViewsBin)onvif.discovery.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Reactive.Core">
+      <HintPath>$(OdmViewsBin)System.Reactive.Core.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Reactive.Interfaces">
+      <HintPath>$(OdmViewsBin)System.Reactive.Interfaces.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Reactive.Linq">
+      <HintPath>$(OdmViewsBin)System.Reactive.Linq.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="System.Reactive.PlatformServices">
+      <HintPath>$(OdmViewsBin)System.Reactive.PlatformServices.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="onvif.services">
       <HintPath>$(OdmViewsBin)onvif.services.dll</HintPath>
       <Private>true</Private>
