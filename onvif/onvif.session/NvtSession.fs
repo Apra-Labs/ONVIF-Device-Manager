@@ -544,8 +544,6 @@
             let factory = new ChannelFactory<'T>(binding)
             if securityToken then
                 factory.Endpoint.Behaviors.Add(new CustomBehavior())
-            if not useTls && not wsAddressing then
-                factory.Endpoint.Behaviors.Add(new StripActionMustUnderstandBehavior())
             factory
 
         /// Upgrades an HTTP URL to HTTPS only when the sub-service port exactly matches
