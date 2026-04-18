@@ -134,3 +134,51 @@ The `TargetFramework` in `onvif/odm.onvif.gen/odm.onvif.gen.csproj` was set to `
 ### Build Verification
 
 Pending — `dotnet build` execution was blocked by permission policy. The csproj change is a single-line fix (`net45` -> `net48`) and is correct by inspection.
+
+---
+
+# Crash Fix Review — Post-V3 Addendum
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-18 23:30:00+05:30
+**Verdict:** APPROVED
+
+## Assessment
+
+### 1. `odm.sln` — Platform Mapping Fix
+
+PASS — Both `onvif.session` (GUID 902A3FF3) and `onvif.utils` (GUID 55DED141) have their `Release|x64` mappings changed from `Release|Net45` to `Release|Net40`. No `Release|Net45` mappings remain anywhere in the solution file. This ensures both projects link against the Net40 Rx assemblies (PublicKeyToken `31bf3856ad364e35`), consistent with all other projects.
+
+NOTE — `Debug|x64` still maps to `Debug|Net45` for both projects (lines 288–289, 300–301). This does not affect production builds but could cause the same key mismatch if someone runs a Debug|x64 build. Recommend aligning these in a follow-up commit.
+
+### 2. `App.xaml.cs` — Crash Log Writer
+
+PASS — The crash.log writer is correctly placed after the existing `log.WriteError` call, so the primary logging path is unaffected. The `logs/` directory exists in the project (contains `messages.svclog`, `net.log`, `player.log`, etc.). The path uses `AppDomain.CurrentDomain.BaseDirectory` — no user input, no path traversal risk.
+
+The empty `catch { }` is acceptable here: this is an unhandled exception handler where the process is about to terminate. If crash.log writing fails (e.g., disk full, permissions), there is nothing useful to do with the secondary error, and the original `log.WriteError` has already executed.
+
+### 3. `app.config` — System.Runtime Binding Redirect
+
+PASS — The redirect `0.0.0.0-4.1.2.0 → 4.0.0.0` is correct for .NET Framework 4.8. System.Runtime ships as a type-forwarding facade at version 4.0.0.0 in the GAC. NuGet packages compiled against .NET Standard reference System.Runtime 4.1.x/4.2.x; this redirect resolves them to the framework facade. The `publicKeyToken="b03f5f7f11d50a3a"` is correct for the System.Runtime assembly.
+
+### 4. `odm.ui.app.csproj` — AutoGenerateBindingRedirects & System.Runtime Removal
+
+PASS — `AutoGenerateBindingRedirects=false` is safe. The project already has a full set of manual binding redirects in `app.config` (log4net, Microsoft.Practices.Unity, etc.). Disabling auto-generation prevents MSBuild from overriding the manual System.Runtime redirect added above.
+
+The removed `System.Runtime.dll` Content item (which shipped the facade DLL from the Reference Assemblies folder) is correctly superseded by the binding redirect approach. The redirect tells the CLR to resolve System.Runtime 4.1.2.0 to the 4.0.0.0 GAC facade, eliminating the need to copy the DLL into the output directory.
+
+### 5. Completeness — Other Projects
+
+PASS — Grep confirms no other projects in `odm.sln` are mapped to `Release|Net45`. The `Net45` platform condition groups still exist in individual `.csproj`/`.fsproj` files (e.g., `onvif.session.fsproj`, `onvif.utils.fsproj`), but these are dead code now that the solution never selects them for Release builds.
+
+### 6. CI Status
+
+UNABLE TO VERIFY — `gh pr checks 34` was blocked by permission policy. CI status should be confirmed independently before merge.
+
+## Summary
+
+The fix correctly addresses the root cause: `onvif.session` and `onvif.utils` were the only two projects built with `Release|Net45`, causing them to link against Rx 2.0.20823 with a different PublicKeyToken than all other assemblies. Changing their solution mapping to `Release|Net40` eliminates the key mismatch. The System.Runtime binding redirect and AutoGenerateBindingRedirects=false are both correct and complementary. The crash.log writer is a sensible diagnostic addition with no risk.
+
+One minor follow-up recommended: align `Debug|x64` mappings for the same two projects from `Debug|Net45` to `Debug|Net40` for consistency. This is non-blocking.
+
+**Crash fix is APPROVED for merge.**
