@@ -110,6 +110,9 @@ jobs:
 
         Write-Host "Version: $verInfo   MSI: $verMsi   ProductCode: {$newGuid}"
 
+    - name: Restore odm.onvif.gen
+      run: dotnet restore onvif\odm.onvif.gen\odm.onvif.gen.csproj
+
     - name: Build application
       run: msbuild ${{ env.Solution_Name }} /p:Configuration=Release /p:Platform=x64 /p:DeployExtension=false /m /nologo /v:minimal
 
