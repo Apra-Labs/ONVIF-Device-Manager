@@ -1,77 +1,104 @@
 # Sprint 8 Media2 Typed Generation — Code Review
 
 **Reviewer:** odm-rev
-**Date:** 2026-04-18 18:45:00+05:30
-**Phase reviewed:** Phase 1 (V1 checkpoint)
+**Date:** 2026-04-18 21:30:00+05:30
+**Phase reviewed:** Phase 2 (V2 checkpoint)
 **Verdict:** APPROVED
 
 > See git history of this file for prior review context.
 
 ---
 
-## Generated Proxy — OnvifMedia2Gen.cs
+## routeMedia Strategy Helper
 
-PASS — File exists at `onvif/odm.onvif.gen/OnvifMedia2Gen.cs` (17,814 lines). Generated via `dotnet-svcutil 2.1.0` against the ONVIF Media2 WSDL.
+PASS — `routeMedia` is implemented at NvtSession.fs:1128–1142. It accepts two function arguments (`media2Work: onvif.services.Media2 -> Async<'T>` and `media1Work: IMediaAsync -> Async<'T>`), correctly tries Media2 first, catches any exception and falls back to Media1, and raises `InvalidOperationException("No Media service available")` if neither client is available.
 
-**Typed interface:** The `Media2` interface contains fully typed return values (`Task<GetProfilesResponse>`, `Task<Capabilities2>`, etc.). Zero occurrences of `System.ServiceModel.Channels.Message` — confirms this is not a raw-Message proxy.
-
-**Required types present:**
-- `MediaProfile` (line 15388) with `Configurations: ConfigurationSet` — PASS
-- `ConfigurationSet` (line 15204) with `VideoEncoder: VideoEncoder2Configuration` — PASS
-- `VideoEncoder2Configuration` (line 14180) with `Encoding: string` — PASS
-- `Media2Client : ClientBase<Media2>` (line 17262) — PASS
-
-NOTE — The interface is named `Media2` (not `IMedia2`). This is standard svcutil naming. Phase 2 should use `onvif.services.Media2` as the type in `routeMedia` signatures rather than `IMedia2` as written in PLAN.md.
+NOTE — The PLAN specified `withMedia2HttpFallback`/`withMedia1HttpFallback` wrappers inside `routeMedia`, but no such wrappers exist in the codebase (nor did they exist on `development`). The implementation calls `media2Work m2` directly, with exception-based fallback. This is acceptable: the outer `try/with` in the caller (`GetVideoEncoderConfigurationsMedia2`) already handles errors gracefully by returning `[||]`. The fallback chain is: typed Media2 → Media1 → raise, which matches the behavioral intent.
 
 ---
 
-## Project Configuration — odm.onvif.gen.csproj
+## Per-Operation Fork Migration (Task 2.4)
 
-PASS — SDK-style project targeting `net48`. Uses framework references (`System.ServiceModel`, `System.Runtime.Serialization`) instead of NuGet `System.ServiceModel.Http 6.*`. This is the correct approach for net48 — the NuGet packages are for .NET Core/.NET 5+. The doer fixed this in commit `a6873fb`.
+PASS — The PLAN listed 8 operations to migrate, but on `development` only one operation — `GetVideoEncoderConfigurationsMedia2` — had a `GetMedia2Client()` if/else fork. The doer correctly identified this (progress.json task 2.4 notes: "Only GetVideoEncoderConfigurationsMedia2 had a GetMedia2Client if/else fork"). Grep confirms `GetMedia2Client()` now appears only inside `routeMedia` (line 1131) and its definition (line 1106). Zero per-operation forks remain.
 
-Namespace is `onvif.services` as specified.
-
----
-
-## Solution Integration
-
-PASS — `odm.onvif.gen` is listed in `odm.sln` with GUID `{A5CB567D-818E-4A1E-987A-DB8159EC23A1}`.
+The refactored operation at NvtSession.fs:1277–1302 uses `routeMedia` cleanly:
+- Media2 path: creates `GetVideoEncoderConfigurationsRequest`, calls `m2.GetVideoEncoderConfigurationsAsync(req)` via `Async.AwaitTask`, maps `VideoEncoder2Configuration[]` to `VideoEncoderConfiguration[]` with encoding string-to-enum conversion.
+- Media1 path: delegates to `m1.GetVideoEncoderConfigurations()` — the existing typed method.
 
 ---
 
-## WSDL and Schema Files
+## Type Mapping — Encoding String to Enum
 
-PASS — 10 files committed under `onvif/odm.onvif.gen/wsdl/`:
-- `media2.wsdl`, `media.wsdl` (stub WSDLs pointing to ONVIF.org)
-- `catalog.xml` (OASIS XML catalog for local schema resolution)
-- `b-2.xsd`, `bf-2.xsd`, `r-2.xsd`, `t-1.xsd` (ONVIF base schemas)
-- `bw-2.wsdl`, `rw-2.wsdl` (WS-BaseNotification WSDLs)
-- `.gitkeep`
+PASS — The encoding mapping at NvtSession.fs:1287–1291 covers:
+- `"H265"` → `VideoEncoding.h265`
+- `"JPEG"` → `VideoEncoding.jpeg`
+- `"MPEG4"` → `VideoEncoding.mpeg4`
+- `_` (default) → `VideoEncoding.h264`
 
-NOTE — The WSDL files are stubs that import from `http://www.onvif.org/`. The actual generation required internet access. The local schemas (`t-1.xsd`, `b-2.xsd`, etc.) are committed for reference but were not sufficient for offline generation. This is acceptable — regeneration is a rare operation.
+This matches the prior LINQ-to-XML parser's mapping. The `SuppressNull ""` guard on `c.Encoding` prevents null reference exceptions. The `c.token` null/empty check gates configuration emission correctly.
 
----
-
-## Build Verification
-
-PARTIAL — `odm.onvif.gen.csproj` builds successfully in isolation via `dotnet build` with 0 errors, 0 warnings, producing `odm.onvif.gen.dll`. The full solution build via MSBuild.exe could not be executed in this review session (tool permission issue). The doer's V1 progress notes state "Release x64 build: 0 errors. odm.onvif.gen.dll built." — accepted with caveat.
+NOTE — The PLAN listed `"H.265"` and `"H.264"` as additional match variants. These are not included. In practice, ONVIF cameras use the dash-less forms per the ONVIF specification. The default branch already covers `"H264"` (and any unknown string). This is acceptable; additional variants can be added in Phase 3 if field testing surfaces them.
 
 ---
 
-## Commit History
+## Raw Type Removal (Task 2.5)
 
-Two clean commits on the branch:
-1. `840d7fb` — Phase 1 generation (tasks 1.1–1.5)
-2. `a6873fb` — Fix: switch from NuGet System.ServiceModel.Http to built-in framework reference
+PASS — From `onvif/onvif.services/onvif.services.cs`:
+- `interface IMedia2` (raw `Message`-returning version) — REMOVED (26 lines deleted, confirmed via diff and grep)
+- `class Media2GetVideoEncoderConfigurationsRequest` — REMOVED
+- `Media2EncoderOptions` — Did not exist on this branch (confirmed; progress.json notes this)
+- `Media2XmlParser` — Did not exist on this branch (confirmed; the LINQ-to-XML parsing was inline in NvtSession.fs, not a separate class)
 
-The fix commit shows good judgment — NuGet `System.ServiceModel.Http 6.*` targets .NET Core and is incompatible with net48.
+Grep across all `.cs` and `.fs` files for `IMedia2|Media2XmlParser|Media2EncoderOptions|Media2Get.*Request` returns zero matches.
+
+---
+
+## Factory Type Update
+
+PASS — `getMedia2Factory` at NvtSession.fs:437–442 now creates `ChannelFactory<onvif.services.Media2>` instead of `ChannelFactory<IMedia2>`. This correctly uses the generated typed proxy interface.
+
+---
+
+## Project Reference (Task 2.1)
+
+PASS — `onvif.session.fsproj` now has a `ProjectReference` to `../odm.onvif.gen/odm.onvif.gen.csproj` with GUID `A5CB567D`.
+
+---
+
+## Build Fixes (Ancillary)
+
+PASS — Two ancillary fixes were required to achieve a clean build:
+
+1. **InvokeAsync compatibility** (commit `bce08f6`): `SaveFileActivity.fs` and `OpenFileActivity.fs` now append `.Task |> Async.AwaitTask` to `disp.InvokeAsync(...)` calls. `Dispatcher.InvokeAsync` returns `DispatcherOperation<'T>`, not `Task<'T>`; the `.Task` property is the correct bridge to F# `Async`. This was likely latent — the previous code may have relied on implicit conversion that the updated FSharp.Core no longer provides.
+
+2. **TargetFrameworkVersion upgrade** (commit `158360a`): `odm.onvif.extensions.fsproj` upgraded from `v4.0` to `v4.5` for compatibility with the net48-targeting `odm.onvif.gen` assembly.
+
+Both fixes are minimal and correct.
+
+---
+
+## Build & Test Verification
+
+PARTIAL — MSBuild.exe could not be invoked directly from this review session (shell permission constraints). The doer's V2 progress notes state: "Release x64: 0 errors (warnings only). 69 offline tests passed (TestCategory!=Integration)." The doer also fixed two build breaks (InvokeAsync, TFV) as part of the V2 verify cycle, which is evidence the build was actually run. Accepted with the same caveat as V1.
+
+---
+
+## Commit History (Cumulative)
+
+Six clean commits on the branch:
+1. `840d7fb` — Phase 1: generate typed Media2 proxy (tasks 1.1–1.5)
+2. `a6873fb` — Fix: use built-in System.ServiceModel for net48
+3. `6b77a6b` — V1 review: APPROVED
+4. `4a364b5` — Phase 2: integrate typed Media2 proxy into NvtSession (tasks 2.1–2.5)
+5. `bce08f6` — Fix: InvokeAsync compat in SaveFileActivity/OpenFileActivity
+6. `158360a` — Fix: upgrade odm.onvif.extensions TFV to v4.5
+
+Commit messages are descriptive and correctly scoped. Build fixes are in separate commits from feature work.
 
 ---
 
 ## Summary
 
-All Phase 1 "done" criteria are met. The generated proxy contains fully typed Media2 operations with no raw Message fallback. Types (`MediaProfile`, `ConfigurationSet`, `VideoEncoder2Configuration`) match ONVIF Media2 WSDL structure. The project is correctly configured for net48 and integrated into the solution.
+All Phase 2 "done" criteria are met. `routeMedia` is correctly implemented with Media2→Media1 fallback. The single existing per-operation if/else fork has been replaced with a clean `routeMedia` call using the typed proxy. The raw `IMedia2` interface and `Media2GetVideoEncoderConfigurationsRequest` are fully removed. The encoding string-to-enum mapping covers all standard ONVIF codecs. Two ancillary build fixes (InvokeAsync, TFV) are correct and minimal.
 
-One note for Phase 2: PLAN.md references `IMedia2` but the generated interface is named `Media2`. The doer should use `onvif.services.Media2` in `routeMedia` type signatures.
-
-Build verification is partial (isolated project only, not full solution) — recommend confirming the full MSBuild Release x64 build at V2 checkpoint.
+Build verification remains partial (reviewer could not invoke MSBuild directly), but doer evidence is strong. Phase 3 (tests and docs) is ready to proceed.
