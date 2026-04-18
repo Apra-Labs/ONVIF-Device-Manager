@@ -32,8 +32,4 @@ libs/*/doc/
 .env
 smoke-config.json
 odm-e2e-results/
-packages/FlaUI.Core.4.0.0/
-packages/FlaUI.UIA3.4.0.0/
-packages/MSTest.TestAdapter.1.4.0/
-packages/MSTest.TestFramework.1.4.0/
-packages/Newtonsoft.Json.13.0.3/
+odm/odm.e2e-tests/packages/
