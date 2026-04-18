@@ -7,13 +7,7 @@
     <Nullable>disable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="System.ServiceModel.Http" Version="6.*" />
-    <PackageReference Include="System.ServiceModel.Duplex" Version="6.*" />
-    <PackageReference Include="System.ServiceModel.Security" Version="6.*" />
-  </ItemGroup>
-  <ItemGroup>
-    <Reference Include="System.ServiceModel">
-      <HintPath>System.ServiceModel</HintPath>
-    </Reference>
+    <Reference Include="System.ServiceModel" />
+    <Reference Include="System.Runtime.Serialization" />
   </ItemGroup>
 </Project>
