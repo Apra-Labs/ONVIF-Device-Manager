@@ -58,6 +58,10 @@
       <HintPath>$(OdmViewsBin)utils.common.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="onvif.discovery">
+      <HintPath>$(OdmViewsBin)onvif.discovery.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="System.Security" />
     <Reference Include="System.ServiceModel" />
   </ItemGroup>

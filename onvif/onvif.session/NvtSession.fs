@@ -87,6 +87,22 @@ namespace odm.core
         abstract GetAllCapabilities: unit -> Async<Capabilities>
         abstract GetVideoEncoderConfigurationsMedia2: unit -> Async<VideoEncoderConfiguration[]>
     end
+
+    type private ServiceEndpointMap = {
+        Media1XAddr: string option
+        Media2XAddr: string option
+        PtzXAddr: string option
+        ImagingXAddr: string option
+        EventsXAddr: string option
+        AnalyticsXAddr: string option
+        ReceiverXAddr: string option
+        AnalyticsDeviceXAddr: string option
+        RecordingXAddr: string option
+        ReplayXAddr: string option
+        ActionEngineXAddr: string option
+    }
+    with
+        member this.HasMedia2 = this.Media2XAddr.IsSome
     
     type SecurityUserNameToken(userName:string, password:string, deviceTime:System.DateTime) = class
         let delta = 
@@ -750,12 +766,88 @@ namespace odm.core
                 })
                 fun()->comp
 
-            let GetServices = 
+            let GetServices =
                 let comp = Async.Memoize(async{
                     let! dev = GetDeviceClient()
                     return! dev.GetServices(false)
                 })
                 fun()->comp
+
+            // Resolves all service xAddrs at session creation time using a three-level fallback:
+            // 1. GetServices() namespace match, 2. GetCapabilities() field, 3. Constructed default URL.
+            // Started eagerly in the background so service clients find results already cached.
+            let GetResolvedEndpoints =
+                let comp = Async.Memoize(async{
+                    let! servicesOpt = async{
+                        try
+                            let! svcs = GetServices()
+                            return if svcs |> IsNull then None else Some svcs
+                        with _ -> return None
+                    }
+                    let! capsOpt = async{
+                        try
+                            let! caps = GetCapabilities()
+                            return if caps |> IsNull then None else Some caps
+                        with _ -> return None
+                    }
+                    let findServiceXAddr ns =
+                        servicesOpt |> Option.bind (fun svcs ->
+                            svcs |> Seq.tryFind (fun (s:Service) -> s.Namespace = ns)
+                            |> Option.bind (fun s ->
+                                if String.IsNullOrEmpty(s.XAddr) then None else Some s.XAddr
+                            )
+                        )
+                    let getCapsXAddr (f: Capabilities -> string) =
+                        capsOpt |> Option.bind (fun caps ->
+                            try
+                                let xAddr = f caps
+                                if String.IsNullOrEmpty(xAddr) then None else Some xAddr
+                            with _ -> None
+                        )
+                    let constructUrl path =
+                        let b = new UriBuilder(deviceUri)
+                        b.Path <- path
+                        b.Query <- ""
+                        Some (b.Uri.ToString())
+                    let resolve ns capsGetter defaultPath =
+                        match findServiceXAddr ns with
+                        | Some x -> Some x
+                        | None ->
+                            match getCapsXAddr capsGetter with
+                            | Some x -> Some x
+                            | None -> constructUrl defaultPath
+                    let resolveNoLastResort ns capsGetter =
+                        match findServiceXAddr ns with
+                        | Some x -> Some x
+                        | None -> getCapsXAddr capsGetter
+                    return {
+                        Media1XAddr = resolve "http://www.onvif.org/ver10/media/wsdl"
+                                        (fun c -> c.media.xAddr)
+                                        "/onvif/media_service"
+                        Media2XAddr = findServiceXAddr "http://www.onvif.org/ver20/media/wsdl"
+                        PtzXAddr = resolve "http://www.onvif.org/ver20/ptz/wsdl"
+                                     (fun c -> c.ptz.xAddr)
+                                     "/onvif/ptz_service"
+                        ImagingXAddr = resolve "http://www.onvif.org/ver10/imaging/wsdl"
+                                         (fun c -> c.imaging.xAddr)
+                                         "/onvif/imaging_service"
+                        EventsXAddr = resolve "http://www.onvif.org/ver10/events/wsdl"
+                                        (fun c -> c.events.xAddr)
+                                        "/onvif/events_service"
+                        AnalyticsXAddr = resolveNoLastResort "http://www.onvif.org/ver20/analytics/wsdl"
+                                           (fun c -> c.analytics.xAddr)
+                        ReceiverXAddr = resolveNoLastResort "http://www.onvif.org/ver10/receiver/wsdl"
+                                          (fun c -> c.extension.receiver.xAddr)
+                        AnalyticsDeviceXAddr = resolveNoLastResort "http://www.onvif.org/ver20/analyticsdevice/wsdl"
+                                                 (fun c -> c.extension.analyticsDevice.xAddr)
+                        RecordingXAddr = resolveNoLastResort "http://www.onvif.org/ver10/recording/wsdl"
+                                           (fun c -> c.extension.recording.xAddr)
+                        ReplayXAddr = resolveNoLastResort "http://www.onvif.org/ver10/replay/wsdl"
+                                        (fun c -> c.extension.replay.xAddr)
+                        ActionEngineXAddr = findServiceXAddr "http://www.onvif.org/ver10/actionengine/wsdl"
+                    }
+                })
+                fun() -> comp
 
 
             let GetDeviceInformation = 
@@ -779,45 +871,33 @@ namespace odm.core
                 else
                     url
 
+            // Returns true for addresses that are loopback/unroutable and must be replaced with
+            // the device's reachable host. Never touch the port — only substitute the host.
+            let isUnroutableHost (host: string) =
+                String.IsNullOrEmpty(host) ||
+                host = "127.0.0.1" ||
+                host = "0.0.0.0" ||
+                host = "::1" ||
+                String.Compare(host, "localhost", StringComparison.OrdinalIgnoreCase) = 0
+
             let FixUrl(url:Uri) = async{
-                let! resolved =
-                    async{
-                        if not(url.IsAbsoluteUri) then
-                            //return new Uri(deviceUri.GetBaseUri(), url)
-                            return new Uri(deviceUri, url)
-                        elif not(deviceUri.Host = url.Host) then
-                            if url.HostNameType = UriHostNameType.IPv4 then
-                                let! caps = GetCapabilities()
-                                let internalDeviceUrl = new Uri(caps.device.xAddr)
-                                if internalDeviceUrl.Host = url.Host then
-                                    if internalDeviceUrl.Port = url.Port && internalDeviceUrl.Scheme = url.Scheme then
-                                        return url.Relocate(deviceUri.Host, deviceUri.Port)
-                                    else
-                                        return url.Relocate(deviceUri.Host)
-//                            let baseUrl =
-//                                if url.Port < 0 then
-//                                    new Uri(sprintf "%s://%s" (url.Scheme) (deviceUri.Host))
-//                                else
-//                                    new Uri(sprintf "%s://%s:%d" (url.Scheme) (deviceUri.Host) (url.Port))
-//                            return new Uri(baseUrl, url.PathAndQuery)
-                                else
-                                    return url
-                            else
-                                return url
-                        else
-                            return url
-                    }
+                let resolved =
+                    if not(url.IsAbsoluteUri) then
+                        new Uri(deviceUri, url)
+                    elif isUnroutableHost url.Host then
+                        url.Relocate(deviceUri.Host)
+                    else
+                        url
                 return UpgradeSchemeIfNeeded resolved
             }
 
-            let GetMediaClient = 
+            let GetMediaClient =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetMediaClient") 
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.media |> IfNotNull(fun x->x.xAddr))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetMediaClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.Media1XAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -829,15 +909,13 @@ namespace odm.core
                 })
                 fun()->comp
 
-            let GetImagingClient = 
+            let GetImagingClient =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetImagingClient") 
-                    do! Async.SwitchToThreadPool()
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.imaging |> IfNotNull(fun x->x.xAddr))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetImagingClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.ImagingXAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -849,14 +927,13 @@ namespace odm.core
                 })
                 fun()->comp
 
-            let GetPtzClient = 
+            let GetPtzClient =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetPtzClient") 
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.ptz |> IfNotNull(fun x->x.xAddr))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetPtzClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.PtzXAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -868,14 +945,13 @@ namespace odm.core
                 })
                 fun()->comp
         
-            let GetEventClient = 
+            let GetEventClient =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetEventClient") 
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.events |> IfNotNull(fun x->x.xAddr))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetEventClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.EventsXAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -887,14 +963,13 @@ namespace odm.core
                 })
                 fun()->comp
 
-            let GetAnalyticsClient = 
+            let GetAnalyticsClient =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetAnalyticsClient") 
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.analytics |> IfNotNull(fun x->x.xAddr))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetAnalyticsClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.AnalyticsXAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -906,14 +981,13 @@ namespace odm.core
                 })
                 fun()->comp
             
-            let GetReceiverClient = 
+            let GetReceiverClient =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetReceiverClient") 
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.extension |> IfNotNull(fun x->x.receiver|> IfNotNull(fun x->x.xAddr)))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetReceiverClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.ReceiverXAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -925,14 +999,13 @@ namespace odm.core
                 })
                 fun()->comp
             
-            let GetAnalyticsDeviceClient = 
+            let GetAnalyticsDeviceClient =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetAnalyticsDeviceClient") 
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.extension |> IfNotNull(fun x->x.analyticsDevice|> IfNotNull(fun x->x.xAddr)))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetAnalyticsDeviceClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.AnalyticsDeviceXAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -944,14 +1017,13 @@ namespace odm.core
                 })
                 fun()->comp
 
-            let GetRecordingsClient = 
+            let GetRecordingsClient =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetRecordingsClient") 
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.extension |> IfNotNull(fun x->x.recording|> IfNotNull(fun x->x.xAddr)))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetRecordingsClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.RecordingXAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -968,13 +1040,12 @@ namespace odm.core
                     dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetActionEngineClient")
                     let! caps = GetCapabilities()
                     if caps.device.system.supportedVersions |> Seq.exists (fun v -> v >= OnvifVersion.v2_1) then
-                        let! services = GetServices()
-                        let service = services.FirstOrDefault (fun (s:Service) -> s.Namespace = "http://www.onvif.org/ver10/actionengine/wsdl") 
-                        if service |> IsNull  then
-                            return null
-                        else 
+                        let! eps = GetResolvedEndpoints()
+                        match eps.ActionEngineXAddr with
+                        | None -> return null
+                        | Some xaddr ->
                             do! Async.SwitchToThreadPool()
-                            let! url = FixUrl(new Uri(service.XAddr, UriKind.RelativeOrAbsolute))
+                            let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                             let useTls = url.Scheme = Uri.UriSchemeHttps
                             let! factory = getActionEngineFactory(useTls)
                             let endpointAddr = new EndpointAddress(url)
@@ -988,12 +1059,11 @@ namespace odm.core
 
             let GetReplayClient : unit -> Async<IReplayAsync> =
                 let comp = Async.Memoize(async{
-                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetReplayClient") 
-                    let! caps = GetCapabilities()
-                    let xaddr = caps |> IfNotNull(fun x->x.extension |> IfNotNull(fun x->x.replay|> IfNotNull(fun x->x.xAddr)))
-                    if IsNull(xaddr) then
-                        return null
-                    else
+                    dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetReplayClient")
+                    let! eps = GetResolvedEndpoints()
+                    match eps.ReplayXAddr with
+                    | None -> return null
+                    | Some xaddr ->
                         do! Async.SwitchToThreadPool()
                         let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                         let useTls = url.Scheme = Uri.UriSchemeHttps
@@ -1031,20 +1101,20 @@ namespace odm.core
                 fun() -> comp
 
             // Client for the ONVIF Media2 service (ver20/media/wsdl).
-            // Discovered via GetServices(); returns null if the camera does not advertise Media2.
+            // Media2 support is determined at session init via GetResolvedEndpoints(); returns null
+            // if the camera does not advertise Media2 in GetServices().
             let GetMedia2Client =
                 let comp = Async.Memoize(async{
                     dbg.Info(sprintf "%08X::%s" (sessionId.GetHashCode()) "GetMedia2Client")
-                    let! services = GetServices()
-                    if services |> IsNull then
+                    let! eps = GetResolvedEndpoints()
+                    if not eps.HasMedia2 then
                         return null
                     else
-                        let service = services.FirstOrDefault(fun (s:Service) -> s.Namespace = "http://www.onvif.org/ver20/media/wsdl")
-                        if service |> IsNull then
-                            return null
-                        else
+                        match eps.Media2XAddr with
+                        | None -> return null
+                        | Some xaddr ->
                             do! Async.SwitchToThreadPool()
-                            let! url = FixUrl(new Uri(service.XAddr, UriKind.RelativeOrAbsolute))
+                            let! url = FixUrl(new Uri(xaddr, UriKind.RelativeOrAbsolute))
                             let useTls = url.Scheme = Uri.UriSchemeHttps
                             let! factory = getMedia2Factory(useTls)
                             let endpointAddr = new EndpointAddress(url)
@@ -1117,6 +1187,9 @@ namespace odm.core
                             return raise err
                 }
                 fun() -> comp
+
+            // Kick off endpoint resolution eagerly so service clients find results already cached
+            do GetResolvedEndpoints() |> Async.Ignore |> Async.Start
 
             {
                 new INvtSession with
