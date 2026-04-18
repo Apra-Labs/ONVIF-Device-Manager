@@ -33,6 +33,6 @@
                     dlg.FileName
                 else
                     null
-            )
+            ).Task |> Async.AwaitTask
         }
     end
