@@ -119,15 +119,7 @@ namespace utils {
 			}
 		}
 
-		public static IEnumerable<T> Append<T>(this IEnumerable<T> src, T tail) {
-			if (src == null) {
-				return Enumerable.Repeat(tail, 1);
-			} else {
-				return src.Concat(Enumerable.Repeat(tail, 1));
-			}
-		}
-
-		/// <summary>
+/// <summary>
 		/// excludes all occurrences of item in src, based on equality
 		/// </summary>
 		/// <typeparam name="T">type of elements of sequnce</typeparam>

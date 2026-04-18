@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="4.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
@@ -13,11 +13,11 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Platform)' == 'Net40' ">
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <DefineConstants>NET40; $(DefineConstants)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Platform)' == 'Net45' ">
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <DefineConstants>NET45; $(DefineConstants)</DefineConstants>
   </PropertyGroup>
   <PropertyGroup>
@@ -82,59 +82,60 @@
   <ItemGroup>
     <None Include="packages.config" />
     <None Include="Properties\DataSources\System.Xml.XmlElement.datasource" />
-    <None Include="schemas\actionengine.wsdl" />
-    <None Include="schemas\addressing.xsd">
+    <None Include="..\wsdl\actionengine.wsdl" />
+    <None Include="..\wsdl\addressing.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\analytics.wsdl" />
-    <None Include="schemas\analyticsdevice.wsdl">
+    <None Include="..\wsdl\analytics.wsdl" />
+    <None Include="..\wsdl\analyticsdevice.wsdl">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\b-2.xsd">
+    <None Include="..\wsdl\b-2.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\bf-2.xsd">
+    <None Include="..\wsdl\bf-2.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\deviceio.wsdl" />
-    <None Include="schemas\devicemgmt.wsdl" />
-    <None Include="schemas\display.wsdl" />
-    <None Include="schemas\event.wsdl" />
-    <None Include="schemas\imaging.wsdl">
+    <None Include="..\wsdl\deviceio.wsdl" />
+    <None Include="..\wsdl\devicemgmt.wsdl" />
+    <None Include="..\wsdl\display.wsdl" />
+    <None Include="..\wsdl\event.wsdl" />
+    <None Include="..\wsdl\imaging.wsdl">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\include.xsd">
+    <None Include="..\wsdl\include.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\media.wsdl" />
-    <None Include="schemas\onvif.wsdl" />
-    <EmbeddedResource Include="schemas\onvif.xsd">
+    <None Include="..\wsdl\media.wsdl" />
+    <None Include="..\wsdl\onvif.wsdl" />
+    <EmbeddedResource Include="..\wsdl\onvif.xsd">
+      <Link>schemas\onvif.xsd</Link>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <None Include="schemas\ptz.wsdl" />
-    <None Include="schemas\r-2.xsd">
+    <None Include="..\wsdl\ptz.wsdl" />
+    <None Include="..\wsdl\r-2.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\receiver.wsdl" />
-    <None Include="schemas\recording.wsdl" />
-    <None Include="schemas\remotediscovery.wsdl" />
-    <None Include="schemas\replay.wsdl" />
-    <None Include="schemas\search.wsdl" />
-    <None Include="schemas\t-1.xsd">
+    <None Include="..\wsdl\receiver.wsdl" />
+    <None Include="..\wsdl\recording.wsdl" />
+    <None Include="..\wsdl\remotediscovery.wsdl" />
+    <None Include="..\wsdl\replay.wsdl" />
+    <None Include="..\wsdl\search.wsdl" />
+    <None Include="..\wsdl\t-1.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\ws-addr.xsd">
+    <None Include="..\wsdl\ws-addr.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\WS-BaseNotification.wsdl" />
-    <None Include="schemas\ws-discovery.xsd">
+    <None Include="..\wsdl\WS-BaseNotification.wsdl" />
+    <None Include="..\wsdl\ws-discovery.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\WS-Resource.wsdl" />
-    <None Include="schemas\xml.xsd">
+    <None Include="..\wsdl\WS-Resource.wsdl" />
+    <None Include="..\wsdl\xml.xsd">
       <SubType>Designer</SubType>
     </None>
-    <None Include="schemas\xmlmime.xsd">
+    <None Include="..\wsdl\xmlmime.xsd">
       <SubType>Designer</SubType>
     </None>
     <None Include="Service References\services\addressing.xsd" />

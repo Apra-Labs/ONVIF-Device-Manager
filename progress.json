@@ -1,0 +1,27 @@
+{
+  "_schema": { "type": "work | verify", "status": "pending | completed | blocked" },
+  "project": "ODM — Sprint 8 Media2 Typed Generation",
+  "plan_file": "PLAN.md",
+  "branch": "feat/media2-typed",
+  "base_branch": "development",
+  "created": "2026-04-18",
+  "tasks": [
+    { "id": "1.1", "phase": 1, "step": "Create feat/media2-typed branch from development", "type": "work", "status": "completed", "notes": "Branch created from origin/development" },
+    { "id": "1.2", "phase": 1, "step": "Create onvif/odm.onvif.gen/ project directory and csproj", "type": "work", "status": "completed", "notes": "SDK-style net48 csproj created; removed incompatible System.ServiceModel.Http 6.* NuGet refs (net48 uses built-in System.ServiceModel)" },
+    { "id": "1.3", "phase": 1, "step": "Copy WSDL and schema files from rock-onvif", "type": "work", "status": "completed", "notes": "Copied media2.wsdl, media.wsdl, catalog.xml, b-2.xsd, bf-2.xsd, r-2.xsd, t-1.xsd, bw-2.wsdl, rw-2.wsdl" },
+    { "id": "1.4", "phase": 1, "step": "Run dotnet-svcutil; generate OnvifMedia2Gen.cs with typed IMedia2", "type": "work", "status": "completed", "notes": "svcutil 2.1.0 run against https://www.onvif.org/ver20/media/wsdl/media.wsdl. Interface is named Media2 (not IMedia2). Contains Media2Client, MediaProfile, ConfigurationSet, VideoEncoder2Configuration with string Encoding. File at onvif/odm.onvif.gen/OnvifMedia2Gen.cs" },
+    { "id": "1.5", "phase": 1, "step": "Add odm.onvif.gen.csproj to odm.sln", "type": "work", "status": "completed", "notes": "Added via dotnet sln add" },
+    { "id": "V1",  "phase": 1, "step": "VERIFY 1 — Release x64 build succeeds; OnvifMedia2Gen.cs committed; push", "type": "verify", "status": "completed", "notes": "Release x64 build: 0 errors. odm.onvif.gen.dll built. OnvifMedia2Gen.cs committed. Pushed to origin/feat/media2-typed." },
+    { "id": "2.1", "phase": 2, "step": "Add ProjectReference from onvif.session.fsproj to odm.onvif.gen.csproj", "type": "work", "status": "completed", "notes": "ProjectReference to odm.onvif.gen.csproj added with GUID A5CB567D" },
+    { "id": "2.2", "phase": 2, "step": "Implement routeMedia Strategy helper in NvtSession.fs", "type": "work", "status": "completed", "notes": "routeMedia uses onvif.services.Media2 (not IMedia2); added after GetMedia2Client memoization" },
+    { "id": "2.3", "phase": 2, "step": "Add type mapping helpers (MediaProfile->Profile, VideoEncoder2Config->VideoEncoderConfig) if needed", "type": "work", "status": "completed", "notes": "No separate helpers needed; VideoEncoder2Configuration->VideoEncoderConfiguration mapping done inline in GetVideoEncoderConfigurationsMedia2" },
+    { "id": "2.4", "phase": 2, "step": "Replace 8 per-operation if/else forks with routeMedia calls", "type": "work", "status": "completed", "notes": "Only GetVideoEncoderConfigurationsMedia2 had a GetMedia2Client if/else fork; refactored to use routeMedia with Media1 fallback (GetVideoEncoderConfigurations)" },
+    { "id": "2.5", "phase": 2, "step": "Remove IMedia2 (raw), Media2GetXxxRequest, Media2EncoderOptions, Media2XmlParser from onvif.services.cs", "type": "work", "status": "completed", "notes": "Removed IMedia2 interface and Media2GetVideoEncoderConfigurationsRequest class from onvif.services.cs; no Media2EncoderOptions or Media2XmlParser existed in this branch" },
+    { "id": "V2",  "phase": 2, "step": "VERIFY 2 — Release x64 build + all 54 offline unit tests pass; push", "type": "verify", "status": "completed", "notes": "Release x64: 0 errors (warnings only). 69 offline tests passed (TestCategory!=Integration). Also fixed InvokeAsync compat in SaveFileActivity.fs and OpenFileActivity.fs." },
+    { "id": "3.1", "phase": 3, "step": "Delete Media2XmlParserTests.cs; update Media2IntegrationTests.cs", "type": "work", "status": "completed", "notes": "Media2XmlParserTests.cs did not exist (already removed). Media2IntegrationTests.cs did not exist. No action needed." },
+    { "id": "3.2", "phase": 3, "step": "Rewrite docs/features/media2-routing.md for typed approach", "type": "work", "status": "completed", "notes": "Created docs/features/media2-routing.md covering typed proxy, routeMedia helper, fallback chain, encoding mapping, and how to add new operations." },
+    { "id": "3.3", "phase": 3, "step": "Add Media2 Service Detection section to docs/architecture.md", "type": "work", "status": "completed", "notes": "Added 'Media2 Service Detection' subsection under Transport Layer in docs/architecture.md." },
+    { "id": "3.4", "phase": 3, "step": "Update docs/features/media2-testing.md", "type": "work", "status": "completed", "notes": "Created docs/features/media2-testing.md covering offline/integration test instructions, what to test, and how to add tests for new operations." },
+    { "id": "V3",  "phase": 3, "step": "VERIFY 3 — Release x64 build + all offline unit tests pass; push; STOP", "type": "verify", "status": "completed", "notes": "Release x64: 0 errors (warnings only). 69 offline tests passed (TestCategory!=Integration). Pushed to origin/feat/media2-typed." }
+  ]
+}
