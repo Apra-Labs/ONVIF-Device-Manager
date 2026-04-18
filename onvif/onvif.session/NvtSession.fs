@@ -86,6 +86,7 @@ namespace odm.core
         abstract deviceUri:Uri
         abstract GetAllCapabilities: unit -> Async<Capabilities>
         abstract GetVideoEncoderConfigurationsMedia2: unit -> Async<VideoEncoderConfiguration[]>
+        abstract GetVideoEncoderConfigurationOptionsMedia2: profToken:string -> Async<onvif.services.VideoEncoder2ConfigurationOptions[]>
     end
 
     type private ServiceEndpointMap = {
@@ -1296,6 +1297,21 @@ namespace odm.core
                                     |]
                                 })
                                 (fun m1 -> m1.GetVideoEncoderConfigurations())
+                        with err ->
+                            dbg.Error(err)
+                            return [||]
+                    }
+
+                    member this.GetVideoEncoderConfigurationOptionsMedia2(profToken:string): Async<onvif.services.VideoEncoder2ConfigurationOptions[]> = async{
+                        try
+                            return! routeMedia
+                                (fun m2 -> async {
+                                    let req = new onvif.services.GetVideoEncoderConfigurationOptionsRequest()
+                                    req.ProfileToken <- profToken
+                                    let! resp = Async.AwaitTask(m2.GetVideoEncoderConfigurationOptionsAsync(req))
+                                    return if resp.Options |> IsNull then [||] else resp.Options
+                                })
+                                (fun _m1 -> async{ return [||] })
                         with err ->
                             dbg.Error(err)
                             return [||]

@@ -98,3 +98,26 @@ UNABLE TO VERIFY — `gh pr checks 34` was blocked by permission policy. CI stat
 **Deferred (non-blocking):**
 - Debug|x64 Net45→Net40 alignment for `onvif.session` and `onvif.utils`
 - Aspirational test file reference in `media2-testing.md`
+
+---
+
+## Doer Response — Issue #21 Fix (2026-04-18)
+
+**Doer:** odm-dev
+
+### Tasks completed
+
+1. **`GetVideoEncoderConfigurationOptionsMedia2` added to `INvtSession` interface and `NvtSession.fs` implementation** — uses `routeMedia` to call `GetVideoEncoderConfigurationOptionsAsync` on the Media2 proxy, falling back to empty array on failure or Media1-only cameras. Located at `onvif/onvif.session/NvtSession.fs`.
+
+2. **`VideoSettingsActivity.fs` `load()` updated** — after loading the existing encoder config and options, calls `session.GetVideoEncoderConfigurationOptionsMedia2(profile.token)` and synthesizes `options.h265` (resolutions, frame rate range, GOV length range) from the Media2 response whenever the existing `options.h265` is null or has ≤1 resolution entry. Located at `odm/odm.ui.activities/VideoSettingsActivity.fs`.
+
+3. **`odm.sln` Debug|x64 Net45→Net40 fixed** for the two affected GUIDs:
+   - `{902A3FF3-E9BD-443D-8FC1-69AA42B5F76B}` (onvif.session)
+   - `{55DED141-56C3-4DA9-BE07-03708D7A2275}` (onvif.utils)
+
+### Additional fixes required during build
+- Added `odm.onvif.gen` `ProjectReference` to three downstream fsproj files that reference `INvtSession` — `onvif.utils`, `odm.onvif.extensions`, and `odm.ui.activities` — because F# requires a direct assembly reference for any type that appears in a referenced interface's signature. Without this, FS0074 errors cascade through the build graph.
+- Corrected indentation of new `member` in `NvtSession.fs` (was 16 spaces, needed 20 to match the enclosing interface block).
+
+### Build result
+Release|x64: **0 errors, warnings only** (pre-existing CS0108/CS0169/FS0040 warnings, unchanged from prior sprint).

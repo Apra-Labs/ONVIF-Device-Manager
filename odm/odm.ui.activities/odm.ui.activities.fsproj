@@ -154,6 +154,11 @@
       <Project>{902a3ff3-e9bd-443d-8fc1-69aa42b5f76b}</Project>
       <Private>True</Private>
     </ProjectReference>
+    <ProjectReference Include="..\..\onvif\odm.onvif.gen\odm.onvif.gen.csproj">
+      <Name>odm.onvif.gen</Name>
+      <Project>{a5cb567d-818e-4a1e-987a-db8159ec23a1}</Project>
+      <Private>True</Private>
+    </ProjectReference>
     <ProjectReference Include="..\..\onvif\onvif.utils\onvif.utils.fsproj">
       <Name>onvif.utils</Name>
       <Project>{55ded141-56c3-4da9-be07-03708d7a2275}</Project>
