@@ -23,6 +23,7 @@ build_output.txt
 # Claude Code / fleet
 .claude/
 permissions.json
+CLAUDE.md
 
 # Lib docs
 libs/*/doc/
