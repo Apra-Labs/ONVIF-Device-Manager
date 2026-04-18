@@ -223,21 +223,3 @@ jobs:
         files: |
           odm.setup/Release/odm.setup.msi
 
-    - name: Bump version.json for next dev cycle
-      if: startsWith(github.ref, 'refs/tags/v')
-      shell: pwsh
-      run: |
-        $tag  = "${{ github.ref }}" -replace '^refs/tags/v', ''
-        $parts = $tag.Split('.')
-        $parts[-1] = [string]([int]$parts[-1] + 1)
-        $next = $parts -join '.'
-        git config user.name "github-actions[bot]"
-        git config user.email "github-actions[bot]@users.noreply.github.com"
-        git fetch origin development
-        git checkout development
-        $v = Get-Content 'version.json' | ConvertFrom-Json
-        $v.version = $next
-        $v | ConvertTo-Json -Compress | Set-Content 'version.json'
-        git add version.json
-        git commit -m "chore: bump version to $next [skip ci]"
-        git push origin development
