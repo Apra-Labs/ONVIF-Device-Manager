@@ -264,5 +264,92 @@ namespace odm.tests
                     "Each option should have an Encoding value");
             }
         }
+        [TestMethod]
+        [TestCategory("Integration")]
+        public void Diagnostic_DumpServiceEndpoints()
+        {
+            EnsureSession();
+
+            // 1. GetServices — what namespaces and xAddrs does the camera advertise?
+            Console.WriteLine("=== GetServices ===");
+            try
+            {
+                var services = Run(_session.GetServices(false));
+                if (services != null)
+                {
+                    foreach (var svc in services)
+                    {
+                        Console.WriteLine("  Namespace: {0}", svc.Namespace ?? "(null)");
+                        Console.WriteLine("  XAddr:     {0}", svc.XAddr ?? "(null)");
+                        if (svc.Version != null)
+                            Console.WriteLine("  Version:   {0}.{1}", svc.Version.major, svc.Version.minor);
+                        Console.WriteLine();
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("  (null)");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("  ERROR: {0}", ex.Message);
+            }
+
+            // 2. GetCapabilities — does this return 400?
+            Console.WriteLine("=== GetCapabilities ===");
+            try
+            {
+                var caps = Run(_session.GetAllCapabilities());
+                Console.WriteLine("  media xAddr: {0}", caps?.media?.xAddr ?? "(null or empty caps)");
+                Console.WriteLine("  ptz xAddr:   {0}", caps?.ptz?.xAddr ?? "(null)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("  ERROR: {0}: {1}", ex.GetType().Name, ex.Message);
+                if (ex.InnerException != null)
+                    Console.WriteLine("  INNER: {0}: {1}", ex.InnerException.GetType().Name, ex.InnerException.Message);
+            }
+
+            // 3. GetProfiles
+            Console.WriteLine("=== GetProfiles ===");
+            try
+            {
+                var profiles = Run(_session.GetProfiles());
+                Console.WriteLine("  Count: {0}", profiles?.Length ?? 0);
+                if (profiles != null)
+                {
+                    foreach (var p in profiles)
+                        Console.WriteLine("  token={0} name={1} encoding={2}",
+                            p.token, p.name,
+                            p.videoEncoderConfiguration?.encoding.ToString() ?? "(null)");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("  ERROR: {0}: {1}", ex.GetType().Name, ex.Message);
+            }
+
+            // 4. GetVideoEncoderConfigurationOptionsMedia2
+            Console.WriteLine("=== GetVideoEncoderConfigurationOptionsMedia2 ===");
+            try
+            {
+                var opts = Run(_session.GetVideoEncoderConfigurationOptionsMedia2(""));
+                Console.WriteLine("  Count: {0}", opts?.Length ?? 0);
+                if (opts != null)
+                {
+                    foreach (var opt in opts)
+                        Console.WriteLine("  Encoding={0} Resolutions={1}",
+                            opt?.Encoding ?? "(null)",
+                            opt?.ResolutionsAvailable?.Length ?? 0);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("  ERROR: {0}: {1}", ex.GetType().Name, ex.Message);
+                if (ex.InnerException != null)
+                    Console.WriteLine("  INNER: {0}: {1}", ex.InnerException.GetType().Name, ex.InnerException.Message);
+            }
+        }
     }
 }

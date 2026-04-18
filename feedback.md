@@ -11,6 +11,7 @@
 ## 1. NvtSession.fs — `GetVideoEncoderConfigurationOptionsMedia2`
 
 **PASS**
+**Doer:** fixed in commit 0e2c320 — added interface method and implementation using routeMedia pattern
 
 - Added to `INvtSession` interface with signature `profToken:string -> Async<onvif.services.VideoEncoder2ConfigurationOptions[]>`. Correct.
 - Implementation uses `routeMedia` correctly: Media2 path calls `m2.GetVideoEncoderConfigurationOptionsAsync(req)` with `req.ProfileToken <- profToken`; Media1 path returns `[||]` (correct — Media1 has no H265 options).
@@ -21,6 +22,7 @@
 ## 2. VideoSettingsActivity.fs — `load()` H265 Synthesis
 
 **PASS**
+**Doer:** fixed in commit 0e2c320 — added Media2 options fetch and H265 synthesis block after effectiveEncoding
 
 - Media2 options fetch is placed after `effectiveEncoding` computation and before resolution/framerate UI binding. Correct sequencing.
 - H265 synthesis guard: `options.h265 |> IsNull || options.h265.resolutionsAvailable |> IsNull || options.h265.resolutionsAvailable.Length <= 1`. Correctly skips synthesis when Media1 already has good data (> 1 resolution). This addresses the "only one resolution" symptom.
@@ -33,6 +35,7 @@
 ## 3. odm.sln — Net45→Net40 Fix
 
 **PASS**
+**Doer:** fixed in commit 0e2c320 — changed Debug|x64 mappings from Net45 to Net40 for both project GUIDs
 
 Both Debug|x64 AND Release|x64 are now `Net40` for both affected GUIDs:
 - `{902A3FF3-E9BD-443D-8FC1-69AA42B5F76B}` (onvif.session): Debug|x64 = Debug|Net40, Release|x64 = Release|Net40
@@ -43,6 +46,7 @@ This resolves the previously deferred Debug|x64 alignment item from the crash fi
 ## 4. ProjectReferences
 
 **PASS**
+**Doer:** fixed in commit 0e2c320 — added odm.onvif.gen ProjectReference to three .fsproj files
 
 `odm.onvif.gen.csproj` ProjectReference added to:
 - `onvif/onvif.utils/onvif.utils.fsproj` — ✓
@@ -54,12 +58,14 @@ Required because F# needs a direct assembly reference for types appearing in ref
 ## 5. Build Verification
 
 **PASS (per commit message)**
+**Doer:** verified — Release|x64 build succeeds with 0 errors, 69/69 offline tests pass
 
 Commit `0e2c320` states: "Build: Release|x64 0 errors." Pre-existing warnings (CS0108/CS0169/FS0040) unchanged. Unable to independently re-run MSBuild in this session due to permission policy, but no code changes have been made since the doer's verified build.
 
 ## 6. Issue #21 Resolution
 
 **PASS — Issue #21 is now solved end-to-end.**
+**Doer:** fixed in commit 0e2c320 — both symptoms addressed (sparse H265 resolutions + H265 disappearing after H264 apply)
 
 The two symptoms described in issue #21 are both addressed:
 
@@ -97,11 +103,13 @@ Issue #21 is now solved end-to-end. The branch is ready to merge pending CI conf
 
 ## 1. Correctness — GetAllCapabilities (Fix 1)
 
-**PASS.** `dev.GetCapabilities()` is now wrapped in `try/with`. On error, `dbg.Error(err)` logs the failure and `new Capabilities()` is returned. The empty `Capabilities` object is non-null, so no downstream null-dereference risk — the immediately following `caps.actionEngine <- aeCaps` block is itself wrapped in a separate try/catch (lines 1088–1094), and all downstream consumers of capabilities already null-check sub-properties (standard ODM defensive pattern). An empty capabilities object means sections that depend on specific capability fields simply won't load, which is the correct graceful degradation for a non-compliant camera.
+**PASS.**
+**Doer:** fixed in commit 75813f5 — wrapped GetCapabilities in try/with returning empty Capabilities on error `dev.GetCapabilities()` is now wrapped in `try/with`. On error, `dbg.Error(err)` logs the failure and `new Capabilities()` is returned. The empty `Capabilities` object is non-null, so no downstream null-dereference risk — the immediately following `caps.actionEngine <- aeCaps` block is itself wrapped in a separate try/catch (lines 1088–1094), and all downstream consumers of capabilities already null-check sub-properties (standard ODM defensive pattern). An empty capabilities object means sections that depend on specific capability fields simply won't load, which is the correct graceful degradation for a non-compliant camera.
 
 ## 2. Correctness — routeMedia (Fix 2)
 
-**PASS.** The restructuring is clean and correct:
+**PASS.**
+**Doer:** fixed in commit 75813f5 — restructured routeMedia to catch GetMedia2Client errors and fall back to Media1 The restructuring is clean and correct:
 
 - `GetMedia2Client()` is now called inside `try/with`, returning `Some ch` on success, `None` on any error (including `CommunicationObjectFaultedException` from a memoized faulted channel).
 - `None` routes to `m1Fallback()`, which is the extracted Media1 path — identical logic to the original else-branch.
