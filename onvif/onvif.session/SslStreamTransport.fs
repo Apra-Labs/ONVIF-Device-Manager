@@ -27,22 +27,21 @@ module internal SslStreamHelpers =
             i <- i + 1
         pos
 
+    let readAll (ssl: SslStream) =
+        let buf = Array.zeroCreate 65536
+        use ms = new MemoryStream()
+        let mutable n = ssl.Read(buf, 0, buf.Length)
+        while n > 0 do
+            ms.Write(buf, 0, n)
+            n <- ssl.Read(buf, 0, buf.Length)
+        ms.ToArray()
+
     let getHeaderValue (headerBlock: string) (name: string) =
         let prefix = name + ":"
         headerBlock.Split([| "\r\n" |], StringSplitOptions.None)
         |> Array.tryFind (fun l -> l.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
         |> Option.map (fun l -> l.Substring(prefix.Length).Trim())
 
-    let stripDoctype (data: byte[]) =
-        // Remove <!DOCTYPE ...> declarations to prevent XmlReader from loading external DTDs.
-        // Some cameras (e.g. Milesight Analytics) include DOCTYPE in SOAP response bodies,
-        // causing XmlReader to look for XMLSchema.dtd on disk and fail with FileNotFoundException.
-        let xml = Encoding.UTF8.GetString(data)
-        let cleaned = Regex.Replace(xml, @"<!DOCTYPE[^>]*(?:>|(?:\[.*?\]>))", "", RegexOptions.Singleline)
-        if cleaned.Length = xml.Length then data  // no DOCTYPE found, return original bytes
-        else Encoding.UTF8.GetBytes(cleaned)
-
-    /// Decodes a complete chunked-encoded body buffer (operates on bytes already in memory).
     let decodeChunked (data: byte[]) =
         use ms = new MemoryStream()
         let mutable pos = 0
@@ -67,14 +66,21 @@ module internal SslStreamHelpers =
                     pos <- dataStart + size + 2
         ms.ToArray()
 
+    let stripDoctype (data: byte[]) =
+        // Remove <!DOCTYPE ...> declarations to prevent XmlReader from loading external DTDs.
+        // Some cameras (e.g. Milesight Analytics) include DOCTYPE in SOAP response bodies,
+        // causing XmlReader to look for XMLSchema.dtd on disk and fail with FileNotFoundException.
+        let xml = Encoding.UTF8.GetString(data)
+        let cleaned = Regex.Replace(xml, @"<!DOCTYPE[^>]*(?:>|(?:\[.*?\]>))", "", RegexOptions.Singleline)
+        if cleaned.Length = xml.Length then data  // no DOCTYPE found, return original bytes
+        else Encoding.UTF8.GetBytes(cleaned)
+
     type HttpResponse = {
         StatusCode: int
         ContentType: string
         Body: byte[]
     }
 
-    /// Parses a complete HTTP response from a byte buffer (used when the full response
-    /// has already been read into memory, e.g. in unit tests or Connection: close responses).
     let parseResponse (data: byte[]) =
         let sep = findCrLfCrLf data
         if sep < 0 then failwith "Invalid HTTP response: no header terminator found"
@@ -101,158 +107,43 @@ module internal SslStreamHelpers =
 
         { StatusCode = statusCode; ContentType = contentType; Body = body }
 
-    /// Creates a new TLS connection to the given URI.
-    let createConnection (uri: Uri) (timeoutMs: int) : TcpClient * SslStream =
-        let host = uri.Host
-        let port = if uri.IsDefaultPort then 443 else uri.Port
-        let tcp = new TcpClient()
-        tcp.Connect(host, port)
-        tcp.ReceiveTimeout <- timeoutMs
-        tcp.SendTimeout <- timeoutMs
-        let ssl = new SslStream(tcp.GetStream(), false,
-                      RemoteCertificateValidationCallback(fun _ _ _ _ -> true))
-        // SslProtocols.Tls12 = 0xC00 = 3072; enum value exists at runtime on .NET 4.0+
-        // but the named constant was added to the BCL metadata only in .NET 4.5.
-        ssl.AuthenticateAsClient(host, null, enum<SslProtocols> 3072, false)
-        (tcp, ssl)
-
-    /// Sends an HTTP POST request over an existing SslStream (keep-alive).
-    /// Headers and body are written in a single ssl.Write() call to avoid
-    /// gSOAP cameras stalling on fragmented TLS records.
-    let sendOnSslStream (ssl: SslStream) (uri: Uri) (bodyBytes: byte[]) (contentType: string) =
+    let sslSend (uri: Uri) (bodyBytes: byte[]) (contentType: string) (timeoutMs: int) =
         let host = uri.Host
         let port = if uri.IsDefaultPort then 443 else uri.Port
         let hostHeader = if port = 443 then host else sprintf "%s:%d" host port
         let path = if String.IsNullOrEmpty(uri.PathAndQuery) then "/" else uri.PathAndQuery
+
         let headerStr =
             sprintf "POST %s HTTP/1.1\r\nHost: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n"
                 path hostHeader contentType bodyBytes.Length
         let headerBytes = Encoding.ASCII.GetBytes(headerStr)
+
+        use tcp = new TcpClient()
+        tcp.Connect(host, port)
+        tcp.ReceiveTimeout <- timeoutMs
+        tcp.SendTimeout <- timeoutMs
+
+        // TODO(security): TLS certificate validation is intentionally disabled to support
+        // self-signed camera certificates, which is the norm on LAN/IP-camera deployments.
+        // This is a MITM vector on untrusted networks — credentials can be intercepted.
+        // Issue #19 tracks adding a configurable trust policy (per-device or global setting).
+        use ssl = new SslStream(tcp.GetStream(), false,
+                      RemoteCertificateValidationCallback(fun _ _ _ _ -> true))
+        // SslProtocols.Tls12 = 0xC00 = 3072; enum value exists at runtime on .NET 4.0+
+        // but the named constant was added to the BCL metadata only in .NET 4.5.
+        // Cast the raw integer to avoid a compile-time reference to the 4.5-only symbol.
+        ssl.AuthenticateAsClient(host, null, enum<SslProtocols> 3072, false)
+
         // Single ssl.Write() call: headers and body must arrive in one TLS record.
+        // gSOAP cameras (2.8.x firmware) stall indefinitely when the TLS payload is
+        // fragmented across two records, which is what .NET's HttpWebRequest does by default.
         let full = Array.zeroCreate (headerBytes.Length + bodyBytes.Length)
         Buffer.BlockCopy(headerBytes, 0, full, 0, headerBytes.Length)
         Buffer.BlockCopy(bodyBytes, 0, full, headerBytes.Length, bodyBytes.Length)
         ssl.Write(full)
         ssl.Flush()
 
-    /// Reads an HTTP response from an open SslStream.
-    /// Uses Content-Length or chunked Transfer-Encoding to read exactly the right
-    /// number of bytes — does not rely on connection close to detect end of body,
-    /// so the connection can be reused for subsequent requests.
-    let readHttpResponse (ssl: SslStream) : HttpResponse =
-        // Phase 1: accumulate bytes until we find the header terminator \r\n\r\n
-        let accum = new MemoryStream()
-        let readBuf = Array.zeroCreate<byte> 4096
-        let mutable headerEnd = -1
-        while headerEnd < 0 do
-            let n = ssl.Read(readBuf, 0, readBuf.Length)
-            if n <= 0 then raise (IOException("SSL connection closed before HTTP headers received"))
-            accum.Write(readBuf, 0, n)
-            let sep = findCrLfCrLf (accum.ToArray())
-            if sep >= 0 then headerEnd <- sep
-
-        let accumulated = accum.ToArray()
-        let headerText = Encoding.ASCII.GetString(accumulated, 0, headerEnd)
-        // Bytes past \r\n\r\n already read from the stream
-        let preloaded = Array.sub accumulated (headerEnd + 4) (accumulated.Length - headerEnd - 4)
-
-        let statusCode =
-            let statusLine = headerText.Split([| "\r\n" |], StringSplitOptions.None).[0]
-            Int32.Parse(statusLine.Split(' ').[1])
-
-        // Phase 2: read body based on Content-Length or chunked encoding
-        let isChunked =
-            match getHeaderValue headerText "Transfer-Encoding" with
-            | Some te -> te.IndexOf("chunked", StringComparison.OrdinalIgnoreCase) >= 0
-            | None -> false
-
-        let rawBody =
-            if isChunked then
-                // Incrementally decode chunked body from the open stream.
-                // Uses a ResizeArray as a sliding buffer; preloaded bytes seed it.
-                let buffer = ResizeArray<byte>(preloaded)
-                use result = new MemoryStream()
-
-                let readMore () =
-                    let tmp = Array.zeroCreate<byte> 4096
-                    let n = ssl.Read(tmp, 0, tmp.Length)
-                    if n > 0 then buffer.AddRange(Array.sub tmp 0 n)
-                    n > 0
-
-                // Read a CRLF-terminated line from buffer, fetching more bytes as needed
-                let readLine () =
-                    let mutable lineEnd = -1
-                    while lineEnd < 0 do
-                        for i in 0 .. buffer.Count - 2 do
-                            if lineEnd < 0 && buffer.[i] = 0x0Duy && buffer.[i+1] = 0x0Auy then
-                                lineEnd <- i
-                        if lineEnd < 0 then
-                            if not (readMore()) then raise (IOException("Connection closed reading chunked body"))
-                    let line = Encoding.ASCII.GetString(buffer.ToArray(), 0, lineEnd)
-                    buffer.RemoveRange(0, lineEnd + 2)
-                    line
-
-                // Read exactly n bytes from buffer, fetching more bytes as needed
-                let readBytes (n: int) =
-                    while buffer.Count < n do
-                        if not (readMore()) then raise (IOException("Connection closed reading chunk data"))
-                    let data = Array.sub (buffer.ToArray()) 0 n
-                    buffer.RemoveRange(0, n)
-                    data
-
-                let mutable cont = true
-                while cont do
-                    let sizeLine = readLine().Trim()
-                    // Ignore chunk extensions (after ';')
-                    let size = Convert.ToInt32(sizeLine.Split(';').[0].Trim(), 16)
-                    if size = 0 then
-                        cont <- false
-                        // Drain any trailing headers until the empty terminating line
-                        let mutable draining = true
-                        while draining do
-                            if readLine() = "" then draining <- false
-                    else
-                        let chunkData = readBytes size
-                        result.Write(chunkData, 0, chunkData.Length)
-                        readBytes 2 |> ignore  // trailing CRLF after each chunk
-
-                result.ToArray()
-            else
-                match getHeaderValue headerText "Content-Length" with
-                | Some lenStr ->
-                    let contentLen = Int32.Parse(lenStr.Trim())
-                    if preloaded.Length >= contentLen then
-                        Array.sub preloaded 0 contentLen
-                    else
-                        use ms = new MemoryStream(contentLen)
-                        ms.Write(preloaded, 0, preloaded.Length)
-                        let mutable remaining = contentLen - preloaded.Length
-                        let tmp = Array.zeroCreate<byte> 4096
-                        while remaining > 0 do
-                            let toRead = min remaining tmp.Length
-                            let n = ssl.Read(tmp, 0, toRead)
-                            if n <= 0 then raise (IOException("Connection closed before body complete"))
-                            ms.Write(tmp, 0, n)
-                            remaining <- remaining - n
-                        ms.ToArray()
-                | None ->
-                    // No Content-Length and not chunked: fall back to reading until close.
-                    // This handles non-compliant responses; connection cannot be reused after this.
-                    use ms = new MemoryStream()
-                    ms.Write(preloaded, 0, preloaded.Length)
-                    let tmp = Array.zeroCreate<byte> 4096
-                    let mutable n = ssl.Read(tmp, 0, tmp.Length)
-                    while n > 0 do
-                        ms.Write(tmp, 0, n)
-                        n <- ssl.Read(tmp, 0, tmp.Length)
-                    ms.ToArray()
-
-        let contentType =
-            match getHeaderValue headerText "Content-Type" with
-            | Some ct -> ct
-            | None -> "application/soap+xml; charset=utf-8"
-
-        { StatusCode = statusCode; ContentType = contentType; Body = stripDoctype rawBody }
+        parseResponse (readAll ssl)
 
 
 /// WCF IRequestChannel that sends SOAP via raw TcpClient + SslStream.
@@ -265,44 +156,6 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
     // (NvtSession.SetupUserNameToken adds SecurityUserNameToken here, then
     // CustomBehavior.BeforeSendRequest reads it back).
     let channelParams = new ChannelParameterCollection()
-
-    // Persistent SSL connection — reused across SOAP calls to avoid per-call TLS handshakes.
-    let mutable persistentConn: (TcpClient * SslStream) option = None
-    let connLock = obj()
-    // Serializes the entire send/receive cycle so that concurrent BeginRequest calls
-    // on the same channel do not race on the shared SslStream.
-    let requestLock = obj()
-
-    /// Returns the existing connection if the TCP socket still reports connected;
-    /// otherwise disposes the stale connection and creates a fresh TLS session.
-    let getOrCreateConnection (timeoutMs: int) =
-        lock connLock (fun () ->
-            match persistentConn with
-            | Some (tcp, _) when tcp.Connected ->
-                persistentConn.Value
-            | Some (tcp, ssl) ->
-                try (ssl :> IDisposable).Dispose() with _ -> ()
-                try (tcp :> IDisposable).Dispose() with _ -> ()
-                persistentConn <- None
-                let conn = SslStreamHelpers.createConnection via timeoutMs
-                persistentConn <- Some conn
-                conn
-            | None ->
-                let conn = SslStreamHelpers.createConnection via timeoutMs
-                persistentConn <- Some conn
-                conn
-        )
-
-    /// Clears and disposes the stored persistent connection (called on I/O error).
-    let clearConnection () =
-        lock connLock (fun () ->
-            match persistentConn with
-            | Some (tcp, ssl) ->
-                try (ssl :> IDisposable).Dispose() with _ -> ()
-                try (tcp :> IDisposable).Dispose() with _ -> ()
-                persistentConn <- None
-            | None -> ()
-        )
 
     static let completedAr (callback: AsyncCallback) (state: obj) : IAsyncResult =
         let tcs = new TaskCompletionSource<bool>(state)
@@ -319,51 +172,33 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
             if String.IsNullOrEmpty(action) then encoder.ContentType
             else sprintf "%s; action=\"%s\"" encoder.ContentType action
 
-        // Remove Action mustUnderstand header before serialization (non-WS-Addressing channels only).
-        // gSOAP camera firmware (2.8.x) returns HTTP 500 / MustUnderstand fault for any
-        // WS-Addressing header it does not recognise.  WS-Addressing channels (Events/Metadata)
-        // keep the header because cameras use it for operation dispatch.
-        if not wsAddressing then
-            let actionIdx =
-                message.Headers
-                |> Seq.tryFindIndex (fun h -> h.Name = "Action" && h.MustUnderstand)
-            match actionIdx with
-            | Some i -> message.Headers.RemoveAt(i)
-            | None -> ()
+        // Serialize
+        let buf = encoder.WriteMessage(message, Int32.MaxValue, bufMgr, 0)
+        let rawBodyBytes = Array.init buf.Count (fun i -> buf.Array.[buf.Offset + i])
+        bufMgr.ReturnBuffer(buf.Array)
 
-        // Serialize — lock on encoder because it is shared across all channels from the same
-        // SslStreamChannelFactory (the factory holds one MessageEncoder instance and passes
-        // it to every channel it creates).  Without this lock, concurrent RequestCore calls
-        // from different channels race on the encoder's internal XmlDictionaryWriter pool,
-        // producing "The Write method cannot be called when another write operation is pending."
+        // Strip <Action s:mustUnderstand="1"> from the outgoing SOAP header, but only
+        // for non-WS-Addressing channels. gSOAP camera firmware (2.8.x) returns HTTP 500
+        // with a MustUnderstand SOAP fault for any WS-Addressing header it does not recognise.
+        // However, WS-Addressing channels (Events/Metadata) use the Action header for
+        // operation dispatch — stripping it causes cameras to return a dispatch error.
         let bodyBytes =
-            lock encoder (fun () ->
-                let buf = encoder.WriteMessage(message, Int32.MaxValue, bufMgr, 0)
-                let bytes = Array.init buf.Count (fun i -> buf.Array.[buf.Offset + i])
-                bufMgr.ReturnBuffer(buf.Array)
-                bytes)
+            if wsAddressing then
+                rawBodyBytes  // WS-Addressing channels need Action header for operation dispatch
+            else
+                let xml = Encoding.UTF8.GetString(rawBodyBytes)
+                // Match the Action open tag (which may span to >) then the content then the close tag.
+                // The open tag ends with >, the content is the action URI, the close tag follows.
+                // Pattern uses non-verbatim string: \" for quote in the pattern.
+                let actionPattern = "<(?:[a-zA-Z0-9_]+:)?Action\\s[^>]*mustUnderstand=\"1\"[^>]*>.*?</(?:[a-zA-Z0-9_]+:)?Action>"
+                let stripped = Regex.Replace(xml, actionPattern, "", RegexOptions.Singleline)
+                // If the header block is now empty, remove it entirely
+                let headerPattern = "<(?:[a-zA-Z0-9_]+:)?Header\\s*>\\s*</(?:[a-zA-Z0-9_]+:)?Header>"
+                let stripped2 = Regex.Replace(stripped, headerPattern, "", RegexOptions.Singleline)
+                Encoding.UTF8.GetBytes(stripped2)
 
-        // Send via persistent SslStream; retry once on I/O failure (connection may have
-        // gone stale between calls — one reconnect is enough).
-        // Serialize the entire send/receive cycle on requestLock: SslStream permits only one
-        // pending write and one pending read at a time, so concurrent channels sharing this
-        // persistent connection must not overlap here or SslStream throws
-        // "The Read/Write method cannot be called when another ... operation is pending."
-        let mutable retried = false
-        let mutable respOpt: SslStreamHelpers.HttpResponse option = None
-        lock requestLock (fun () ->
-            while respOpt.IsNone do
-                let (_, ssl) = getOrCreateConnection timeoutMs
-                try
-                    SslStreamHelpers.sendOnSslStream ssl via bodyBytes contentType
-                    respOpt <- Some (SslStreamHelpers.readHttpResponse ssl)
-                with
-                | ex when (ex :? IOException || ex :? SocketException) ->
-                    clearConnection()
-                    if retried then raise ex
-                    retried <- true)
-
-        let resp = respOpt.Value
+        // Send via raw SslStream
+        let resp = SslStreamHelpers.sslSend via bodyBytes contentType timeoutMs
         if resp.StatusCode >= 400 then
             System.Diagnostics.Debug.WriteLine(sprintf "SslStreamTransport: HTTP %d from %O" resp.StatusCode via)
 
@@ -374,8 +209,7 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         let respBuf = bufMgr.TakeBuffer(resp.Body.Length)
         Buffer.BlockCopy(resp.Body, 0, respBuf, 0, resp.Body.Length)
         let msg =
-            lock encoder (fun () ->
-                encoder.ReadMessage(ArraySegment<byte>(respBuf, 0, resp.Body.Length), bufMgr, resp.ContentType))
+            encoder.ReadMessage(ArraySegment<byte>(respBuf, 0, resp.Body.Length), bufMgr, resp.ContentType)
         // Mark all mustUnderstand response headers as understood before returning to WCF.
         // gSOAP cameras include Action mustUnderstand="1" in their response envelope;
         // WCF's ServiceChannel.HandleReply throws a FaultException for any mustUnderstand
@@ -424,14 +258,9 @@ type SslStreamRequestChannel(factory: ChannelManagerBase, encoder: MessageEncode
         else
             base.GetProperty<'T>()
 
-    override _.OnAbort() =
-        clearConnection()
-
+    override _.OnAbort() = ()
     override _.OnOpen(_) = ()
-
-    override _.OnClose(_) =
-        clearConnection()
-
+    override _.OnClose(_) = ()
     override _.OnBeginOpen(_, callback, state) = completedAr callback state
     override _.OnEndOpen(_) = ()
     override _.OnBeginClose(_, callback, state) = completedAr callback state

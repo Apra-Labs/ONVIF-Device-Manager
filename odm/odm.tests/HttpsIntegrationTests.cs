@@ -193,46 +193,6 @@ namespace odm.tests
 
         [TestMethod]
         [TestCategory("Integration")]
-        [TestCategory("HttpsIntegration")]
-        public void ConcurrentSoapCalls_DoNotRaceOnEncoder()
-        {
-            // Reproduces "The Write method cannot be called when another write operation is pending."
-            // Fires three SOAP calls simultaneously on the same session. Because
-            // SslStreamChannelFactory shares one MessageEncoder across all channels,
-            // concurrent RequestCore invocations would race on the encoder's internal
-            // XmlDictionaryWriter pool without synchronization.
-            const int iterations = 5;
-            for (int i = 0; i < iterations; i++)
-            {
-                var t1 = System.Threading.Tasks.Task.Run(() => Run(_session.GetSystemDateAndTime()));
-                var t2 = System.Threading.Tasks.Task.Run(() => Run(_session.GetSystemDateAndTime()));
-                var t3 = System.Threading.Tasks.Task.Run(() => Run(_session.GetCapabilities(null)));
-
-                try
-                {
-                    System.Threading.Tasks.Task.WaitAll(new System.Threading.Tasks.Task[] { t1, t2, t3 }, 60000);
-                }
-                catch (AggregateException ae)
-                {
-                    foreach (var inner in ae.Flatten().InnerExceptions)
-                    {
-                        if (inner is InvalidOperationException &&
-                            inner.Message.IndexOf("Write method", StringComparison.OrdinalIgnoreCase) >= 0)
-                        {
-                            Assert.Fail("Concurrent-write race hit: " + inner.Message);
-                        }
-                    }
-                    throw;
-                }
-
-                Assert.IsNotNull(t1.Result, "GetSystemDateAndTime(1) returned null on iteration " + i);
-                Assert.IsNotNull(t2.Result, "GetSystemDateAndTime(2) returned null on iteration " + i);
-                Assert.IsNotNull(t3.Result, "GetCapabilities returned null on iteration " + i);
-            }
-        }
-
-        [TestMethod]
-        [TestCategory("Integration")]
         public void GetStreamUri_ReturnsValidUri()
         {
             var profiles = Run(_session.GetProfiles());
