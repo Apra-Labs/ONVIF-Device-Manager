@@ -9,7 +9,7 @@
     <OutputType>Library</OutputType>
     <RootNamespace>odm.onvif.extensions</RootNamespace>
     <AssemblyName>odm.onvif.extensions</AssemblyName>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <Name>odm.onvif.extensions</Name>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
