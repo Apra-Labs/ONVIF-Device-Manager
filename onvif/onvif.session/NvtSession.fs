@@ -1076,10 +1076,15 @@ namespace odm.core
                 })
                 fun()->comp
 
-            let GetAllCapabilities = 
+            let GetAllCapabilities =
                 let comp = Async.Memoize(async{
                     let! dev = GetDeviceClient()
-                    let! caps = dev.GetCapabilities()
+                    let! caps = async{
+                        try return! dev.GetCapabilities()
+                        with err ->
+                            dbg.Error(err)
+                            return new Capabilities()
+                    }
                     try
                         let! ae = GetActionEngineClient()
                         let! aeCaps = ae.GetServiceCapabilities()
@@ -1126,21 +1131,32 @@ namespace odm.core
                 fun()->comp
 
             /// Routes a Media operation: try typed Media2 first, then fall back to Media1.
+            /// Any error from GetMedia2Client (channel creation, faulted channel, etc.) or from
+            /// the Media2 work itself causes silent fallback to Media1. This tolerates cameras
+            /// that advertise Media2 but reject individual Media2 SOAP actions (e.g. Milesight
+            /// firmware that maps Media2 xAddr to device_service and returns HTTP 400).
             let routeMedia
                     (media2Work: onvif.services.Media2 -> Async<'T>)
-                    (media1Work: IMediaAsync -> Async<'T>) : Async<'T> = async {
-                let! m2 = GetMedia2Client()
-                if m2 |> NotNull then
-                    try  return! media2Work m2
-                    with _ ->
-                        let! m1 = GetMediaClient()
-                        if m1 |> NotNull then return! media1Work m1
-                        else return raise (System.InvalidOperationException("No Media service available"))
-                else
+                    (media1Work: IMediaAsync -> Async<'T>) : Async<'T> =
+                let m1Fallback() = async{
                     let! m1 = GetMediaClient()
                     if m1 |> NotNull then return! media1Work m1
                     else return raise (System.InvalidOperationException("No Media service available"))
-            }
+                }
+                async {
+                    let! m2 = async{
+                        try
+                            let! ch = GetMedia2Client()
+                            return if ch |> NotNull then Some ch else None
+                        with _ -> return None
+                    }
+                    match m2 with
+                    | Some ch ->
+                        try  return! media2Work ch
+                        with _ -> return! m1Fallback()
+                    | None ->
+                        return! m1Fallback()
+                }
 
             let MediaGetVideoSources = 
                 let comp = Async.Memoize(async{
