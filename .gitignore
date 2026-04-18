@@ -1,0 +1,29 @@
+# Build outputs
+**/bin/
+**/obj/
+build/
+build_output.txt
+
+# Visual Studio
+*.user
+*.suo
+.vs/
+*.cache
+*.ncb
+*.sdf
+*.opensdf
+*_i.c
+*_p.c
+*.ilk
+*.meta
+*.pdb
+*.iobj
+*.ipdb
+
+# Claude Code / fleet
+.claude/
+permissions.json
+
+# Lib docs
+libs/*/doc/
+
