@@ -117,6 +117,11 @@
       <Project>{3cb4f764-648f-4aa3-9e85-91992337d3ea}</Project>
       <Private>True</Private>
     </ProjectReference>
+    <ProjectReference Include="..\odm.onvif.gen\odm.onvif.gen.csproj">
+      <Name>odm.onvif.gen</Name>
+      <Project>{A5CB567D-818E-4A1E-987A-DB8159EC23A1}</Project>
+      <Private>True</Private>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="..\~cfg\AssemblyInfo.global.fs">

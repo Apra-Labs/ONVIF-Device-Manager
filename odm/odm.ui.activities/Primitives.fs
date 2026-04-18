@@ -30,7 +30,7 @@
                 let presenter = container.Resolve<IViewPresenter>()
                 presenter.ShowView(view)
                 //}
-            )
+            ).Task |> Async.AwaitTask
         }
     end
 

@@ -9,7 +9,7 @@
     <OutputType>Library</OutputType>
     <RootNamespace>odm_ui_activities</RootNamespace>
     <AssemblyName>odm.ui.activities</AssemblyName>
-    <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <TargetFrameworkProfile>
     </TargetFrameworkProfile>
     <Name>odm-ui-activities</Name>
