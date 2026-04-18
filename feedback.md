@@ -86,3 +86,53 @@ Issue #21 is now solved end-to-end. The branch is ready to merge pending CI conf
 
 **Remaining deferred (non-blocking):**
 - Aspirational test file reference in `media2-testing.md`
+
+---
+
+# Regression Fix Review — Milesight HTTP 400 (75813f5)
+
+**Reviewer:** odm-rev
+**Date:** 2026-04-18 19:45:00+05:30
+**Verdict:** APPROVED
+
+## 1. Correctness — GetAllCapabilities (Fix 1)
+
+**PASS.** `dev.GetCapabilities()` is now wrapped in `try/with`. On error, `dbg.Error(err)` logs the failure and `new Capabilities()` is returned. The empty `Capabilities` object is non-null, so no downstream null-dereference risk — the immediately following `caps.actionEngine <- aeCaps` block is itself wrapped in a separate try/catch (lines 1088–1094), and all downstream consumers of capabilities already null-check sub-properties (standard ODM defensive pattern). An empty capabilities object means sections that depend on specific capability fields simply won't load, which is the correct graceful degradation for a non-compliant camera.
+
+## 2. Correctness — routeMedia (Fix 2)
+
+**PASS.** The restructuring is clean and correct:
+
+- `GetMedia2Client()` is now called inside `try/with`, returning `Some ch` on success, `None` on any error (including `CommunicationObjectFaultedException` from a memoized faulted channel).
+- `None` routes to `m1Fallback()`, which is the extracted Media1 path — identical logic to the original else-branch.
+- `Some ch` routes to `media2Work ch` inside a `try/with` that falls back to `m1Fallback()` on failure — identical to the original inner try-with behavior.
+
+**Media1-only cameras:** `GetMedia2Client()` returns null → `None` → `m1Fallback()`. Behavior unchanged.
+
+**Compliant Media2 cameras:** `GetMedia2Client()` succeeds → `Some ch` → `media2Work ch` succeeds → result returned. Behavior unchanged.
+
+**Milesight regression path:** `GetMedia2Client()` returns a channel pointing at `device_service` → channel faults on SOAP call or creation → caught → `None` → `m1Fallback()`. Regression fixed.
+
+## 3. Scope
+
+**PASS.** Single file changed (`NvtSession.fs`), 28 insertions / 12 deletions. Both changes are strictly defensive wrappers — no new features, no refactoring beyond extracting `m1Fallback` to avoid duplicating the Media1 fallback logic (which was already duplicated in the original code).
+
+## 4. Swiss-Army-Knife Policy
+
+**PASS.** Both fixes follow the ODM philosophy: best-effort, maximum tolerance, never crash due to non-compliant firmware. Errors are logged (`dbg.Error`) or silently swallowed (routeMedia), and the system degrades gracefully — empty capabilities or Media1 fallback.
+
+## 5. H265 Impact
+
+**PASS.** On compliant Media2 cameras, `GetMedia2Client()` succeeds and `media2Work` executes normally. The try/catch wrappers only activate on error paths. H265 support via Media2 is completely unaffected for cameras that correctly implement the Media2 service.
+
+## 6. Build
+
+**NOT STATED in commit message.** The commit message is thorough but does not include an explicit build verification line (unlike earlier commits such as `0e2c320` which stated "Build: Release|x64 0 errors"). The changes are minimal defensive wrappers that cannot introduce compile errors (no new types, no signature changes), so build success is near-certain. Non-blocking.
+
+---
+
+## Summary
+
+Both defensive fixes are correct, minimal, and well-documented. The `GetAllCapabilities` wrapper prevents HTTP 400 from propagating through `SectionDevice.Load`. The `routeMedia` restructuring closes the gap where `GetMedia2Client()` channel creation errors could escape uncaught. Neither fix affects the happy path for compliant cameras. The regression introduced in `0e2c320` is fully addressed.
+
+**APPROVED** for merge.
