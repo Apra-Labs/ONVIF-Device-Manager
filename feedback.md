@@ -109,3 +109,28 @@ All three phases are complete and meet their "done" criteria. The typed Media2 p
 Build verification remains partial due to tool constraints, but doer evidence across three verify cycles is strong.
 
 **Sprint 8 — Media2 Typed Generation is APPROVED for merge to `development`.**
+
+---
+
+# Review: WSDL Consolidation (c88ff31) — Structural Check
+
+**Reviewer:** Claude Opus 4.6 (fleet member)
+**Date:** 2026-04-18
+**Commit:** `c88ff31` `refactor: consolidate WSDLs to onvif/wsdl/ — remove duplicate schemas/ folder`
+
+## Verdict: APPROVED (with fix applied)
+
+| # | Check | Result |
+|---|-------|--------|
+| 1 | 9 WSDL/schema files moved to `onvif/wsdl/`, old `onvif/odm.onvif.gen/wsdl/` removed | PASS — 9 files + .gitkeep present; old dir gone |
+| 2 | `onvif/onvif.services/schemas/` fully deleted | PASS — directory does not exist |
+| 3 | `onvif/onvif.services/Service References/services/` untouched | PASS — all files intact |
+| 4 | `odm.onvif.gen.csproj` TargetFramework = net48 | **FAIL (fixed)** — was `net45`, corrected to `net48` in commit `15f0c4e` |
+
+### Issue Found & Fixed
+
+The `TargetFramework` in `onvif/odm.onvif.gen/odm.onvif.gen.csproj` was set to `net45` instead of `net48`. This would produce build output in a `net45` folder and target the wrong .NET Framework version. Fixed in follow-up commit `15f0c4e` on this branch.
+
+### Build Verification
+
+Pending — `dotnet build` execution was blocked by permission policy. The csproj change is a single-line fix (`net45` -> `net48`) and is correct by inspection.
