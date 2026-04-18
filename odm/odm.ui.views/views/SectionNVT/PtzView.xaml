@@ -818,9 +818,11 @@
 		</Grid>
 
 		<Border CornerRadius="4" Background="Black" Style="{StaticResource ErrorMessageStyle}" HorizontalAlignment="Center" VerticalAlignment="Center" BorderThickness="2" BorderBrush="Red">
-			<TextBlock Name="captionErrorMessage"
-                       Margin="3" Foreground="Red"
-                       FontSize="18" FontWeight="Bold" Background="Black"/>
+			<TextBox Name="captionErrorMessage"
+                     Margin="3" Foreground="Red"
+                     FontSize="18" FontWeight="Bold" Background="Black"
+                     IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0"
+                     IsTabStop="False" Cursor="IBeam"/>
 		</Border>
 
 	</Grid>
