@@ -18,10 +18,10 @@
     { "id": "2.4", "phase": 2, "step": "Replace 8 per-operation if/else forks with routeMedia calls", "type": "work", "status": "completed", "notes": "Only GetVideoEncoderConfigurationsMedia2 had a GetMedia2Client if/else fork; refactored to use routeMedia with Media1 fallback (GetVideoEncoderConfigurations)" },
     { "id": "2.5", "phase": 2, "step": "Remove IMedia2 (raw), Media2GetXxxRequest, Media2EncoderOptions, Media2XmlParser from onvif.services.cs", "type": "work", "status": "completed", "notes": "Removed IMedia2 interface and Media2GetVideoEncoderConfigurationsRequest class from onvif.services.cs; no Media2EncoderOptions or Media2XmlParser existed in this branch" },
     { "id": "V2",  "phase": 2, "step": "VERIFY 2 — Release x64 build + all 54 offline unit tests pass; push", "type": "verify", "status": "completed", "notes": "Release x64: 0 errors (warnings only). 69 offline tests passed (TestCategory!=Integration). Also fixed InvokeAsync compat in SaveFileActivity.fs and OpenFileActivity.fs." },
-    { "id": "3.1", "phase": 3, "step": "Delete Media2XmlParserTests.cs; update Media2IntegrationTests.cs", "type": "work", "status": "pending" },
-    { "id": "3.2", "phase": 3, "step": "Rewrite docs/features/media2-routing.md for typed approach", "type": "work", "status": "pending" },
-    { "id": "3.3", "phase": 3, "step": "Add Media2 Service Detection section to docs/architecture.md", "type": "work", "status": "pending" },
-    { "id": "3.4", "phase": 3, "step": "Update docs/features/media2-testing.md", "type": "work", "status": "pending" },
+    { "id": "3.1", "phase": 3, "step": "Delete Media2XmlParserTests.cs; update Media2IntegrationTests.cs", "type": "work", "status": "completed", "notes": "Media2XmlParserTests.cs did not exist (already removed). Media2IntegrationTests.cs did not exist. No action needed." },
+    { "id": "3.2", "phase": 3, "step": "Rewrite docs/features/media2-routing.md for typed approach", "type": "work", "status": "completed", "notes": "Created docs/features/media2-routing.md covering typed proxy, routeMedia helper, fallback chain, encoding mapping, and how to add new operations." },
+    { "id": "3.3", "phase": 3, "step": "Add Media2 Service Detection section to docs/architecture.md", "type": "work", "status": "completed", "notes": "Added 'Media2 Service Detection' subsection under Transport Layer in docs/architecture.md." },
+    { "id": "3.4", "phase": 3, "step": "Update docs/features/media2-testing.md", "type": "work", "status": "completed", "notes": "Created docs/features/media2-testing.md covering offline/integration test instructions, what to test, and how to add tests for new operations." },
     { "id": "V3",  "phase": 3, "step": "VERIFY 3 — Release x64 build + all offline unit tests pass; push; STOP", "type": "verify", "status": "pending" }
   ]
 }
