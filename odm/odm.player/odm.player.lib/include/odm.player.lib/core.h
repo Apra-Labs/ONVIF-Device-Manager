@@ -54,6 +54,8 @@ namespace onvifmp{
 		int stride[4];
 		uint8_t* scan0[4];
 		uint8_t* signal;
+		char* info;					//the stream's description for the UI, e.g. "H.265  2560x1440"
+		int infoSize;
 	};
 
 	enum StreamTransport{

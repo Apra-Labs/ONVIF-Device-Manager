@@ -336,6 +336,15 @@ namespace odm.ui.activities {
 					0, 0
 				);
 			}
+			//what is playing (from the player), top right
+			string info;
+			using (var md = videoBuffer.Lock()) {
+				info = md.value.info;
+			}
+			if (streamInfo.Text != info) {
+				streamInfo.Text = info;
+				streamInfoPanel.Visibility = String.IsNullOrEmpty(info) ? Visibility.Collapsed : Visibility.Visible;
+			}
 			renderingFps.Text = String.Format("rendering fps: {0:F1}", statistics.avgRenderingFps);
 			decodingFps.Text = String.Format("decoding fps: {0:F1}", statistics.avgDecodingFps);
 			noSignalPanel.Visibility =
