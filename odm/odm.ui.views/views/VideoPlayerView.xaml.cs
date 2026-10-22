@@ -67,6 +67,9 @@ namespace odm.ui.activities {
 			isPaused = false;
 			InitializeComponent();
 
+			Unloaded += (s, e) => WatchOwnerKeys(null);
+			disposables.Add(Disposable.Create(CloseFullScreen));
+
 			captionNoSignal.CreateBinding(TextBlock.TextProperty, Strings, s => s.noSignal);
 			noSignalPanel.Visibility = System.Windows.Visibility.Hidden;
 
@@ -343,8 +346,110 @@ namespace odm.ui.activities {
 
 		}
 		private void BaseVideoPlayer_Loaded(object sender, RoutedEventArgs e) {
+			WatchOwnerKeys(Window.GetWindow(this));
 
 		}
+		//------------------------------------------------------------ full screen
+		// The video alone on the whole screen (the one ODM is on): double-click it or
+		// press F11; Esc, F11 or another double-click goes back. The full-screen window
+		// shows the same picture, so it plays on without a copy.
+		Window fullScreen;
+		Window ownerWindow;
+
+		void ToggleFullScreen() {
+			if (fullScreen != null) {
+				CloseFullScreen();
+				return;
+			}
+			if (_imgVIew.Source == null) {
+				return;
+			}
+			var owner = Window.GetWindow(this);
+			var grid = new Grid();
+			grid.Children.Add(new Image { Source = _imgVIew.Source, Stretch = Stretch.Uniform });
+			fullScreen = new Window {
+				Content = grid, Background = Brushes.Black,
+				WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
+				Owner = owner, Title = owner != null ? owner.Title : "ODM"
+			};
+			if (owner != null) {
+				//(placed on ODM's screen first: maximizing then fills that screen)
+				fullScreen.WindowStartupLocation = WindowStartupLocation.Manual;
+				fullScreen.Left = owner.Left + 40;
+				fullScreen.Top = owner.Top + 40;
+				fullScreen.Width = 320;
+				fullScreen.Height = 240;
+			}
+			fullScreen.KeyDown += (s, e) => {
+				if (e.Key == System.Windows.Input.Key.Escape || e.Key == System.Windows.Input.Key.F11) {
+					CloseFullScreen();
+					e.Handled = true;
+				}
+			};
+			fullScreen.MouseDoubleClick += (s, e) => CloseFullScreen();
+			var window = fullScreen;
+			fullScreen.Closed += (s, e) => {
+				if (fullScreen == window) {
+					fullScreen = null;
+				}
+			};
+			fullScreen.Show();
+			fullScreen.WindowState = WindowState.Maximized;
+			fullScreen.Activate();
+		}
+
+		//(double-clicks on the pause/play button are the button's)
+		static bool InButton(DependencyObject element) {
+			for (; element != null; element = element is Visual ? VisualTreeHelper.GetParent(element) : LogicalTreeHelper.GetParent(element)) {
+				if (element is System.Windows.Controls.Primitives.ButtonBase) {
+					return true;
+				}
+			}
+			return false;
+		}
+
+		void CloseFullScreen() {
+			var window = fullScreen;
+			fullScreen = null;
+			if (window != null) {
+				window.Close();
+			}
+		}
+
+		//F11 in ODM's window (while this video is showing), or a double-click on the video,
+		//goes full screen. (Taken at the window: what's drawn over the video, e.g. analytics,
+		//would otherwise get the clicks.)
+		void WatchOwnerKeys(Window owner) {
+			if (ownerWindow != null) {
+				ownerWindow.PreviewKeyDown -= OwnerPreviewKeyDown;
+				ownerWindow.PreviewMouseLeftButtonDown -= OwnerPreviewMouseDown;
+			}
+			ownerWindow = owner;
+			if (ownerWindow != null) {
+				ownerWindow.PreviewKeyDown += OwnerPreviewKeyDown;
+				ownerWindow.PreviewMouseLeftButtonDown += OwnerPreviewMouseDown;
+			}
+		}
+
+		void OwnerPreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) {
+			if (e.ClickCount != 2 || !IsVisible || InButton(e.OriginalSource as DependencyObject)) {
+				return;
+			}
+			var at = e.GetPosition(_imgVIew);
+			if (at.X < 0 || at.Y < 0 || at.X > _imgVIew.ActualWidth || at.Y > _imgVIew.ActualHeight) {
+				return;
+			}
+			e.Handled = true;
+			Dispatcher.BeginInvoke(new Action(ToggleFullScreen), System.Windows.Threading.DispatcherPriority.Input);
+		}
+
+		void OwnerPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e) {
+			if (e.Key == System.Windows.Input.Key.F11 && IsVisible) {
+				ToggleFullScreen();
+				e.Handled = true;
+			}
+		}
+
 		private void NotifyPropertyChanged(String info) {
 			var prop_changed = this.PropertyChanged;
 			if (prop_changed != null) {
