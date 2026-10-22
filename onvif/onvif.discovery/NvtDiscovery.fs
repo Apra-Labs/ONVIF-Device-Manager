@@ -2,6 +2,9 @@
     open System
     open System.Collections.Generic
     open System.Linq
+    open System.Net
+    open System.Net.NetworkInformation
+    open System.Net.Sockets
     open System.ServiceModel
     open System.ServiceModel.Channels
     open System.ServiceModel.Description
@@ -240,6 +243,120 @@
         val mutable msgSeq: DiscoveryMessageSequence
     end
         
+    /// Some cameras never answer the multicast probe, only one sent straight to them.
+    /// So discovery also sends the probe to every address of each local IPv4 subnet
+    /// (subnets of up to 1024 addresses; link-local ones are skipped) and takes the
+    /// answers like multicast ones.
+    type internal UnicastProbe() = class
+        static let sequences = new DiscoveryMessageSequenceGenerator()
+
+        static member ProbeMessage(messageId:Guid) =
+            String.Concat(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
+                "<e:Envelope xmlns:e=\"http://www.w3.org/2003/05/soap-envelope\" ",
+                "xmlns:w=\"http://schemas.xmlsoap.org/ws/2004/08/addressing\" ",
+                "xmlns:d=\"http://schemas.xmlsoap.org/ws/2005/04/discovery\" ",
+                "xmlns:dn=\"http://www.onvif.org/ver10/network/wsdl\">",
+                "<e:Header><w:MessageID>uuid:", messageId.ToString(), "</w:MessageID>",
+                "<w:To e:mustUnderstand=\"true\">urn:schemas-xmlsoap-org:ws:2005:04:discovery</w:To>",
+                "<w:Action e:mustUnderstand=\"true\">http://schemas.xmlsoap.org/ws/2005/04/discovery/Probe</w:Action>",
+                "</e:Header><e:Body><d:Probe><d:Types>dn:NetworkVideoTransmitter</d:Types></d:Probe></e:Body></e:Envelope>"
+            )
+
+        /// each local IPv4 address, with the other addresses of its subnet
+        static member Subnets():(System.Net.IPAddress * System.Net.IPAddress[]) list =
+            let toUInt (b:byte[]) = (uint32 b.[0] <<< 24) ||| (uint32 b.[1] <<< 16) ||| (uint32 b.[2] <<< 8) ||| uint32 b.[3]
+            let toAddress (v:uint32) = new System.Net.IPAddress([| byte (v >>> 24); byte (v >>> 16); byte (v >>> 8); byte v |])
+            [ for ni in NetworkInterface.GetAllNetworkInterfaces() do
+                if ni.OperationalStatus = OperationalStatus.Up &&
+                   ni.NetworkInterfaceType <> NetworkInterfaceType.Loopback &&
+                   ni.NetworkInterfaceType <> NetworkInterfaceType.Tunnel then
+                    for ua in ni.GetIPProperties().UnicastAddresses do
+                        if ua.Address.AddressFamily = AddressFamily.InterNetwork && NotNull(ua.IPv4Mask) then
+                            let ip = toUInt(ua.Address.GetAddressBytes())
+                            let mask = toUInt(ua.IPv4Mask.GetAddressBytes())
+                            let count = (~~~mask) + 1u
+                            let linkLocal = (ip >>> 16) = 0xA9FEu
+                            if not linkLocal && count >= 4u && count <= 1024u then
+                                let network = ip &&& mask
+                                let hosts = [| for h in network + 1u .. network + count - 2u do if h <> ip then yield toAddress h |]
+                                yield (ua.Address, hosts) ]
+
+        /// a ProbeMatch answer as discovery metadata (None if it isn't one)
+        static member Parse(buffer:byte[], count:int):(EndpointDiscoveryMetadata * DiscoveryMessageSequence) option =
+            try
+                let doc = new XmlDocument()
+                doc.LoadXml(Encoding.UTF8.GetString(buffer, 0, count))
+                let text xpath =
+                    match doc.SelectSingleNode(xpath) with
+                    | null -> null
+                    | node -> node.InnerText
+                let address = text "//*[local-name()='ProbeMatch']/*[local-name()='EndpointReference']/*[local-name()='Address']"
+                let xaddrs = text "//*[local-name()='ProbeMatch']/*[local-name()='XAddrs']"
+                let scopes = text "//*[local-name()='ProbeMatch']/*[local-name()='Scopes']"
+                let split (s:string) = s.Split([|' '; '\t'; '\r'; '\n'|], StringSplitOptions.RemoveEmptyEntries)
+                if String.IsNullOrWhiteSpace(address) || String.IsNullOrWhiteSpace(xaddrs) then
+                    None
+                else
+                    let meta = new EndpointDiscoveryMetadata()
+                    meta.Address <- new EndpointAddress(address.Trim())
+                    for x in split xaddrs do
+                        let ok, uri = Uri.TryCreate(x, UriKind.Absolute)
+                        if ok then meta.ListenUris.Add(uri)
+                    if NotNull(scopes) then
+                        for x in split scopes do
+                            let ok, uri = Uri.TryCreate(x, UriKind.Absolute)
+                            if ok then meta.Scopes.Add(uri)
+                    if meta.ListenUris.Count = 0 then None else Some(meta, sequences.Next())
+            with err ->
+                None
+
+        /// probes every subnet address (twice, a moment apart) and hands each answer to found until duration is up
+        static member Sweep(duration:TimeSpan, found:EndpointDiscoveryMetadata * DiscoveryMessageSequence -> unit):IDisposable =
+            let cancel = new CancellationTokenSource()
+            for (local, hosts) in UnicastProbe.Subnets() do
+                let socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
+                try
+                    socket.Bind(new IPEndPoint(local, 0))
+                    // (no "connection reset" errors from the ICMP answers of addresses with nothing on them)
+                    let SIO_UDP_CONNRESET = -1744830452
+                    socket.IOControl(SIO_UDP_CONNRESET, [| 0uy; 0uy; 0uy; 0uy |], null) |> ignore
+                    let message = Encoding.UTF8.GetBytes(UnicastProbe.ProbeMessage(Guid.NewGuid()))
+                    let work() =
+                        try
+                            try
+                                let until = DateTime.UtcNow + duration
+                                let buffer = Array.zeroCreate<byte> 65536
+                                let mutable sweeps = 0
+                                let mutable nextSweep = DateTime.UtcNow
+                                while not cancel.IsCancellationRequested && DateTime.UtcNow < until do
+                                    if sweeps < 2 && DateTime.UtcNow >= nextSweep then
+                                        for host in hosts do
+                                            try
+                                                socket.SendTo(message, new IPEndPoint(host, 3702)) |> ignore
+                                            with err -> ()
+                                        sweeps <- sweeps + 1
+                                        nextSweep <- DateTime.UtcNow + TimeSpan.FromSeconds(1.0)
+                                    if socket.Poll(200000, SelectMode.SelectRead) then
+                                        try
+                                            let n = socket.Receive(buffer)
+                                            match UnicastProbe.Parse(buffer, n) with
+                                            | Some answer -> found answer
+                                            | None -> ()
+                                        with err -> ()
+                            with err ->
+                                dbg.Error(err)
+                        finally
+                            socket.Close()
+                    let thread = new Thread(work)
+                    thread.IsBackground <- true
+                    thread.Start()
+                with err ->
+                    dbg.Error(err)
+                    socket.Close()
+            Disposable.Create(fun () -> cancel.Cancel())
+    end
+
     type NvtManager() = class
         let m_subj = new Subject<INvtNode>()
         let tramp = new Trampoline()
@@ -432,6 +549,7 @@
                 let disp = [|
                     yield probe(new XmlQualifiedName("NetworkVideoTransmitter", @"http://www.onvif.org/ver10/network/wsdl"))
                     yield probe(new XmlQualifiedName("Device", @"http://www.onvif.org/ver10/device/wsdl"))
+                    yield UnicastProbe.Sweep(duration, process_online)
                 |]
                 upcast new CompositeDisposable(disp)
                 
