@@ -93,77 +93,93 @@ namespace onvifmp{
 			return;
 		}
 		
-		rtspClient->playMediaSession(*mediaSession);
+		for(;;){
+			rtspClient->playMediaSession(*mediaSession);
 
-		// Keeping the session alive, and watching it - live555 does neither by itself:
-		// - cameras end an RTSP session after its timeout (usually 60 s) unless the client
-		//   says something in between, so a GET_PARAMETER (OPTIONS if the camera doesn't
-		//   support it) goes out every half timeout;
-		// - when no packets arrive for 10 s (the camera went away, or dropped the session
-		//   anyway), the loop ends and the player reports it, so the stream is opened again.
-		struct Watch{
-			Live555* player;
-			MediaStreamInfo* streamInfo;
-			char stop;
-			unsigned packets;
-			int quietSeconds;
-			int keepAliveEvery, sinceKeepAlive;
-			TaskToken tick;
-		}watch;
-		watch.player = this;
-		watch.streamInfo = mediaStreamInfo;
-		watch.stop = playbackSession.disposed ? 1 : 0;
-		watch.packets = 0;
-		watch.quietSeconds = 0;
-		auto timeout = rtspClient->sessionTimeoutParameter();
-		watch.keepAliveEvery = max(5, min(25, (int)(timeout != 0 ? timeout : 60) / 2));
-		watch.sinceKeepAlive = 0;
-		playbackSession.stop = &watch.stop;
-		if(playbackSession.disposed){
-			watch.stop = 1;
-		}
+			// Keeping the session alive, and watching it - live555 does neither by itself:
+			// - cameras end an RTSP session after its timeout (usually 60 s) unless the client
+			//   says something in between, so a GET_PARAMETER (OPTIONS if the camera doesn't
+			//   support it) goes out every half timeout;
+			// - when no packets arrive for 10 s (the camera went away, or dropped the session
+			//   anyway), the session is closed and opened again (below).
+			struct Watch{
+				Live555* player;
+				MediaStreamInfo* streamInfo;
+				char stop;
+				unsigned packets;
+				int quietSeconds;
+				int keepAliveEvery, sinceKeepAlive;
+				TaskToken tick;
+			}watch;
+			watch.player = this;
+			watch.streamInfo = mediaStreamInfo;
+			watch.stop = playbackSession.disposed ? 1 : 0;
+			watch.packets = 0;
+			watch.quietSeconds = 0;
+			auto timeout = rtspClient->sessionTimeoutParameter();
+			watch.keepAliveEvery = max(5, min(25, (int)(timeout != 0 ? timeout : 60) / 2));
+			watch.sinceKeepAlive = 0;
+			playbackSession.stop = &watch.stop;
+			if(playbackSession.disposed){
+				watch.stop = 1;
+			}
 
-		static TaskFunc* const tick = [](void* data){
-			auto w = static_cast<Watch*>(data);
-			auto self = w->player;
-			w->tick = nullptr;
-			unsigned packets = 0;
-			MediaSubsessionIterator itor(*self->mediaSession);
-			for(auto subsession = itor.next(); subsession != nullptr; subsession = itor.next()){
-				if(subsession->rtpSource() != nullptr){
-					packets += subsession->rtpSource()->receptionStatsDB().totNumPacketsReceived();
+			static TaskFunc* const tick = [](void* data){
+				auto w = static_cast<Watch*>(data);
+				auto self = w->player;
+				w->tick = nullptr;
+				unsigned packets = 0;
+				MediaSubsessionIterator itor(*self->mediaSession);
+				for(auto subsession = itor.next(); subsession != nullptr; subsession = itor.next()){
+					if(subsession->rtpSource() != nullptr){
+						packets += subsession->rtpSource()->receptionStatsDB().totNumPacketsReceived();
+					}
 				}
-			}
-			if(packets != w->packets){
-				w->packets = packets;
-				w->quietSeconds = 0;
-			}else if(++w->quietSeconds >= 10){
-				w->stop = 1;					//(nothing for 10 s: give up on this session)
-				return;
-			}
-			if(++w->sinceKeepAlive >= w->keepAliveEvery){
-				w->sinceKeepAlive = 0;
-				auto done = [](RTSPClient*, int, char* resultString){ delete[] resultString; };
-				if(self->rtspOptions.getParamSupported){
-					self->rtspClient->sendGetParameterCommand(*self->mediaSession, done, nullptr, w->streamInfo->authenticator);
-				}else{
-					self->rtspClient->sendOptionsCommand(done, w->streamInfo->authenticator);
+				if(packets != w->packets){
+					w->packets = packets;
+					w->quietSeconds = 0;
+				}else if(++w->quietSeconds >= 10){
+					w->stop = 1;					//(nothing for 10 s: give up on this session)
+					return;
 				}
-			}
-			w->tick = self->scheduler->scheduleDelayedTask(1000000, tick, w);
-		};
-		watch.tick = scheduler->scheduleDelayedTask(1000000, tick, &watch);
+				if(++w->sinceKeepAlive >= w->keepAliveEvery){
+					w->sinceKeepAlive = 0;
+					auto done = [](RTSPClient*, int, char* resultString){ delete[] resultString; };
+					if(self->rtspOptions.getParamSupported){
+						self->rtspClient->sendGetParameterCommand(*self->mediaSession, done, nullptr, w->streamInfo->authenticator);
+					}else{
+						self->rtspClient->sendOptionsCommand(done, w->streamInfo->authenticator);
+					}
+				}
+				w->tick = self->scheduler->scheduleDelayedTask(1000000, tick, w);
+			};
+			watch.tick = scheduler->scheduleDelayedTask(1000000, tick, &watch);
 
-		scheduler->doEventLoop(&watch.stop);
-		playbackSession.stop = nullptr;
-		if(watch.tick != nullptr){
-			scheduler->unscheduleDelayedTask(watch.tick);
+			scheduler->doEventLoop(&watch.stop);
+			playbackSession.stop = nullptr;
+			if(watch.tick != nullptr){
+				scheduler->unscheduleDelayedTask(watch.tick);
+			}
+			rtspClient->teardownMediaSession(*mediaSession);
+			Cleanup();
+			if(playbackSession.disposed){
+				break;
+			}
+
+			// The stream stopped while the view is still open: open it again, every 2 s until
+			// the camera answers (ODM doesn't restart a player that has reported its end, so it
+			// isn't told - the picture just carries on once the stream is back).
+			bool reopened = false;
+			while(!playbackSession.disposed && !reopened){
+				for(int i = 0; i < 20 && !playbackSession.disposed; ++i){
+					Sleep(100);
+				}
+				reopened = !playbackSession.disposed && Init(mediaStreamInfo);
+			}
+			if(!reopened){
+				break;
+			}
 		}
-		if(!playbackSession.disposed){
-			playbackController->Shutdown();
-		}
-		rtspClient->teardownMediaSession(*mediaSession);
-		Cleanup();
 	}
 
 
