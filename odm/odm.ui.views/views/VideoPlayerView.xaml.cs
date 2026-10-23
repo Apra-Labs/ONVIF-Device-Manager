@@ -367,6 +367,17 @@ namespace odm.ui.activities {
 			var owner = Window.GetWindow(this);
 			var grid = new Grid();
 			grid.Children.Add(new Image { Source = _imgVIew.Source, Stretch = Stretch.Uniform });
+			//(the player's NO SIGNAL warning, shown here too when the stream stops)
+			var noSignal = new TextBlock { Foreground = Brushes.White, FontSize = 36, FontWeight = FontWeights.Bold };
+			noSignal.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Text") { Source = captionNoSignal });
+			var noSignalBox = new Border {
+				Child = noSignal, Padding = new Thickness(24, 4, 24, 4), CornerRadius = new CornerRadius(4),
+				Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x7F, 0xFF, 0, 0)),
+				BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x7F, 0xFF, 0, 0)), BorderThickness = new Thickness(4),
+				HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center
+			};
+			noSignalBox.SetBinding(UIElement.VisibilityProperty, new System.Windows.Data.Binding("Visibility") { Source = noSignalPanel });
+			grid.Children.Add(noSignalBox);
 			fullScreen = new Window {
 				Content = grid, Background = Brushes.Black,
 				WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
