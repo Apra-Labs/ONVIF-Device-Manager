@@ -460,10 +460,11 @@ namespace odm.ui.activities {
 		public bool AllowFullScreen { get; set; } = true;
 
 		//F11 in ODM's window (while this video is showing), or a double-click on the video,
-		//goes full screen. Taken at the window - what's drawn over the video (e.g. analytics)
-		//gets the clicks first - but only a double-click nothing else handled, and not one on
-		//something interactive drawn over the video (a region editor's lines and points, buttons,
-		//text boxes), which may use double-clicks without marking them handled.
+		//goes full screen. Taken at the window, after everything under the mouse has had the
+		//double-click (bubbling, handled ones too: what's drawn over the video, e.g. analytics,
+		//gets the clicks, and containers such as a ScrollViewer mark every click handled), and
+		//never taken from them - but not acted on when it is on something interactive drawn over
+		//the video (a region editor's lines and points, buttons, text boxes), whose gesture it is.
 		System.Windows.Input.MouseButtonEventHandler ownerMouseDown;
 
 		void WatchOwnerKeys(Window owner) {
@@ -477,12 +478,12 @@ namespace odm.ui.activities {
 			ownerWindow = owner;
 			if (ownerWindow != null) {
 				ownerWindow.PreviewKeyDown += OwnerPreviewKeyDown;
-				ownerWindow.AddHandler(UIElement.MouseLeftButtonDownEvent, ownerMouseDown, false);
+				ownerWindow.AddHandler(UIElement.MouseLeftButtonDownEvent, ownerMouseDown, true);
 			}
 		}
 
 		void OwnerMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) {
-			if (e.Handled || e.ClickCount != 2 || !IsVisible || !AllowFullScreen || Interactive(e.OriginalSource as DependencyObject)) {
+			if (e.ClickCount != 2 || !IsVisible || !AllowFullScreen || Interactive(e.OriginalSource as DependencyObject)) {
 				return;
 			}
 			var at = e.GetPosition(_imgVIew);
