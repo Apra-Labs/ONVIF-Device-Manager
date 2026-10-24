@@ -18,6 +18,7 @@ namespace onvifmp{
 		VideoRenderer(shared_ptr<VideoBuffer> videoBuffer){
 			this->videoBuffer = videoBuffer;
 			shownWidth = shownHeight = 0;
+			shownCodec = AV_CODEC_ID_NONE;
 		}
 
 		~VideoRenderer(){
@@ -26,12 +27,14 @@ namespace onvifmp{
 	protected:
 		shared_ptr<VideoBuffer> videoBuffer;
 		AVPixelFormat videoBufferPixelFormat;
-		int shownWidth, shownHeight;		//(the size last described in the video buffer's info)
+		int shownWidth, shownHeight;		//(the size and codec last described in the video buffer's info)
+		AVCodecID shownCodec;
 
 		///<summary>tells the UI what is playing: the codec and the picture's own size</summary>
 		void Describe(AVCodecContext* avCodecContext, AVFrame* avFrame){
 			auto vb = videoBuffer.get();
 			shownWidth = avFrame->width;
+			shownCodec = avCodecContext->codec_id;
 			shownHeight = avFrame->height;
 			if(vb->info == nullptr || vb->infoSize <= 0){
 				return;
@@ -50,8 +53,13 @@ namespace onvifmp{
 			if(length > vb->infoSize - 1){
 				length = vb->infoSize - 1;
 			}
-			vb->info[length] = 0;					//(cut short first: the UI may be reading it)
-			memcpy(vb->info, text, length);
+			//(the UI reads it unlocked: the first byte goes last, and the UI takes no text whose first byte is 0)
+			vb->info[0] = 0;
+			if(length > 1){
+				memcpy(vb->info + 1, text + 1, length - 1);
+			}
+			vb->info[length] = 0;
+			vb->info[0] = text[0];
 		}
 
 		virtual void RenderFrame(AVCodecContext* avCodecContext, AVFrame* avFrame){
@@ -59,7 +67,7 @@ namespace onvifmp{
 				return;
 			}
 			auto vb = videoBuffer.get();
-			if(avFrame->width != shownWidth || avFrame->height != shownHeight){
+			if(avFrame->width != shownWidth || avFrame->height != shownHeight || avCodecContext->codec_id != shownCodec){
 				Describe(avCodecContext, avFrame);
 			}
 			auto width = avCodecContext->width;

@@ -323,6 +323,18 @@ namespace odm.ui.activities {
 			return bitmap;
 		}
 
+		readonly byte[] infoBytes = new byte[VideoBuffer.INFO_SIZE];
+		readonly byte[] shownInfoBytes = new byte[VideoBuffer.INFO_SIZE];
+
+		static bool SameBytes(byte[] a, byte[] b) {
+			for (int i = 0; i < a.Length; ++i) {
+				if (a[i] != b[i]) {
+					return false;
+				}
+			}
+			return true;
+		}
+
 		private void DrawFrame(WriteableBitmap bitmap, VideoBuffer videoBuffer, PlaybackStatistics statistics) {
 			VerifyAccess();
 			if (isPaused) {
@@ -335,15 +347,14 @@ namespace odm.ui.activities {
 					md.value.scan0Ptr, videoBuffer.size, videoBuffer.stride,
 					0, 0
 				);
+				//what is playing (from the player), top right: a string only when it changed
+				md.value.CopyInfo(infoBytes);
 			}
-			//what is playing (from the player), top right
-			string info;
-			using (var md = videoBuffer.Lock()) {
-				info = md.value.info;
-			}
-			if (streamInfo.Text != info) {
-				streamInfo.Text = info;
-				streamInfoPanel.Visibility = String.IsNullOrEmpty(info) ? Visibility.Collapsed : Visibility.Visible;
+			if (infoBytes[0] != 0 && !SameBytes(infoBytes, shownInfoBytes)) {	//(the player writes the first byte last)
+				Array.Copy(infoBytes, shownInfoBytes, infoBytes.Length);
+				var end = Array.IndexOf(infoBytes, (byte)0);
+				streamInfo.Text = System.Text.Encoding.ASCII.GetString(infoBytes, 0, end < 0 ? infoBytes.Length : end);
+				streamInfoPanel.Visibility = Visibility.Visible;
 			}
 			renderingFps.Text = String.Format("rendering fps: {0:F1}", statistics.avgRenderingFps);
 			decodingFps.Text = String.Format("decoding fps: {0:F1}", statistics.avgDecodingFps);
