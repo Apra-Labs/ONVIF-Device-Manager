@@ -1,4 +1,5 @@
 #include "odm.player.lib/all.h"
+#include "odm.player.lib/PlaybackPolicy.hpp"
 #include "GroupsockHelper.hh"
 #include "io.h"
 #include <stdlib.h>
@@ -20,6 +21,7 @@ namespace onvifmp{
 		metadataSubsessionInitialized = false;
 
 		packetReorderingThresholdTime = -1;
+		lastFailure = 0;
 	}
 
 	Live555::~Live555(){
@@ -93,37 +95,50 @@ namespace onvifmp{
 			return;
 		}
 		
+		// Keeping the session alive and watching it - live555 does neither by itself - and opening
+		// it again when it stalls (the decisions are in PlaybackPolicy.hpp):
+		// - cameras end an RTSP session after its timeout (usually 60 s) unless the client says
+		//   something in between, so a keep-alive goes out every half timeout;
+		// - when video stops arriving for 10 s (the camera went away, or dropped the session
+		//   anyway), the session is closed and opened again, after a growing delay - but not once
+		//   the camera has refused the credentials. ODM doesn't restart a player that has reported
+		//   its end, so it isn't told: the picture just carries on once the stream is back.
 		for(;;){
 			rtspClient->playMediaSession(*mediaSession);
 
-			// Keeping the session alive, and watching it - live555 does neither by itself:
-			// - cameras end an RTSP session after its timeout (usually 60 s) unless the client
-			//   says something in between, so a GET_PARAMETER (OPTIONS if the camera doesn't
-			//   support it) goes out every half timeout;
-			// - when no packets arrive for 10 s (the camera went away, or dropped the session
-			//   anyway), the session is closed and opened again (below).
 			struct Watch{
 				Live555* player;
 				MediaStreamInfo* streamInfo;
 				char stop;
-				unsigned packets;
-				int quietSeconds;
+				bool hasVideo;
+				unsigned videoPackets;
+				int secondsWithoutVideo;
 				int keepAliveEvery, sinceKeepAlive;
 				TaskToken tick;
 			}watch;
 			watch.player = this;
 			watch.streamInfo = mediaStreamInfo;
-			watch.stop = playbackSession.disposed ? 1 : 0;
-			watch.packets = 0;
-			watch.quietSeconds = 0;
-			auto timeout = rtspClient->sessionTimeoutParameter();
-			watch.keepAliveEvery = max(5, min(25, (int)(timeout != 0 ? timeout : 60) / 2));
+			watch.stop = 0;
+			watch.hasVideo = false;
+			{
+				MediaSubsessionIterator itor(*mediaSession);
+				for(auto subsession = itor.next(); subsession != nullptr; subsession = itor.next()){
+					if(subsession->rtpSource() != nullptr && strcmp(subsession->mediumName(), "video") == 0){
+						watch.hasVideo = true;
+					}
+				}
+			}
+			watch.videoPackets = 0;
+			watch.secondsWithoutVideo = 0;
+			watch.keepAliveEvery = policy::KeepAliveInterval(rtspClient->sessionTimeoutParameter());
 			watch.sinceKeepAlive = 0;
 			playbackSession.stop = &watch.stop;
 			if(playbackSession.disposed){
 				watch.stop = 1;
 			}
 
+			// (whether this camera has refused GET_PARAMETER; one player per player host process)
+			static volatile bool getParameterRefused = false;
 			static TaskFunc* const tick = [](void* data){
 				auto w = static_cast<Watch*>(data);
 				auto self = w->player;
@@ -131,23 +146,32 @@ namespace onvifmp{
 				unsigned packets = 0;
 				MediaSubsessionIterator itor(*self->mediaSession);
 				for(auto subsession = itor.next(); subsession != nullptr; subsession = itor.next()){
-					if(subsession->rtpSource() != nullptr){
+					if(subsession->rtpSource() != nullptr && strcmp(subsession->mediumName(), "video") == 0){
 						packets += subsession->rtpSource()->receptionStatsDB().totNumPacketsReceived();
 					}
 				}
-				if(packets != w->packets){
-					w->packets = packets;
-					w->quietSeconds = 0;
-				}else if(++w->quietSeconds >= 10){
-					w->stop = 1;					//(nothing for 10 s: give up on this session)
+				if(packets != w->videoPackets){
+					w->videoPackets = packets;
+					w->secondsWithoutVideo = 0;
+				}else{
+					++w->secondsWithoutVideo;
+				}
+				if(policy::Stalled(w->hasVideo, w->videoPackets, w->secondsWithoutVideo)){
+					w->stop = 1;
 					return;
 				}
 				if(++w->sinceKeepAlive >= w->keepAliveEvery){
 					w->sinceKeepAlive = 0;
-					auto done = [](RTSPClient*, int, char* resultString){ delete[] resultString; };
-					if(self->rtspOptions.getParamSupported){
+					if(policy::KeepAliveMethod(getParameterRefused) == policy::KeepAlive::GetParameter){
+						auto done = [](RTSPClient*, int resultCode, char* resultString){
+							if(policy::RefusesGetParameter(resultCode)){
+								getParameterRefused = true;
+							}
+							delete[] resultString;
+						};
 						self->rtspClient->sendGetParameterCommand(*self->mediaSession, done, nullptr, w->streamInfo->authenticator);
 					}else{
+						auto done = [](RTSPClient*, int, char* resultString){ delete[] resultString; };
 						self->rtspClient->sendOptionsCommand(done, w->streamInfo->authenticator);
 					}
 				}
@@ -166,17 +190,24 @@ namespace onvifmp{
 				break;
 			}
 
-			// The stream stopped while the view is still open: open it again, every 2 s until
-			// the camera answers (ODM doesn't restart a player that has reported its end, so it
-			// isn't told - the picture just carries on once the stream is back).
+			// the stream stalled while the view is still open: open it again
 			bool reopened = false;
-			while(!playbackSession.disposed && !reopened){
-				for(int i = 0; i < 20 && !playbackSession.disposed; ++i){
+			for(int attempt = 1; !playbackSession.disposed && !reopened; ++attempt){
+				for(int i = 0; i < policy::ReconnectDelay(attempt) * 10 && !playbackSession.disposed; ++i){
 					Sleep(100);
 				}
-				reopened = !playbackSession.disposed && Init(mediaStreamInfo);
+				if(playbackSession.disposed){
+					break;
+				}
+				reopened = Init(mediaStreamInfo);
+				if(!reopened && !policy::RetryAfter(lastFailure)){
+					break;					//(the credentials were refused: don't keep trying them)
+				}
 			}
 			if(!reopened){
+				if(!playbackSession.disposed){
+					playbackController->Shutdown();
+				}
 				break;
 			}
 		}
@@ -284,6 +315,7 @@ namespace onvifmp{
 	bool Live555::Init(MediaStreamInfo* mediaStreamInfo){
 		//if it has been initialized before, we should do cleanup first
 		Cleanup();
+		lastFailure = 0;
 
 		scheduler = BasicTaskScheduler::createNew();
 		if(scheduler == NULL){
@@ -334,6 +366,8 @@ namespace onvifmp{
 		if(sdp == NULL){
 			//TODO: log error
 			fprintf(stderr, "error %d: %s", usageEnvironment->getErrno(), usageEnvironment->getResultMsg());
+			//(the camera's answer, e.g. "... 401 Unauthorized": the reconnect stops on refused credentials)
+			lastFailure = strstr(usageEnvironment->getResultMsg(), "401") != nullptr ? 401 : 0;
 			Cleanup();
 			return false;
 		}
