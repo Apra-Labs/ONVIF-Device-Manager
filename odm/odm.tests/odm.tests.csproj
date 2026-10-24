@@ -64,6 +64,7 @@
     </Reference>
     <Reference Include="System.Security" />
     <Reference Include="System.ServiceModel" />
+    <Reference Include="System.ServiceModel.Discovery" />
   </ItemGroup>
 
 </Project>
