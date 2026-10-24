@@ -378,6 +378,21 @@ namespace odm.ui.activities {
 			};
 			noSignalBox.SetBinding(UIElement.VisibilityProperty, new System.Windows.Data.Binding("Visibility") { Source = noSignalPanel });
 			grid.Children.Add(noSignalBox);
+			//(the stream's codec and size, when the player view has that label)
+			var streamInfo = FindName("streamInfo") as TextBlock;
+			if (streamInfo != null) {
+				var info = new TextBlock { Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, FontSize = 16 };
+				info.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Text") { Source = streamInfo });
+				var infoBox = new Border {
+					Child = info, Background = new SolidColorBrush(System.Windows.Media.Color.FromArgb(0x7F, 0, 0, 0)), CornerRadius = new CornerRadius(3),
+					Padding = new Thickness(8, 3, 8, 3), Margin = new Thickness(12),
+					HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Top
+				};
+				infoBox.SetBinding(UIElement.VisibilityProperty, new System.Windows.Data.Binding("Text") {
+					Source = streamInfo, Converter = new EmptyTextHidden()
+				});
+				grid.Children.Add(infoBox);
+			}
 			fullScreen = new Window {
 				Content = grid, Background = Brushes.Black,
 				WindowStyle = WindowStyle.None, ResizeMode = ResizeMode.NoResize, ShowInTaskbar = false,
@@ -409,14 +424,25 @@ namespace odm.ui.activities {
 			fullScreen.Activate();
 		}
 
-		//(double-clicks on the pause/play button are the button's)
-		static bool InButton(DependencyObject element) {
+		//(double-clicks on the pause/play button, an editor's shapes, text boxes and the like are theirs)
+		static bool Interactive(DependencyObject element) {
 			for (; element != null; element = element is Visual ? VisualTreeHelper.GetParent(element) : LogicalTreeHelper.GetParent(element)) {
-				if (element is System.Windows.Controls.Primitives.ButtonBase) {
+				if (element is System.Windows.Controls.Primitives.ButtonBase || element is System.Windows.Shapes.Shape ||
+					element is System.Windows.Controls.Primitives.TextBoxBase || element is System.Windows.Controls.Primitives.Thumb) {
 					return true;
 				}
 			}
 			return false;
+		}
+
+		//(the full-screen copy of the stream-info label: hidden while it has no text)
+		class EmptyTextHidden : System.Windows.Data.IValueConverter {
+			public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) {
+				return String.IsNullOrEmpty(value as string) ? Visibility.Collapsed : Visibility.Visible;
+			}
+			public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) {
+				throw new NotSupportedException();
+			}
 		}
 
 		void CloseFullScreen() {
@@ -427,23 +453,36 @@ namespace odm.ui.activities {
 			}
 		}
 
+		/// <summary>
+		/// Whether a double-click on the video (or F11) goes full screen; a view whose overlay uses
+		/// double-clicks itself can turn it off.
+		/// </summary>
+		public bool AllowFullScreen { get; set; } = true;
+
 		//F11 in ODM's window (while this video is showing), or a double-click on the video,
-		//goes full screen. (Taken at the window: what's drawn over the video, e.g. analytics,
-		//would otherwise get the clicks.)
+		//goes full screen. Taken at the window - what's drawn over the video (e.g. analytics)
+		//gets the clicks first - but only a double-click nothing else handled, and not one on
+		//something interactive drawn over the video (a region editor's lines and points, buttons,
+		//text boxes), which may use double-clicks without marking them handled.
+		System.Windows.Input.MouseButtonEventHandler ownerMouseDown;
+
 		void WatchOwnerKeys(Window owner) {
+			if (ownerMouseDown == null) {
+				ownerMouseDown = OwnerMouseDown;
+			}
 			if (ownerWindow != null) {
 				ownerWindow.PreviewKeyDown -= OwnerPreviewKeyDown;
-				ownerWindow.PreviewMouseLeftButtonDown -= OwnerPreviewMouseDown;
+				ownerWindow.RemoveHandler(UIElement.MouseLeftButtonDownEvent, ownerMouseDown);
 			}
 			ownerWindow = owner;
 			if (ownerWindow != null) {
 				ownerWindow.PreviewKeyDown += OwnerPreviewKeyDown;
-				ownerWindow.PreviewMouseLeftButtonDown += OwnerPreviewMouseDown;
+				ownerWindow.AddHandler(UIElement.MouseLeftButtonDownEvent, ownerMouseDown, false);
 			}
 		}
 
-		void OwnerPreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) {
-			if (e.ClickCount != 2 || !IsVisible || InButton(e.OriginalSource as DependencyObject)) {
+		void OwnerMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) {
+			if (e.Handled || e.ClickCount != 2 || !IsVisible || !AllowFullScreen || Interactive(e.OriginalSource as DependencyObject)) {
 				return;
 			}
 			var at = e.GetPosition(_imgVIew);
@@ -455,7 +494,7 @@ namespace odm.ui.activities {
 		}
 
 		void OwnerPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e) {
-			if (e.Key == System.Windows.Input.Key.F11 && IsVisible) {
+			if (e.Key == System.Windows.Input.Key.F11 && IsVisible && AllowFullScreen) {
 				ToggleFullScreen();
 				e.Handled = true;
 			}
