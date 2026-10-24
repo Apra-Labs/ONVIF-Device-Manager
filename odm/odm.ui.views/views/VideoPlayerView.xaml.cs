@@ -351,8 +351,8 @@ namespace odm.ui.activities {
 				md.value.CopyInfo(infoBytes);
 			}
 			if (infoBytes[0] != 0 && !SameBytes(infoBytes, shownInfoBytes)) {	//(the player writes the first byte last)
-				Array.Copy(infoBytes, shownInfoBytes, infoBytes.Length);
-				var end = Array.IndexOf(infoBytes, (byte)0);
+				System.Array.Copy(infoBytes, shownInfoBytes, infoBytes.Length);
+				var end = System.Array.IndexOf(infoBytes, (byte)0);
 				streamInfo.Text = System.Text.Encoding.ASCII.GetString(infoBytes, 0, end < 0 ? infoBytes.Length : end);
 				streamInfoPanel.Visibility = Visibility.Visible;
 			}
