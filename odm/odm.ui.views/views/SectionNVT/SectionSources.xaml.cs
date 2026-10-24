@@ -90,6 +90,10 @@ namespace odm.ui.views.SectionNVT {
 			channControl.Title = title;
 		}
 		void LoadChannel(ChannelDescription chan, SourcesArgs args, string proftoken = null) {
+			//some cameras list the same video source more than once: it's one channel
+			if (channelControls.ContainsKey(chan.videoSource.token)) {
+				return;
+			}
 			//Create channel control
 			DeviceChannelControl channControl = new DeviceChannelControl();
 			//add control to controls dictionary
