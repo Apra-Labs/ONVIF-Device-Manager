@@ -145,6 +145,8 @@ namespace odm{
 						onvifmpVideoBuffer->scan0[i] = nullptr;
 					}
 					onvifmpVideoBuffer->signal = static_cast<uint8_t*>(videoBufferLock->value->signalPtr.ToPointer());
+					onvifmpVideoBuffer->info = static_cast<char*>(videoBufferLock->value->infoPtr.ToPointer());
+					onvifmpVideoBuffer->infoSize = VideoBuffer::INFO_SIZE;
 					//onvifmpVideoBuffer.width = videoBuffer
 					onvifmpInstance->SetVideoOutput(onvifmpVideoBuffer);
 				}

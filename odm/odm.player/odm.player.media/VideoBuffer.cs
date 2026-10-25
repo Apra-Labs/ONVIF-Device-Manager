@@ -13,10 +13,18 @@ namespace odm.player {
 	public class MappedData {
 		public MappedData(IntPtr handle) { 
 			signalPtr = handle;
+			infoPtr = handle + VideoBuffer.INFO_OFFSET;
 			scan0Ptr = handle + VideoBuffer.EXTRA_DATA_SIZE;
 		}
 		public readonly IntPtr signalPtr;
+		public readonly IntPtr infoPtr;
 		public readonly IntPtr scan0Ptr;
+		/// <summary>copies the bytes (INFO_SIZE of them) of what the player says it is playing, e.g.
+		/// "H.265  2560x1440" (ASCII, ends with 0; empty until the first frame), into the given array -
+		/// no allocation, for each frame</summary>
+		public void CopyInfo(byte[] into) {
+			Marshal.Copy(infoPtr, into, 0, VideoBuffer.INFO_SIZE);
+		}
 		public byte signal { 
 			get {
 				return Marshal.ReadByte(signalPtr);
@@ -29,7 +37,11 @@ namespace odm.player {
 	[Serializable]
 	public class VideoBuffer : IDisposable, IDeserializationCallback {
 		public const int BUFFER_PADDING_SIZE = 16;
-		public const int EXTRA_DATA_SIZE = 16;
+		//the shared memory starts with this header: byte 0 the new-frame signal,
+		//from INFO_OFFSET the player's stream description (ASCII, ends with 0)
+		public const int EXTRA_DATA_SIZE = 64;
+		public const int INFO_OFFSET = 16;
+		public const int INFO_SIZE = EXTRA_DATA_SIZE - INFO_OFFSET;
 		public VideoBuffer(int width, int height) {
 			this.memoryMappedFileName = Guid.NewGuid().ToString();
 			this.width = width;

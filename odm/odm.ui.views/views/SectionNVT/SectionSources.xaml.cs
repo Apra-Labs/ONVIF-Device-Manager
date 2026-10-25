@@ -45,9 +45,22 @@ namespace odm.ui.views.SectionNVT {
 		public void Init(SourcesArgs args) {
 			eventAggregator = container.Resolve<IEventAggregator>();
 
-			args.channels.ForEach(chan => {
+			DistinctChannels(args.channels).ForEach(chan => {
 				LoadChannel(chan, args);
 			});
+		}
+
+		/// <summary>
+		/// The channels to show, one per video source, in order: some cameras list the same video
+		/// source more than once (loading it twice used to end ODM with an ArgumentException).
+		/// </summary>
+		public static IEnumerable<ChannelDescription> DistinctChannels(IEnumerable<ChannelDescription> channels) {
+			var seen = new HashSet<string>();
+			foreach (var chan in channels) {
+				if (chan != null && chan.videoSource != null && seen.Add(chan.videoSource.token)) {
+					yield return chan;
+				}
+			}
 		}
 
 
@@ -90,6 +103,10 @@ namespace odm.ui.views.SectionNVT {
 			channControl.Title = title;
 		}
 		void LoadChannel(ChannelDescription chan, SourcesArgs args, string proftoken = null) {
+			//some cameras list the same video source more than once: it's one channel
+			if (channelControls.ContainsKey(chan.videoSource.token)) {
+				return;
+			}
 			//Create channel control
 			DeviceChannelControl channControl = new DeviceChannelControl();
 			//add control to controls dictionary
