@@ -70,6 +70,31 @@ namespace odm.tests
         }
 
         [TestMethod]
+        public void Parse_AppSequenceOutOfRange_GeneratedOneUsed()
+        {
+            // InstanceId and MessageNumber are xs:unsignedInt: negative or over 32 bits isn't the device's
+            foreach (var bad in new[] { "InstanceId=\"-5\" MessageNumber=\"7\"", "InstanceId=\"5000000000\" MessageNumber=\"7\"",
+                                        "InstanceId=\"1700000000\" MessageNumber=\"x\"" })
+            {
+                var answer = UnicastProbe.Parse(ProbeMatch(ProbeId, appSequence: "<d:AppSequence " + bad + " SequenceId=\"urn:uuid:aaaa-bbbb\"/>"), ProbeId);
+
+                Assert.IsNotNull(answer, "still a camera: " + bad);
+                Assert.IsNotNull(answer.sequence, bad);
+                Assert.AreNotEqual("urn:uuid:aaaa-bbbb", answer.sequence.SequenceId?.OriginalString, "a generated sequence: " + bad);
+            }
+        }
+
+        [TestMethod]
+        public void Sequence_TheDevicesValuesKept()
+        {
+            var sequence = UnicastProbe.Sequence(" 4294967295 ", "urn:uuid:cccc", "0");
+
+            Assert.AreEqual(4294967295L, sequence.InstanceId, "the largest xs:unsignedInt");
+            Assert.AreEqual(0L, sequence.MessageNumber);
+            Assert.AreEqual("urn:uuid:cccc", sequence.SequenceId.OriginalString);
+        }
+
+        [TestMethod]
         public void Parse_NoAppSequence_StillTaken()
         {
             var answer = UnicastProbe.Parse(ProbeMatch(ProbeId, appSequence: ""), ProbeId);

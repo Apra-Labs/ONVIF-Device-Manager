@@ -1,6 +1,7 @@
 ﻿namespace odm.core//.onvif
     open System
     open System.Collections.Generic
+    open System.Globalization
     open System.Linq
     open System.Net
     open System.Net.NetworkInformation
@@ -264,6 +265,12 @@
             typeof<DiscoveryMessageSequence>.GetConstructor(
                 BindingFlags.NonPublic ||| BindingFlags.Instance, null,
                 [| typeof<int64>; typeof<Uri>; typeof<int64> |], null)
+        static let mutable sequenceWarned = false
+        // (logged once: without the device's own AppSequence its Bye can't be matched)
+        static let warnSequence (what:string) =
+            if not sequenceWarned then
+                sequenceWarned <- true
+                dbg.Info("unicast discovery: " + what + "; using a generated AppSequence")
 
         static member ProbeMessage(messageId:string) =
             String.Concat(
@@ -281,15 +288,24 @@
         /// The device's own AppSequence (from the WS-Discovery header), so that its later Bye can
         /// be compared with it; a generated one when the answer has none.
         static member Sequence(instanceId:string, sequenceId:string, messageNumber:string) : DiscoveryMessageSequence =
-            let okInstance, instance = Int64.TryParse(if IsNull(instanceId) then "" else instanceId)
-            let okNumber, number = Int64.TryParse(if IsNull(messageNumber) then "" else messageNumber)
-            if okInstance && okNumber && NotNull(sequenceConstructor) then
+            // (InstanceId and MessageNumber are xs:unsignedInt)
+            let parse (s:string) = UInt32.TryParse((if IsNull(s) then "" else s.Trim()), NumberStyles.None, CultureInfo.InvariantCulture)
+            let okInstance, instance = parse instanceId
+            let okNumber, number = parse messageNumber
+            if not (okInstance && okNumber) then
+                generated.Next()
+            elif IsNull(sequenceConstructor) then
+                warnSequence "DiscoveryMessageSequence's internal constructor wasn't found"
+                generated.Next()
+            else
                 let okSequence, sequence =
                     if String.IsNullOrWhiteSpace(sequenceId) then false, null
                     else Uri.TryCreate(sequenceId.Trim(), UriKind.Absolute)
-                sequenceConstructor.Invoke([| box instance; box (if okSequence then sequence else null); box number |]) :?> DiscoveryMessageSequence
-            else
-                generated.Next()
+                try
+                    sequenceConstructor.Invoke([| box (int64 instance); box (if okSequence then sequence else null); box (int64 number) |]) :?> DiscoveryMessageSequence
+                with err ->
+                    warnSequence ("DiscoveryMessageSequence's internal constructor failed: " + err.Message)
+                    generated.Next()
 
         /// The answer in a datagram, if it is a ProbeMatch answering our probe (probeMessageId,
         /// "uuid:..."); null if not: not XML, XML with a DTD (never processed - datagrams come from
@@ -358,14 +374,16 @@
                                 let hosts = [| for h in network + 1u .. network + count - 2u do if h <> ip then yield toAddress h |]
                                 yield (ua.Address, hosts) ]
 
-        /// probes every subnet address (twice, a moment apart; 16 datagrams then 10 ms, about 0.6 s
-        /// for 1024 addresses) and hands each answer to found until duration is up
+        /// probes every subnet address (twice, a moment apart; 16 datagrams then a 10 ms pause, about
+        /// 1 s for 1024 addresses with Windows' timer resolution) and hands each answer to found until
+        /// duration is up; answers wait in a 256 KB receive buffer while a round is being sent
         static member Sweep(duration:TimeSpan, found:EndpointDiscoveryMetadata * DiscoveryMessageSequence -> unit):IDisposable =
             let cancel = new CancellationTokenSource()
             for (local, hosts) in UnicastProbe.Subnets() do
                 let socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp)
                 try
                     socket.Bind(new IPEndPoint(local, 0))
+                    socket.ReceiveBufferSize <- 256 * 1024
                     // (no "connection reset" errors from the ICMP answers of addresses with nothing on them)
                     let SIO_UDP_CONNRESET = -1744830452
                     socket.IOControl(SIO_UDP_CONNRESET, [| 0uy; 0uy; 0uy; 0uy |], null) |> ignore
