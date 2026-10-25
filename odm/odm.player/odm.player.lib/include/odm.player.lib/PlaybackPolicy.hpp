@@ -23,24 +23,52 @@ namespace onvifmp{
 			return getParameterRefused ? KeepAlive::Options : KeepAlive::GetParameter;
 		}
 
-		///<summary>Whether a GET_PARAMETER reply means the camera doesn't take it (an RTSP error
-		///status such as 405, 501 or 551). live555 reports 0 for success, the RTSP status for an
-		///error reply, and a negative value for a network error, which says nothing about the request.
-		///401 isn't a refusal of the method.</summary>
+		///<summary>Whether a GET_PARAMETER reply means the camera doesn't take the method: 405 Method
+		///Not Allowed, 501 Not Implemented or 551 Option not supported. live555 reports 0 for success,
+		///the RTSP status for an error reply, and a negative value for a network error. Any other error
+		///(401, 454 Session Not Found after the camera dropped the session, a transient 5xx) says nothing
+		///about the method, and the choice is kept for the rest of the player's life.</summary>
 		inline bool RefusesGetParameter(int resultCode){
-			return resultCode >= 400 && resultCode != 401;
+			return resultCode == 405 || resultCode == 501 || resultCode == 551;
 		}
 
-		///<summary>Whether the stream has stalled and should be opened again: only video counts
-		///(a metadata-only stream may be silent for a long time), and only once video has arrived in
-		///this session (a stream whose RTP never comes, e.g. UDP blocked, shows NO SIGNAL rather than
-		///being reopened over and over).</summary>
-		inline bool Stalled(bool hasVideo, unsigned videoPacketsReceived, int secondsWithoutVideo){
-			return hasVideo && videoPacketsReceived > 0 && secondsWithoutVideo >= 10;
+		///<summary>The RTSP status at the start of live555's result message after a failed request
+		///(it sets the message to the reply's status line after "RTSP/1.0 ", e.g. "401 Unauthorized"),
+		///or 0 when the message isn't a reply (a connection error, a timeout, nothing).</summary>
+		inline int RtspStatusOf(const char* resultMsg){
+			if(resultMsg == nullptr){
+				return 0;
+			}
+			int status = 0;
+			for(int i = 0; i < 3; ++i){
+				if(resultMsg[i] < '0' || resultMsg[i] > '9'){
+					return 0;
+				}
+				status = status * 10 + (resultMsg[i] - '0');
+			}
+			char after = resultMsg[3];
+			if(after != '\0' && after != ' ' && after != '\t' && after != '\r' && after != '\n'){
+				return 0;
+			}
+			return status >= 100 && status <= 599 ? status : 0;
+		}
+
+		///<summary>Whether the stream has stalled and should be opened again, after 10 s without new
+		///video packets. Only video counts (a metadata-only stream may be silent for a long time).
+		///Before any video has arrived in this player, a stream whose RTP never comes (e.g. UDP blocked)
+		///shows NO SIGNAL rather than being reopened over and over; once video has arrived at least once
+		///(videoArrivedBefore, kept across reopenings), a reopened session that brings no video, or
+		///whose video subsession couldn't be set up, is reopened again on the backoff schedule.</summary>
+		inline bool Stalled(bool hasVideo, unsigned videoPacketsReceived, int secondsWithoutVideo, bool videoArrivedBefore){
+			if(secondsWithoutVideo < 10){
+				return false;
+			}
+			return videoArrivedBefore || (hasVideo && videoPacketsReceived > 0);
 		}
 
 		///<summary>Seconds to wait before attempt number `attempt` (1, 2, ...) to open the stream
-		///again: 2, 4, 8, 16, 32, then 60 s.</summary>
+		///again: 2, 4, 8, 16, 32, then 60 s. The count goes back to 1 only once video arrives again,
+		///not when a session merely opens.</summary>
 		inline int ReconnectDelay(int attempt){
 			int delay = 2;
 			for(int i = 1; i < attempt && delay < 60; ++i){

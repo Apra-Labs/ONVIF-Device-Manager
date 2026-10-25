@@ -103,6 +103,8 @@ namespace onvifmp{
 		//   anyway), the session is closed and opened again, after a growing delay - but not once
 		//   the camera has refused the credentials. ODM doesn't restart a player that has reported
 		//   its end, so it isn't told: the picture just carries on once the stream is back.
+		bool videoArrived = false;	//(at least once in this player, over all sessions)
+		int attempt = 0;			//(reopenings since video last arrived)
 		for(;;){
 			rtspClient->playMediaSession(*mediaSession);
 
@@ -111,6 +113,8 @@ namespace onvifmp{
 				MediaStreamInfo* streamInfo;
 				char stop;
 				bool hasVideo;
+				bool* videoArrived;
+				int* attempt;
 				unsigned videoPackets;
 				int secondsWithoutVideo;
 				int keepAliveEvery, sinceKeepAlive;
@@ -120,6 +124,8 @@ namespace onvifmp{
 			watch.streamInfo = mediaStreamInfo;
 			watch.stop = 0;
 			watch.hasVideo = false;
+			watch.videoArrived = &videoArrived;
+			watch.attempt = &attempt;
 			{
 				MediaSubsessionIterator itor(*mediaSession);
 				for(auto subsession = itor.next(); subsession != nullptr; subsession = itor.next()){
@@ -153,10 +159,12 @@ namespace onvifmp{
 				if(packets != w->videoPackets){
 					w->videoPackets = packets;
 					w->secondsWithoutVideo = 0;
+					*w->videoArrived = true;
+					*w->attempt = 0;		//(video is back: the next reopening starts the backoff over)
 				}else{
 					++w->secondsWithoutVideo;
 				}
-				if(policy::Stalled(w->hasVideo, w->videoPackets, w->secondsWithoutVideo)){
+				if(policy::Stalled(w->hasVideo, w->videoPackets, w->secondsWithoutVideo, *w->videoArrived)){
 					w->stop = 1;
 					return;
 				}
@@ -190,9 +198,11 @@ namespace onvifmp{
 				break;
 			}
 
-			// the stream stalled while the view is still open: open it again
+			// the stream stalled while the view is still open: open it again (the delay keeps growing
+			// over reopenings that bring no video; it starts over once video arrives)
 			bool reopened = false;
-			for(int attempt = 1; !playbackSession.disposed && !reopened; ++attempt){
+			while(!playbackSession.disposed && !reopened){
+				++attempt;
 				for(int i = 0; i < policy::ReconnectDelay(attempt) * 10 && !playbackSession.disposed; ++i){
 					Sleep(100);
 				}
@@ -367,7 +377,7 @@ namespace onvifmp{
 			//TODO: log error
 			fprintf(stderr, "error %d: %s", usageEnvironment->getErrno(), usageEnvironment->getResultMsg());
 			//(the camera's answer, e.g. "... 401 Unauthorized": the reconnect stops on refused credentials)
-			lastFailure = strstr(usageEnvironment->getResultMsg(), "401") != nullptr ? 401 : 0;
+			lastFailure = policy::RtspStatusOf(usageEnvironment->getResultMsg());
 			Cleanup();
 			return false;
 		}

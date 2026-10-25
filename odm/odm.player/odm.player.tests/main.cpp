@@ -35,12 +35,28 @@ int main(){
 	check(RefusesGetParameter(551), "551 Option not supported is a refusal");
 	check(!RefusesGetParameter(401), "401 is about the credentials, not the method");
 	check(!RefusesGetParameter(-1), "a network error says nothing about the method");
+	check(!RefusesGetParameter(454), "454 Session Not Found (the camera dropped the session) is no refusal");
+	check(!RefusesGetParameter(503), "503 Service Unavailable (transient) is no refusal");
+	check(!RefusesGetParameter(500), "500 Internal Server Error is no refusal");
+	check(!RefusesGetParameter(400), "400 Bad Request is no refusal");
+
+	// the RTSP status of a failed request, from live555's result message
+	check(RtspStatusOf("401 Unauthorized") == 401, "\"401 Unauthorized\": 401");
+	check(RtspStatusOf("404 Stream Not Found") == 404, "\"404 Stream Not Found\": 404");
+	check(RtspStatusOf("503") == 503, "a bare \"503\": 503");
+	check(RtspStatusOf("connect() failed: 10061 ") == 0, "a connection error: no status");
+	check(RtspStatusOf("Failed to find network address for \"10.0.0.401\"") == 0, "a 401 elsewhere in the message: no status");
+	check(RtspStatusOf("4010 x") == 0, "four digits: no status");
+	check(RtspStatusOf("") == 0 && RtspStatusOf(nullptr) == 0, "no message: no status");
 
 	// stall: video only, only after video has arrived, 10 s without new video packets
-	check(!Stalled(true, 500, 9), "9 s without video: not yet stalled");
-	check(Stalled(true, 500, 10), "10 s without video after it had arrived: stalled");
-	check(!Stalled(true, 0, 60), "video never arrived (e.g. UDP blocked): not reopened, NO SIGNAL shows");
-	check(!Stalled(false, 0, 600), "a metadata-only stream can be silent for long: never stalled");
+	check(!Stalled(true, 500, 9, false), "9 s without video: not yet stalled");
+	check(Stalled(true, 500, 10, false), "10 s without video after it had arrived: stalled");
+	check(!Stalled(true, 0, 60, false), "video never arrived (e.g. UDP blocked): not reopened, NO SIGNAL shows");
+	check(!Stalled(false, 0, 600, false), "a metadata-only stream can be silent for long: never stalled");
+	check(Stalled(true, 0, 10, true), "a reopened session that brings no video, after video had arrived before: stalled again");
+	check(Stalled(false, 0, 10, true), "a reopened session whose video couldn't be set up, after video had arrived before: stalled again");
+	check(!Stalled(true, 0, 9, true), "a reopened session still has 10 s to bring video");
 
 	// reconnect delay: 2, 4, 8, 16, 32, then 60 s
 	const int delays[] = { 2, 4, 8, 16, 32, 60, 60 };
