@@ -408,7 +408,8 @@ namespace onvifmp{
 
 		MediaSubsessionIterator itor(*mediaSession);
 		auto subsession = itor.next();
-		while(subsession != NULL){
+		//(no further SETUPs once the camera has refused the credentials: each could cost another failed login)
+		while(subsession != NULL && policy::RetryAfter(lastFailure)){
 			//subsession->setClientPortNum(-1);
 			if(subsession->initiate(0)){
 				SetupSubsession(mediaStreamInfo, subsession);
