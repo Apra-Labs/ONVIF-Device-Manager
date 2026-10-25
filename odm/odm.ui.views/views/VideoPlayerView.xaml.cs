@@ -68,6 +68,7 @@ namespace odm.ui.activities {
 			InitializeComponent();
 
 			Unloaded += (s, e) => WatchOwnerKeys(null);
+			disposables.Add(Disposable.Create(() => WatchOwnerKeys(null)));	//(disposed while still loaded)
 			disposables.Add(Disposable.Create(CloseFullScreen));
 
 			captionNoSignal.CreateBinding(TextBlock.TextProperty, Strings, s => s.noSignal);
@@ -453,18 +454,13 @@ namespace odm.ui.activities {
 			}
 		}
 
-		/// <summary>
-		/// Whether a double-click on the video (or F11) goes full screen; a view whose overlay uses
-		/// double-clicks itself can turn it off.
-		/// </summary>
-		public bool AllowFullScreen { get; set; } = true;
-
 		//F11 in ODM's window (while this video is showing), or a double-click on the video,
 		//goes full screen. Taken at the window, after everything under the mouse has had the
 		//double-click (bubbling, handled ones too: what's drawn over the video, e.g. analytics,
 		//gets the clicks, and containers such as a ScrollViewer mark every click handled), and
 		//never taken from them - but not acted on when it is on something interactive drawn over
-		//the video (a region editor's lines and points, buttons, text boxes), whose gesture it is.
+		//the video (a region editor's lines, points and filled region, buttons, text boxes), whose
+		//gesture it is; F11 works there too.
 		System.Windows.Input.MouseButtonEventHandler ownerMouseDown;
 
 		void WatchOwnerKeys(Window owner) {
@@ -483,7 +479,7 @@ namespace odm.ui.activities {
 		}
 
 		void OwnerMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e) {
-			if (e.ClickCount != 2 || !IsVisible || !AllowFullScreen || Interactive(e.OriginalSource as DependencyObject)) {
+			if (e.ClickCount != 2 || !IsVisible || Interactive(e.OriginalSource as DependencyObject)) {
 				return;
 			}
 			var at = e.GetPosition(_imgVIew);
@@ -495,7 +491,7 @@ namespace odm.ui.activities {
 		}
 
 		void OwnerPreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e) {
-			if (e.Key == System.Windows.Input.Key.F11 && IsVisible && AllowFullScreen) {
+			if (e.Key == System.Windows.Input.Key.F11 && IsVisible) {
 				ToggleFullScreen();
 				e.Handled = true;
 			}
