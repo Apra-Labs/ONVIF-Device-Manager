@@ -72,6 +72,11 @@ int main(){
 	check(RetryAfter(404), "retry after another error");
 	check(!RetryAfter(401), "no retry after 401: repeated failed logins can lock the account");
 
+	// SETUP and PLAY: live555's result message after a refused request -> stop, as after DESCRIBE
+	check(!RetryAfter(RtspStatusOf("401 Unauthorized")), "SETUP/PLAY answered 401 Unauthorized: no retry");
+	check(RetryAfter(RtspStatusOf("454 Session Not Found")), "SETUP/PLAY answered 454: retried");
+	check(RetryAfter(RtspStatusOf("connect() failed: 10060 ")), "no answer at SETUP/PLAY: retried");
+
 	printf("%d failure(s)\n", failures);
 	return failures;
 }

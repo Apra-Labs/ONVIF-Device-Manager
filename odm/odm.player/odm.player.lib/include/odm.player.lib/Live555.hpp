@@ -34,7 +34,7 @@ namespace onvifmp{
 
 	protected:
 		int packetReorderingThresholdTime;
-		int lastFailure;			//(the RTSP status of the last failed DESCRIBE, e.g. 401 when the credentials were refused; 0 when there was no reply)
+		int lastFailure;			//(the RTSP status of the last failed DESCRIBE, e.g. 401; also 401 when SETUP or PLAY refused the credentials; 0 when there was no reply)
 
 		//Authenticator* authenticator;
 		BasicTaskScheduler* scheduler;

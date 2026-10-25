@@ -106,7 +106,17 @@ namespace onvifmp{
 		bool videoArrived = false;	//(at least once in this player, over all sessions)
 		int attempt = 0;			//(reopenings since video last arrived)
 		for(;;){
-			rtspClient->playMediaSession(*mediaSession);
+			if(!rtspClient->playMediaSession(*mediaSession) &&
+			   !policy::RetryAfter(policy::RtspStatusOf(usageEnvironment->getResultMsg()))){
+				// the camera refused the credentials at PLAY: stop, as after a refused DESCRIBE or SETUP
+				lastFailure = 401;
+				rtspClient->teardownMediaSession(*mediaSession);
+				Cleanup();
+				if(!playbackSession.disposed){
+					playbackController->Shutdown();
+				}
+				break;
+			}
 
 			struct Watch{
 				Live555* player;
@@ -299,7 +309,10 @@ namespace onvifmp{
 		auto sprops = subsession->fmtp_spropparametersets();
 		auto frameProcessorFactory = InitSubsession(codecName, sprops);
 		if(frameProcessorFactory!=nullptr){
-			rtspClient->setupMediaSubsession(*subsession, false, streamUsingTcp, false);
+			if(!rtspClient->setupMediaSubsession(*subsession, false, streamUsingTcp, false) &&
+			   !policy::RetryAfter(policy::RtspStatusOf(usageEnvironment->getResultMsg()))){
+				lastFailure = 401;		//(credentials refused at SETUP: Init fails, and the reconnect stops)
+			}
 			VirtualSink* sink;
 			if(_stricmp(codecName, "H264")==0){
 				//create special sink to fix H264 payload format
@@ -401,6 +414,10 @@ namespace onvifmp{
 				SetupSubsession(mediaStreamInfo, subsession);
 			}
 			subsession = itor.next();
+		}
+		if(!policy::RetryAfter(lastFailure)){
+			Cleanup();				//(the camera refused the credentials at SETUP)
+			return false;
 		}
 		return true;
 	}
