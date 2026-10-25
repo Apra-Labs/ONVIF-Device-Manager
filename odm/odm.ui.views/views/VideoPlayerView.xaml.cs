@@ -254,6 +254,11 @@ namespace odm.ui.activities {
 				throw new ArgumentNullException("videoBufferDescription");
 			}
 			VerifyAccess();
+			//(a new stream: no description until its first frames bring one)
+			System.Array.Clear(previousInfoBytes, 0, previousInfoBytes.Length);
+			System.Array.Clear(shownInfoBytes, 0, shownInfoBytes.Length);
+			streamInfo.Text = "";
+			streamInfoPanel.Visibility = Visibility.Collapsed;
 
 			TimeSpan renderinterval;
 			try {
@@ -324,6 +329,7 @@ namespace odm.ui.activities {
 		}
 
 		readonly byte[] infoBytes = new byte[VideoBuffer.INFO_SIZE];
+		readonly byte[] previousInfoBytes = new byte[VideoBuffer.INFO_SIZE];
 		readonly byte[] shownInfoBytes = new byte[VideoBuffer.INFO_SIZE];
 
 		static bool SameBytes(byte[] a, byte[] b) {
@@ -350,7 +356,10 @@ namespace odm.ui.activities {
 				//what is playing (from the player), top right: a string only when it changed
 				md.value.CopyInfo(infoBytes);
 			}
-			if (infoBytes[0] != 0 && !SameBytes(infoBytes, shownInfoBytes)) {	//(the player writes the first byte last)
+			//(the player may be writing it while it's copied: only text that two frames' copies agree on)
+			bool settled = SameBytes(infoBytes, previousInfoBytes);
+			System.Array.Copy(infoBytes, previousInfoBytes, infoBytes.Length);
+			if (settled && infoBytes[0] != 0 && !SameBytes(infoBytes, shownInfoBytes)) {
 				System.Array.Copy(infoBytes, shownInfoBytes, infoBytes.Length);
 				var end = System.Array.IndexOf(infoBytes, (byte)0);
 				streamInfo.Text = System.Text.Encoding.ASCII.GetString(infoBytes, 0, end < 0 ? infoBytes.Length : end);

@@ -53,13 +53,9 @@ namespace onvifmp{
 			if(length > vb->infoSize - 1){
 				length = vb->infoSize - 1;
 			}
-			//(the UI reads it unlocked: the first byte goes last, and the UI takes no text whose first byte is 0)
-			vb->info[0] = 0;
-			if(length > 1){
-				memcpy(vb->info + 1, text + 1, length - 1);
-			}
+			//(the UI reads it without excluding this write, and shows it only once two frames' copies agree)
+			memcpy(vb->info, text, length);
 			vb->info[length] = 0;
-			vb->info[0] = text[0];
 		}
 
 		virtual void RenderFrame(AVCodecContext* avCodecContext, AVFrame* avFrame){

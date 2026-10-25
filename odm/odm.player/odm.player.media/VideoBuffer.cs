@@ -19,18 +19,11 @@ namespace odm.player {
 		public readonly IntPtr signalPtr;
 		public readonly IntPtr infoPtr;
 		public readonly IntPtr scan0Ptr;
-		/// <summary>what the player says it is playing, e.g. "H.265  2560x1440" (empty until the first frame)</summary>
-		/// <summary>copies the description's bytes (INFO_SIZE of them) into the given array - no allocation, for each frame</summary>
+		/// <summary>copies the bytes (INFO_SIZE of them) of what the player says it is playing, e.g.
+		/// "H.265  2560x1440" (ASCII, ends with 0; empty until the first frame), into the given array -
+		/// no allocation, for each frame</summary>
 		public void CopyInfo(byte[] into) {
 			Marshal.Copy(infoPtr, into, 0, VideoBuffer.INFO_SIZE);
-		}
-		public string info {
-			get {
-				var bytes = new byte[VideoBuffer.INFO_SIZE];
-				Marshal.Copy(infoPtr, bytes, 0, bytes.Length);
-				var end = Array.IndexOf(bytes, (byte)0);
-				return Encoding.ASCII.GetString(bytes, 0, end < 0 ? bytes.Length : end);
-			}
 		}
 		public byte signal { 
 			get {
