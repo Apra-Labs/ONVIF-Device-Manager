@@ -254,6 +254,11 @@ namespace odm.ui.activities {
 				throw new ArgumentNullException("videoBufferDescription");
 			}
 			VerifyAccess();
+			//(a new stream: no description until its first frames bring one)
+			System.Array.Clear(previousInfoBytes, 0, previousInfoBytes.Length);
+			System.Array.Clear(shownInfoBytes, 0, shownInfoBytes.Length);
+			streamInfo.Text = "";
+			streamInfoPanel.Visibility = Visibility.Collapsed;
 
 			TimeSpan renderinterval;
 			try {
@@ -323,6 +328,19 @@ namespace odm.ui.activities {
 			return bitmap;
 		}
 
+		readonly byte[] infoBytes = new byte[VideoBuffer.INFO_SIZE];
+		readonly byte[] previousInfoBytes = new byte[VideoBuffer.INFO_SIZE];
+		readonly byte[] shownInfoBytes = new byte[VideoBuffer.INFO_SIZE];
+
+		static bool SameBytes(byte[] a, byte[] b) {
+			for (int i = 0; i < a.Length; ++i) {
+				if (a[i] != b[i]) {
+					return false;
+				}
+			}
+			return true;
+		}
+
 		private void DrawFrame(WriteableBitmap bitmap, VideoBuffer videoBuffer, PlaybackStatistics statistics) {
 			VerifyAccess();
 			if (isPaused) {
@@ -335,6 +353,17 @@ namespace odm.ui.activities {
 					md.value.scan0Ptr, videoBuffer.size, videoBuffer.stride,
 					0, 0
 				);
+				//what is playing (from the player), top right: a string only when it changed
+				md.value.CopyInfo(infoBytes);
+			}
+			//(the player may be writing it while it's copied: only text that two frames' copies agree on)
+			bool settled = SameBytes(infoBytes, previousInfoBytes);
+			System.Array.Copy(infoBytes, previousInfoBytes, infoBytes.Length);
+			if (settled && infoBytes[0] != 0 && !SameBytes(infoBytes, shownInfoBytes)) {
+				System.Array.Copy(infoBytes, shownInfoBytes, infoBytes.Length);
+				var end = System.Array.IndexOf(infoBytes, (byte)0);
+				streamInfo.Text = System.Text.Encoding.ASCII.GetString(infoBytes, 0, end < 0 ? infoBytes.Length : end);
+				streamInfoPanel.Visibility = Visibility.Visible;
 			}
 			renderingFps.Text = String.Format("rendering fps: {0:F1}", statistics.avgRenderingFps);
 			decodingFps.Text = String.Format("decoding fps: {0:F1}", statistics.avgDecodingFps);
