@@ -58,12 +58,20 @@
       <HintPath>$(OdmViewsBin)utils.common.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="onvif.utils">
+      <HintPath>$(OdmViewsBin)onvif.utils.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="onvif.discovery">
       <HintPath>$(OdmViewsBin)onvif.discovery.dll</HintPath>
       <Private>true</Private>
     </Reference>
     <Reference Include="System.Security" />
     <Reference Include="System.ServiceModel" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="PresentationCore" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
   </ItemGroup>
 
 </Project>
