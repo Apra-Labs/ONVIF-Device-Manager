@@ -23,7 +23,13 @@ build_output.txt
 # Claude Code / fleet
 .claude/
 permissions.json
+CLAUDE.md
 
 # Lib docs
 libs/*/doc/
 
+# E2E test suite
+.env
+smoke-config.json
+odm-e2e-results/
+odm/odm.e2e-tests/packages/
