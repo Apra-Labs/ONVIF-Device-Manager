@@ -30,6 +30,14 @@ namespace odm.ui {
         void CurrentDomain_UnhandledException(object sender, UnhandledExceptionEventArgs e)
         {
             log.WriteError("Unhandled exception has occurred: " + e.ExceptionObject);
+            try {
+                var exObj = e.ExceptionObject as Exception;
+                var msg = exObj != null ? exObj.ToString() : e.ExceptionObject.ToString();
+                File.WriteAllText(
+                    Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs", "crash.log"),
+                    msg
+                );
+            } catch { }
         }
 
 

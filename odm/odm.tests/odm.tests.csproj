@@ -38,6 +38,11 @@
       <HintPath>$(OdmViewsBin)onvif.services.dll</HintPath>
       <Private>true</Private>
     </Reference>
+    <Reference Include="odm.onvif.gen">
+      <HintPath>$(OdmViewsBin)odm.onvif.gen.dll</HintPath>
+      <Private>true</Private>
+      <Aliases>onvifgen</Aliases>
+    </Reference>
     <Reference Include="FSharp.Core">
       <HintPath>$(OdmViewsBin)FSharp.Core.dll</HintPath>
       <Private>true</Private>

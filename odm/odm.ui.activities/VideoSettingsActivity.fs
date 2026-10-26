@@ -78,6 +78,42 @@ namespace odm.ui.activities
                 | Some m2cfg when m2cfg.encoding <> VideoEncoding.h264 -> m2cfg.encoding
                 | _ -> media1Encoding
 
+            // Fetch Media2 encoder configuration options — capability query (no configToken) so
+            // we get what the camera SUPPORTS regardless of current config state.
+            // Fixes issue #21: H265 resolution list + H265 disappearing after H264 apply.
+            let! media2EncOpts =
+                async{
+                    try return! session.GetVideoEncoderConfigurationOptionsMedia2(profile.token)
+                    with _ -> return [||]
+                }
+
+            // Synthesize options.h265 from Media2 data when Media1 is sparse or absent.
+            // This ensures H265 stays visible in the encoder dropdown even if the current
+            // config was switched to H264 (capability is independent of current state).
+            let m2H265 =
+                media2EncOpts
+                |> Array.tryFind (fun o ->
+                    NotNull(o) && (o.Encoding |> SuppressNull "").ToUpperInvariant() = "H265")
+            match m2H265 with
+            | Some m2h when m2h.ResolutionsAvailable |> NotNull && m2h.ResolutionsAvailable.Length > 0 ->
+                if options.h265 |> IsNull || options.h265.resolutionsAvailable |> IsNull || options.h265.resolutionsAvailable.Length <= 1 then
+                    let h265Opts =
+                        if options.h265 |> NotNull then options.h265
+                        else new onvif.services.H265Options()
+                    h265Opts.resolutionsAvailable <-
+                        m2h.ResolutionsAvailable
+                        |> Array.map (fun r -> new VideoResolution(width = r.Width, height = r.Height))
+                    if h265Opts.frameRateRange |> IsNull && m2h.FrameRatesSupported |> NotNull && m2h.FrameRatesSupported.Length > 0 then
+                        h265Opts.frameRateRange <-
+                            new IntRange(
+                                min = int(m2h.FrameRatesSupported |> Array.min),
+                                max = int(m2h.FrameRatesSupported |> Array.max))
+                    if h265Opts.govLengthRange |> IsNull && m2h.GovLengthRange |> NotNull && m2h.GovLengthRange.Length >= 2 then
+                        h265Opts.govLengthRange <-
+                            new IntRange(min = m2h.GovLengthRange.[0], max = m2h.GovLengthRange.[1])
+                    options.h265 <- h265Opts
+            | _ -> ()
+
             let resolution = vec.resolution
             let framerate = 
                 if vec.rateControl |> NotNull then

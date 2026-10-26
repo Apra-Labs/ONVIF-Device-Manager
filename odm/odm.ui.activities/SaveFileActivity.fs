@@ -32,6 +32,6 @@
                     SaveFileActivityResult.Selected(dlg.FileName)
                 else
                     SaveFileActivityResult.Canceled
-            )
+            ).Task |> Async.AwaitTask
         }
     end

@@ -1,0 +1,25 @@
+﻿<wsdl:definitions
+	xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+	xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+	xmlns:tds="http://www.onvif.org/ver10/device/wsdl"
+	xmlns:tev="http://www.onvif.org/ver10/events/wsdl"
+	xmlns:wsntw="http://docs.oasis-open.org/wsn/bw-2"
+	xmlns:trt="http://www.onvif.org/ver10/media/wsdl"
+	xmlns:tmd="http://www.onvif.org/ver10/deviceIO/wsdl"
+
+	xmlns:tr2="http://www.onvif.org/ver20/media/wsdl"
+	xmlns:timg="http://www.onvif.org/ver20/imaging/wsdl"
+	targetNamespace="https://www.onvif.org/ver20/media/wsdl">
+
+	<wsdl:import
+		namespace="https://www.onvif.org/ver20/media/wsdl"
+		location="https://www.onvif.org/ver20/media/wsdl/media.wsdl" />
+
+	<wsdl:service name="Media2Service">
+		<wsdl:port name="Media2Service_soap12"
+			binding="tr2:Media2Binding">
+			<soap:address
+				location="http://localhost:8081/onvif/media2_service" />
+		</wsdl:port>
+	</wsdl:service>
+</wsdl:definitions>

@@ -83,6 +83,24 @@ Key helpers in `SslStreamHelpers` module:
 - `parseResponse` — splits HTTP response into status, headers, body
 - `stripDoctype` — removes XML DOCTYPE declarations before WCF message parsing
 
+### Media2 Service Detection
+
+ODM supports both Media (ver10) and Media2 (ver20). Detection happens once per session:
+
+- `GetResolvedEndpoints()` calls `GetServices()` and maps each namespace URL to an XAddr.
+- `ServiceEndpointMap.HasMedia2` is `true` when `http://www.onvif.org/ver20/media/wsdl` is present.
+- `GetMedia2Client()` is memoized: it returns `null` for Media1-only cameras (no retry overhead).
+
+The `routeMedia` helper (defined just below `GetMedia2Client`) routes each operation:
+
+```
+GetMedia2Client() → non-null → typed Media2 call
+                             ↘ exception → GetMediaClient() → Media1 call
+               → null ──────────────────→ GetMediaClient() → Media1 call
+```
+
+The generated proxy (`onvif/odm.onvif.gen/OnvifMedia2Gen.cs`) provides the typed `Media2` interface and `Media2Client`. See `docs/features/media2-routing.md` for how to add new operations.
+
 ### `FixUrl` — host/port fixup
 
 `FixUrl` (NvtSession.fs) corrects RTSP stream URIs where the camera's self-reported host/port does not match the network address used to connect. It handles:

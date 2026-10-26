@@ -86,6 +86,7 @@ namespace odm.core
         abstract deviceUri:Uri
         abstract GetAllCapabilities: unit -> Async<Capabilities>
         abstract GetVideoEncoderConfigurationsMedia2: unit -> Async<VideoEncoderConfiguration[]>
+        abstract GetVideoEncoderConfigurationOptionsMedia2: profToken:string -> Async<onvif.services.VideoEncoder2ConfigurationOptions[]>
     end
 
     type private ServiceEndpointMap = {
@@ -437,7 +438,7 @@ namespace odm.core
         let getMedia2Factory =
             let comp = factory_wrapper (fun(useTls)-> Async.Memoize(async{
                 do! Async.SwitchToThreadPool()
-                return NvtSessionFactory.CreateChannelFactory<IMedia2>(false, false, credentials |> NotNull, useTls)
+                return NvtSessionFactory.CreateChannelFactory<onvif.services.Media2>(false, false, credentials |> NotNull, useTls)
             }))
             fun(useTls)->comp(useTls)
 
@@ -1075,10 +1076,15 @@ namespace odm.core
                 })
                 fun()->comp
 
-            let GetAllCapabilities = 
+            let GetAllCapabilities =
                 let comp = Async.Memoize(async{
                     let! dev = GetDeviceClient()
-                    let! caps = dev.GetCapabilities()
+                    let! caps = async{
+                        try return! dev.GetCapabilities()
+                        with err ->
+                            dbg.Error(err)
+                            return new Capabilities()
+                    }
                     try
                         let! ae = GetActionEngineClient()
                         let! aeCaps = ae.GetServiceCapabilities()
@@ -1123,6 +1129,34 @@ namespace odm.core
                             return proxy
                 })
                 fun()->comp
+
+            /// Routes a Media operation: try typed Media2 first, then fall back to Media1.
+            /// Any error from GetMedia2Client (channel creation, faulted channel, etc.) or from
+            /// the Media2 work itself causes silent fallback to Media1. This tolerates cameras
+            /// that advertise Media2 but reject individual Media2 SOAP actions (e.g. Milesight
+            /// firmware that maps Media2 xAddr to device_service and returns HTTP 400).
+            let routeMedia
+                    (media2Work: onvif.services.Media2 -> Async<'T>)
+                    (media1Work: IMediaAsync -> Async<'T>) : Async<'T> =
+                let m1Fallback() = async{
+                    let! m1 = GetMediaClient()
+                    if m1 |> NotNull then return! media1Work m1
+                    else return raise (System.InvalidOperationException("No Media service available"))
+                }
+                async {
+                    let! m2 = async{
+                        try
+                            let! ch = GetMedia2Client()
+                            return if ch |> NotNull then Some ch else None
+                        with _ -> return None
+                    }
+                    match m2 with
+                    | Some ch ->
+                        try  return! media2Work ch
+                        with _ -> return! m1Fallback()
+                    | None ->
+                        return! m1Fallback()
+                }
 
             let MediaGetVideoSources = 
                 let comp = Async.Memoize(async{
@@ -1259,44 +1293,41 @@ namespace odm.core
 
                     member this.GetVideoEncoderConfigurationsMedia2(): Async<VideoEncoderConfiguration[]> = async{
                         try
-                            let! med2 = GetMedia2Client()
-                            if med2 |> IsNull then
-                                return [||]
-                            else
-                                let request = new Media2GetVideoEncoderConfigurationsRequest()
-                                let! response = Async.FromBeginEnd(request, med2.BeginGetVideoEncoderConfigurations, med2.EndGetVideoEncoderConfigurations)
-                                // response.Configurations is XmlElement[] — parse token and Encoding manually
-                                // because WCF cannot deserialize VideoEncoderConfiguration[] across the
-                                // ver20/media/wsdl (wrapper) / ver10/schema (type) namespace boundary.
-                                // response is a raw WCF Message — read body with LINQ to XML.
-                                // Use ReadOuterXml() to consume the full element as a string before
-                                // WCF closes the reader; XDocument.Load(reader) alone leaves the reader
-                                // short of EndOfFile and WCF throws on Message disposal.
-                                use response = response
-                                let bodyReader = response.GetReaderAtBodyContents()
-                                let bodyXml = bodyReader.ReadOuterXml()
-                                let doc = System.Xml.Linq.XDocument.Parse(bodyXml)
-                                let nsTr2 = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver20/media/wsdl")
-                                let nsTt  = System.Xml.Linq.XNamespace.Get("http://www.onvif.org/ver10/schema")
-                                let cfgEls = doc.Root.Elements(nsTr2 + "Configurations") |> Seq.toArray
-                                return [|
-                                    for el in cfgEls do
-                                        let tokenAttr = el.Attribute(System.Xml.Linq.XName.Get("token"))
-                                        if tokenAttr |> NotNull && tokenAttr.Value.Length > 0 then
-                                            let encEl = el.Element(nsTt + "Encoding")
-                                            let enc =
-                                                if encEl |> NotNull then
-                                                    match encEl.Value.Trim().ToUpperInvariant() with
+                            return! routeMedia
+                                (fun m2 -> async {
+                                    let req = new onvif.services.GetVideoEncoderConfigurationsRequest()
+                                    let! resp = Async.AwaitTask(m2.GetVideoEncoderConfigurationsAsync(req))
+                                    return [|
+                                        for c in resp.Configurations |> SuppressNull [||] do
+                                            if c |> NotNull && c.token |> NotNull && c.token.Length > 0 then
+                                                let enc =
+                                                    match (c.Encoding |> SuppressNull "").ToUpperInvariant() with
                                                     | "H265"  -> VideoEncoding.h265
                                                     | "JPEG"  -> VideoEncoding.jpeg
                                                     | "MPEG4" -> VideoEncoding.mpeg4
                                                     | _       -> VideoEncoding.h264
-                                                else VideoEncoding.h264
-                                            let cfg = new VideoEncoderConfiguration()
-                                            cfg.token    <- tokenAttr.Value
-                                            cfg.encoding <- enc
-                                            yield cfg
-                                |]
+                                                let cfg = new VideoEncoderConfiguration()
+                                                cfg.token    <- c.token
+                                                cfg.encoding <- enc
+                                                yield cfg
+                                    |]
+                                })
+                                (fun m1 -> m1.GetVideoEncoderConfigurations())
+                        with err ->
+                            dbg.Error(err)
+                            return [||]
+                    }
+
+                    member this.GetVideoEncoderConfigurationOptionsMedia2(profToken:string): Async<onvif.services.VideoEncoder2ConfigurationOptions[]> = async{
+                        try
+                            return! routeMedia
+                                (fun m2 -> async {
+                                    let req = new onvif.services.GetVideoEncoderConfigurationOptionsRequest()
+                                    req.ProfileToken <- profToken
+                                    let! resp = Async.AwaitTask(m2.GetVideoEncoderConfigurationOptionsAsync(req))
+                                    return if resp.Options |> IsNull then [||] else resp.Options
+                                })
+                                (fun _m1 -> async{ return [||] })
                         with err ->
                             dbg.Error(err)
                             return [||]

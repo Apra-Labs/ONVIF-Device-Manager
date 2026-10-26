@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog xmlns="urn:oasis:names:tc:entity:xmlns:xml:catalog">
+    <uri name="http://www.w3.org/2005/05/xmlmime" uri="https://www.w3.org/2005/05/xmlmime"/>
+    <uri name="http://www.w3.org/2003/05/soap-envelope" uri="https://www.w3.org/2003/05/soap-envelope"/>
+    <uri name="http://www.w3.org/2004/08/xop/include" uri="https://www.w3.org/2004/08/xop/include"/>
+    
+    
+    <uri name="http://docs.oasis-open.org/wsn/b-2.xsd" uri="../schema/b-2.xsd"/>
+    <uri name="http://docs.oasis-open.org/wsn/b-2.xsd" uri="https://docs.oasis-open.org/wsn/b-2.xsd"/>
+    
+    <uri name="http://docs.oasis-open.org/wsn/t-1.xsd" uri="../schema/t-1.xsd"/>
+    <uri name="http://docs.oasis-open.org/wsn/t-1.xsd" uri="https://docs.oasis-open.org/wsn/t-1.xsd"/>
+    
+    
+    <uri name="http://docs.oasis-open.org/wsrf/bf-2.xsd" uri="../schema/bf-2.xsd"/>
+    <uri name="http://docs.oasis-open.org/wsrf/bf-2.xsd" uri="https://docs.oasis-open.org/wsrf/bf-2.xsd"/>
+    
+    <uri name="http://docs.oasis-open.org/wsrf/r-2.xsd" uri="../schema/r-2.xsd"/>
+    <uri name="http://docs.oasis-open.org/wsrf/r-2.xsd" uri="https://docs.oasis-open.org/wsrf/r-2.xsd"/>
+    
+    
+    <uri name="http://docs.oasis-open.org/wsn/bw-2.wsdl" uri="./bw-2.wsdl"/>
+    <uri name="http://docs.oasis-open.org/wsn/bw-2.wsdl" uri="https://docs.oasis-open.org/wsn/bw-2.wsdl"/>
+
+    <uri name="http://docs.oasis-open.org/wsrf/rw-2.wsdl" uri="./rw-2.wsdl"/>
+    <uri name="http://docs.oasis-open.org/wsrf/rw-2.wsdl" uri="https://docs.oasis-open.org/wsrf/rw-2.wsdl"/>
+    
+ </catalog>
