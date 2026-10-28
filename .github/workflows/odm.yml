@@ -113,6 +113,9 @@ jobs:
     - name: Build application
       run: msbuild ${{ env.Solution_Name }} /p:Configuration=Release /p:Platform=x64 /p:DeployExtension=false /m /nologo /v:minimal
 
+    - name: Run player tests
+      run: odm\odm.player\odm.player.tests\bin\x64\Release\odm.player.tests.exe
+
     - name: Restore tests
       run: dotnet restore odm\odm.tests\odm.tests.csproj
 

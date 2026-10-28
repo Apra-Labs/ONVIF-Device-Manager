@@ -1,4 +1,5 @@
 #include "odm.player.lib/all.h"
+#include "odm.player.lib/PlaybackPolicy.hpp"
 #include "GroupsockHelper.hh"
 #include "io.h"
 #include <stdlib.h>
@@ -20,6 +21,7 @@ namespace onvifmp{
 		metadataSubsessionInitialized = false;
 
 		packetReorderingThresholdTime = -1;
+		lastFailure = 0;
 	}
 
 	Live555::~Live555(){
@@ -76,10 +78,15 @@ namespace onvifmp{
 		struct PlaybackSession: IPlaybackSession{
 			PlaybackSession(){
 				disposed = false;
+				stop = nullptr;
 			}
-			bool disposed;
+			volatile bool disposed;
+			volatile char* stop;			//(the event loop's watch variable: set, the loop ends)
 			virtual void Dispose(){
 				disposed = true;
+				if(stop != nullptr){
+					*stop = 1;
+				}
 			}
 		}playbackSession;
 
@@ -88,20 +95,142 @@ namespace onvifmp{
 			return;
 		}
 		
-		rtspClient->playMediaSession(*mediaSession);
+		// Keeping the session alive and watching it - live555 does neither by itself - and opening
+		// it again when it stalls (the decisions are in PlaybackPolicy.hpp):
+		// - cameras end an RTSP session after its timeout (usually 60 s) unless the client says
+		//   something in between, so a keep-alive goes out every half timeout;
+		// - when video stops arriving for 10 s (the camera went away, or dropped the session
+		//   anyway), the session is closed and opened again, after a growing delay - but not once
+		//   the camera has refused the credentials. ODM doesn't restart a player that has reported
+		//   its end, so it isn't told: the picture just carries on once the stream is back.
+		bool videoArrived = false;	//(at least once in this player, over all sessions)
+		int attempt = 0;			//(reopenings since video last arrived)
+		for(;;){
+			if(!rtspClient->playMediaSession(*mediaSession) &&
+			   !policy::RetryAfter(policy::RtspStatusOf(usageEnvironment->getResultMsg()))){
+				// the camera refused the credentials at PLAY: stop, as after a refused DESCRIBE or SETUP
+				lastFailure = 401;
+				rtspClient->teardownMediaSession(*mediaSession);
+				Cleanup();
+				if(!playbackSession.disposed){
+					playbackController->Shutdown();
+				}
+				break;
+			}
 
-		//synchronize via fake GET_PARAMETER request
-		//if(rtspOptions.getParamSupported){
-		//	char* getParamResponse = nullptr;
-		//	rtspClient->getMediaSessionParameter(*mediaSession, nullptr, getParamResponse);
-		//}
+			struct Watch{
+				Live555* player;
+				MediaStreamInfo* streamInfo;
+				char stop;
+				bool hasVideo;
+				bool* videoArrived;
+				int* attempt;
+				unsigned videoPackets;
+				int secondsWithoutVideo;
+				int keepAliveEvery, sinceKeepAlive;
+				TaskToken tick;
+			}watch;
+			watch.player = this;
+			watch.streamInfo = mediaStreamInfo;
+			watch.stop = 0;
+			watch.hasVideo = false;
+			watch.videoArrived = &videoArrived;
+			watch.attempt = &attempt;
+			{
+				MediaSubsessionIterator itor(*mediaSession);
+				for(auto subsession = itor.next(); subsession != nullptr; subsession = itor.next()){
+					if(subsession->rtpSource() != nullptr && strcmp(subsession->mediumName(), "video") == 0){
+						watch.hasVideo = true;
+					}
+				}
+			}
+			watch.videoPackets = 0;
+			watch.secondsWithoutVideo = 0;
+			watch.keepAliveEvery = policy::KeepAliveInterval(rtspClient->sessionTimeoutParameter());
+			watch.sinceKeepAlive = 0;
+			playbackSession.stop = &watch.stop;
+			if(playbackSession.disposed){
+				watch.stop = 1;
+			}
 
-		scheduler->doEventLoop((char*)&(playbackSession.disposed));
-		if(!playbackSession.disposed){
-			playbackController->Shutdown();
+			// (whether this camera has refused GET_PARAMETER; one player per player host process)
+			static volatile bool getParameterRefused = false;
+			static TaskFunc* const tick = [](void* data){
+				auto w = static_cast<Watch*>(data);
+				auto self = w->player;
+				w->tick = nullptr;
+				unsigned packets = 0;
+				MediaSubsessionIterator itor(*self->mediaSession);
+				for(auto subsession = itor.next(); subsession != nullptr; subsession = itor.next()){
+					if(subsession->rtpSource() != nullptr && strcmp(subsession->mediumName(), "video") == 0){
+						packets += subsession->rtpSource()->receptionStatsDB().totNumPacketsReceived();
+					}
+				}
+				if(packets != w->videoPackets){
+					w->videoPackets = packets;
+					w->secondsWithoutVideo = 0;
+					*w->videoArrived = true;
+					*w->attempt = 0;		//(video is back: the next reopening starts the backoff over)
+				}else{
+					++w->secondsWithoutVideo;
+				}
+				if(policy::Stalled(w->hasVideo, w->videoPackets, w->secondsWithoutVideo, *w->videoArrived)){
+					w->stop = 1;
+					return;
+				}
+				if(++w->sinceKeepAlive >= w->keepAliveEvery){
+					w->sinceKeepAlive = 0;
+					if(policy::KeepAliveMethod(getParameterRefused) == policy::KeepAlive::GetParameter){
+						auto done = [](RTSPClient*, int resultCode, char* resultString){
+							if(policy::RefusesGetParameter(resultCode)){
+								getParameterRefused = true;
+							}
+							delete[] resultString;
+						};
+						self->rtspClient->sendGetParameterCommand(*self->mediaSession, done, nullptr, w->streamInfo->authenticator);
+					}else{
+						auto done = [](RTSPClient*, int, char* resultString){ delete[] resultString; };
+						self->rtspClient->sendOptionsCommand(done, w->streamInfo->authenticator);
+					}
+				}
+				w->tick = self->scheduler->scheduleDelayedTask(1000000, tick, w);
+			};
+			watch.tick = scheduler->scheduleDelayedTask(1000000, tick, &watch);
+
+			scheduler->doEventLoop(&watch.stop);
+			playbackSession.stop = nullptr;
+			if(watch.tick != nullptr){
+				scheduler->unscheduleDelayedTask(watch.tick);
+			}
+			rtspClient->teardownMediaSession(*mediaSession);
+			Cleanup();
+			if(playbackSession.disposed){
+				break;
+			}
+
+			// the stream stalled while the view is still open: open it again (the delay keeps growing
+			// over reopenings that bring no video; it starts over once video arrives)
+			bool reopened = false;
+			while(!playbackSession.disposed && !reopened){
+				++attempt;
+				for(int i = 0; i < policy::ReconnectDelay(attempt) * 10 && !playbackSession.disposed; ++i){
+					Sleep(100);
+				}
+				if(playbackSession.disposed){
+					break;
+				}
+				reopened = Init(mediaStreamInfo);
+				if(!reopened && !policy::RetryAfter(lastFailure)){
+					break;					//(the credentials were refused: don't keep trying them)
+				}
+			}
+			if(!reopened){
+				if(!playbackSession.disposed){
+					playbackController->Shutdown();
+				}
+				break;
+			}
 		}
-		rtspClient->teardownMediaSession(*mediaSession);
-		Cleanup();
 	}
 
 
@@ -180,7 +309,10 @@ namespace onvifmp{
 		auto sprops = subsession->fmtp_spropparametersets();
 		auto frameProcessorFactory = InitSubsession(codecName, sprops);
 		if(frameProcessorFactory!=nullptr){
-			rtspClient->setupMediaSubsession(*subsession, false, streamUsingTcp, false);
+			if(!rtspClient->setupMediaSubsession(*subsession, false, streamUsingTcp, false) &&
+			   !policy::RetryAfter(policy::RtspStatusOf(usageEnvironment->getResultMsg()))){
+				lastFailure = 401;		//(credentials refused at SETUP: Init fails, and the reconnect stops)
+			}
 			VirtualSink* sink;
 			if(_stricmp(codecName, "H264")==0){
 				//create special sink to fix H264 payload format
@@ -206,6 +338,7 @@ namespace onvifmp{
 	bool Live555::Init(MediaStreamInfo* mediaStreamInfo){
 		//if it has been initialized before, we should do cleanup first
 		Cleanup();
+		lastFailure = 0;
 
 		scheduler = BasicTaskScheduler::createNew();
 		if(scheduler == NULL){
@@ -256,6 +389,8 @@ namespace onvifmp{
 		if(sdp == NULL){
 			//TODO: log error
 			fprintf(stderr, "error %d: %s", usageEnvironment->getErrno(), usageEnvironment->getResultMsg());
+			//(the camera's answer, e.g. "... 401 Unauthorized": the reconnect stops on refused credentials)
+			lastFailure = policy::RtspStatusOf(usageEnvironment->getResultMsg());
 			Cleanup();
 			return false;
 		}
@@ -273,12 +408,17 @@ namespace onvifmp{
 
 		MediaSubsessionIterator itor(*mediaSession);
 		auto subsession = itor.next();
-		while(subsession != NULL){
+		//(no further SETUPs once the camera has refused the credentials: each could cost another failed login)
+		while(subsession != NULL && policy::RetryAfter(lastFailure)){
 			//subsession->setClientPortNum(-1);
 			if(subsession->initiate(0)){
 				SetupSubsession(mediaStreamInfo, subsession);
 			}
 			subsession = itor.next();
+		}
+		if(!policy::RetryAfter(lastFailure)){
+			Cleanup();				//(the camera refused the credentials at SETUP)
+			return false;
 		}
 		return true;
 	}
