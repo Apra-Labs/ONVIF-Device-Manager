@@ -253,6 +253,12 @@
         member this.sequence = sequence
     end
 
+    /// An announced address with port 0 can't be connected to, so it must not
+    /// replace a working address.
+    type DiscoveredAddresses private () = class
+        static member Usable(uris:Uri[]) = uris |> Array.filter (fun uri -> uri.Port > 0)
+    end
+
     /// Some cameras never answer the multicast probe, only one sent straight to them.
     /// So discovery also sends the probe to every address of each local IPv4 subnet
     /// (subnets of up to 1024 addresses; link-local ones are skipped), paced, and takes
@@ -441,9 +447,8 @@
             m_subj.OnNext(node :> INvtNode)
         )
 
-        let process_online (ep_meta:EndpointDiscoveryMetadata, msgSeq:DiscoveryMessageSequence) = 
+        let accept_online (ep_meta:EndpointDiscoveryMetadata, uris:Uri[], msgSeq:DiscoveryMessageSequence) =
             let ep_ref = ep_meta.Address.Uri.OriginalString
-            let uris = ep_meta.ListenUris.ToArray()
             let scopes = ep_meta.Scopes.ToArray()
             let identity = new NvtIdentity(ep_ref, uris, scopes)
             let node  = new NvtOnlineDescriptor(identity, msgSeq)
@@ -470,6 +475,14 @@
                         online_nodes.[ep_ref] <- node
                         notify_online node
             )
+
+        let process_online (ep_meta:EndpointDiscoveryMetadata, msgSeq:DiscoveryMessageSequence) =
+            let all = ep_meta.ListenUris.ToArray()
+            let uris = DiscoveredAddresses.Usable(all)
+            if uris.Length < all.Length then
+                dbg.Info("discovery: ignored an address with port 0 from " + ep_meta.Address.Uri.OriginalString)
+            if uris.Length > 0 then
+                accept_online(ep_meta, uris, msgSeq)
 
         let process_offline (ep_meta:EndpointDiscoveryMetadata, msgSeq:DiscoveryMessageSequence) = 
             tramp.Drop(fun ()->
